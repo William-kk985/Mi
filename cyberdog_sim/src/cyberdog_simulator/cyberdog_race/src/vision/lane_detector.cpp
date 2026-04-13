@@ -36,8 +36,8 @@ LaneResult LaneDetector::detect(const cv::Mat& frame) {
     else if (!right_pts.empty())
         result.curvature = calc_curvature(right_pts);
 
-    // 单边且未校准：等双边出现后再开始控制
-    if (!width_calibrated_ && (left_pts.empty() || right_pts.empty()))
+    // 单边且未校准：有默认宽度直接用，不再等双边
+    if (!width_calibrated_ && !has_history_ && (left_pts.empty() || right_pts.empty()))
         return result;
 
     result.valid = true;

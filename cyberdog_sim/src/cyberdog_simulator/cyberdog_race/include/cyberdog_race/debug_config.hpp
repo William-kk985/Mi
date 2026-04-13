@@ -6,8 +6,8 @@
 // ============================================================
 
 #define DEBUG_VISION    // 视觉可视化（cv::imshow，黄线边界，中心线，球检测）
-#define DEBUG_MOTION    // 运动控制日志（速度指令输出）
-#define DEBUG_SENSOR    // 传感器数据日志（IMU/里程计/Lidar）
+// #define DEBUG_MOTION    // 运动控制日志（速度指令输出）
+// #define DEBUG_SENSOR    // 传感器数据日志（IMU/里程计/Lidar）
 #define DEBUG_STAGE     // 状态机日志（赛段切换，进度）
 
 // ============================================================

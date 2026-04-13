@@ -30,7 +30,7 @@ private:
     float last_offset_{0.0f};
 
     // 自适应赛道宽度
-    float lane_width_{0.0f};
+    float lane_width_{120.0f};   // 默认初始宽度（像素），双边出现后自动校准
     bool  width_calibrated_{false};
 
     // 连续性检验：上一帧有效边界x坐标，-1表示未初始化
@@ -45,8 +45,7 @@ private:
     // 横向干扰过滤阈值（相邻行x坐标最大允许跳变，像素）
     static constexpr float LATERAL_THRESH     = 30.0f;
     // 连续性检验阈值（与上一帧x坐标差，相对图像宽度比例）
-    // 放宽至0.40：单边丢失后重新出现的边界点更快被接受，预测更及时接管
-    static constexpr float CONTINUITY_THRESH  = 0.40f;
+    static constexpr float CONTINUITY_THRESH  = 0.30f;
 
     void scan_edges(const cv::Mat& binary,
                     std::vector<cv::Point>& left,

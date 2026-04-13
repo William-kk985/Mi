@@ -15,6 +15,7 @@ private:
     float yaw_start_{0.0f};
     float prev_offset_{0.0f};
     bool  in_turn_{false};
-    bool  at_junction_{false};  // 是否进入路口转向阶段
+    bool  at_junction_{false};
     int   run_frames_{0};
+    int   lane_lost_frames_{0};
 };

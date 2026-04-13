@@ -97,6 +97,7 @@ public:
         rclcpp::sleep_for(std::chrono::seconds(2));
         motion_.locomotion();
         rclcpp::sleep_for(std::chrono::milliseconds(500));
+        motion_.set_pitch(0.4f);  // 低头15度看地面黄线
 
         // 初始化各赛段
         stages_[0] = std::make_unique<Stage1>(motion_, sensor_);

@@ -24,7 +24,7 @@ void Stage1::init() {
     prev_offset_    = 0.0f;
     run_frames_     = 0;
     motion_.locomotion();
-    motion_.set_pitch(-0.4f);  // 低头看地面黄线
+    motion_.set_pitch(0.4f);  // 低头看地面黄线
 
     #ifdef DEBUG_STAGE
     RCLCPP_INFO(rclcpp::get_logger("stage1"), "Stage1 init");
@@ -62,8 +62,8 @@ void Stage1::run() {
                         "Stage1 done (junction turn complete), yaw=%.3f target=%.3f", sensor_.yaw, TARGET_YAW);
             #endif
         } else {
-            // P控制转向，误差为正则左转
-            float turn = std::max(0.15f, std::min(0.5f, std::abs(yaw_err) * 0.8f));
+            // P控制转向，限制在 [0.08, 0.4]，误差小时慢转避免超调
+            float turn = std::max(0.05f, std::min(0.3f, std::abs(yaw_err) * 0.4f));
             motion_.set_velocity(0.0f, 0.0f, (yaw_err > 0 ? turn : -turn));
             #ifdef DEBUG_MOTION
             RCLCPP_INFO(rclcpp::get_logger("stage1"),
@@ -73,34 +73,31 @@ void Stage1::run() {
         return;
     }
 
-    // ── 路口检测（里程计位置触发）────────────────────────────
-    constexpr float JUNCTION_ODOM_X   = 3.0f;
-    constexpr float JUNCTION_ODOM_Y   = 0.17f;
-    constexpr float JUNCTION_ODOM_R   = 0.15f;
-    float dx = sensor_.odom_x - JUNCTION_ODOM_X;
-    float dy = sensor_.odom_y - JUNCTION_ODOM_Y;
-    bool near_junction = (dx*dx + dy*dy) < (JUNCTION_ODOM_R * JUNCTION_ODOM_R);
-
-    if (near_junction) {
+    // ── 路口检测（里程计 x 坐标触发）────────────────────────
+    if (sensor_.odom_x >= 2.95f && sensor_.odom_x <= 3.2f) {
         at_junction_ = true;
         yaw_start_   = sensor_.yaw;
         motion_.stop();
         #ifdef DEBUG_STAGE
         RCLCPP_INFO(rclcpp::get_logger("stage1"),
-                    "Junction detected by odom (x=%.2f y=%.2f), starting turn",
-                    sensor_.odom_x, sensor_.odom_y);
+                    "Junction detected by odom x=%.2f, starting turn",
+                    sensor_.odom_x);
         #endif
         return;
     }
 
     // ── 正常巡线阶段 ──────────────────────────────────────────
     if (!sensor_.lane_valid) {
-        motion_.stop();
-        #ifdef DEBUG_STAGE
-        RCLCPP_WARN(rclcpp::get_logger("stage1"), "Lane lost, stopping");
-        #endif
+        lane_lost_frames_++;
+        if (lane_lost_frames_ > 10) {
+            motion_.stop();
+            #ifdef DEBUG_STAGE
+            RCLCPP_WARN(rclcpp::get_logger("stage1"), "Lane lost, stopping");
+            #endif
+        }
         return;
     }
+    lane_lost_frames_ = 0;
 
     // PD控制
     float d_offset = sensor_.lane_offset - prev_offset_;
