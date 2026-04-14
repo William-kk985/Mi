@@ -1,26 +1,62 @@
 #include "cyberdog_race/stages/stage2.hpp"
 #include "cyberdog_race/debug_config.hpp"
 #include <rclcpp/rclcpp.hpp>
+#include <cmath>
 
-// 球阵参数（米）
-static constexpr float COL_SPACING = 1.0f;
-static constexpr float ROW_SPACING = 0.64f;
-static constexpr float HIT_DIST    = 0.25f; // 撞击距离
-static constexpr float MOVE_SPEED  = 0.2f;
+// 绿色终端打印（受 DEBUG_STAGE 控制）
+#ifdef DEBUG_STAGE
+#define LOG_GREEN(msg) LOG_STAGE_GREEN("Stage2", msg)
+#define LOG_GREENF(fmt, ...) LOG_STAGE_GREENF("Stage2", fmt, ##__VA_ARGS__)
+#else
+#define LOG_GREEN(msg)
+#define LOG_GREENF(fmt, ...)
+#endif
+static float norm_yaw(float y) {
+    while (y >  M_PI) y -= 2.f * M_PI;
+    while (y < -M_PI) y += 2.f * M_PI;
+    return y;
+}
 
 void Stage2::init() {
-    done_ = false;
-    cur_row_ = 3;
-    cur_col_ = 3;
-    going_left_ = true;
-    ball_done_.fill({false, false, false, false});
-    ball_done_[3][3] = true;
-    ball_done_[3][2] = true;
-    ball_done_[2][3] = true;
-    state_ = State::MOVING;
+    done_    = false;
+    wp_idx_  = 0;
+    state_   = State::MOVE_TO_POINT;
+    scan_found_ = false;
+
+    // ── 路径点定义 ──────────────────────────────────────────
+    // yaw: -π/2=向上(y+), 0=向右(x+), π=向左(x-), π/2=向下(y-)
+    // scan=true 表示到达后左右扫描±40°找橙色球
+    //
+    //  入口进来先向上走到 y=1.1，再向右到 (2.7,1.1) 扫描
+    //  然后向左到 (0,1.1) 扫描，向上到 y=1.7 ...
+    //  最后到 (2.7,4.2) 向左走到出口 (-0.15,4.2)
+
+    float L = 0.f, R = 2.7f;
+    // 暂时只测试走到 y=1.0
+    waypoints_[0]  = {2.55f, 1.0f,   M_PI/2.f,     false};
+    // 其余路径点暂时注释
+    /*
+    waypoints_[1]  = {L,     1.1f,  M_PI,         true };
+    waypoints_[2]  = {L,     1.7f,  M_PI/2.f,     false};
+    waypoints_[3]  = {R,     1.7f,  0.f,          true };
+    waypoints_[4]  = {L,     1.7f,  M_PI,         true };
+    waypoints_[5]  = {L,     2.6f,  M_PI/2.f,     false};
+    waypoints_[6]  = {R,     2.6f,  0.f,          true };
+    waypoints_[7]  = {L,     2.6f,  M_PI,         true };
+    waypoints_[8]  = {L,     3.5f,  M_PI/2.f,     false};
+    waypoints_[9]  = {R,     3.5f,  0.f,          true };
+    waypoints_[10] = {L,     3.5f,  M_PI,         true };
+    waypoints_[11] = {-0.15f,4.2f,  M_PI/2.f,     false};
+    */
+
+    // 第一步：只往 y 方向走，到达后转向 π（朝左）准备走向 wp[0]
+    target_x_   = sensor_.odom_x;
+    target_y_   = 1.0f;
+    target_yaw_ = M_PI;
+
     motion_.locomotion();
 #ifdef DEBUG_STAGE
-    RCLCPP_INFO(rclcpp::get_logger("stage2"), "Stage2 init");
+    RCLCPP_INFO(rclcpp::get_logger("stage2"), "Stage2 init, entry x=%.2f yaw=%.3f", sensor_.odom_x, sensor_.yaw);
 #endif
 }
 
@@ -28,72 +64,228 @@ void Stage2::run() {
     if (done_) return;
 
     switch (state_) {
-        case State::MOVING:
-            // TODO: 里程计导航到下一个球位置
-            // 到达后切换到DETECTING
-            state_ = State::DETECTING;
+
+    case State::MOVE_TO_POINT:
+        if (reached_pos(target_x_, target_y_)) {
             motion_.stop();
-            break;
-
-        case State::DETECTING:
-            if (sensor_.ball_found) {
-#ifdef DEBUG_SENSOR
-                RCLCPP_INFO(rclcpp::get_logger("stage2"), "Ball found at [%d][%d] dist=%.2f x=%.2f",
-                            cur_row_, cur_col_, sensor_.ball_dist, sensor_.ball_x);
-#endif
-                state_ = State::HITTING;
-            } else {
-                ball_done_[cur_row_][cur_col_] = true;
-#ifdef DEBUG_STAGE
-                RCLCPP_INFO(rclcpp::get_logger("stage2"), "No orange ball at [%d][%d], skip", cur_row_, cur_col_);
-#endif
-                state_ = State::MOVING;
-            }
-            break;
-
-        case State::HITTING:
-            if (sensor_.ball_dist > HIT_DIST) {
-                float yaw = -0.5f * sensor_.ball_x;
-                motion_.set_velocity(MOVE_SPEED, 0.0f, yaw);
-#ifdef DEBUG_MOTION
-                RCLCPP_INFO(rclcpp::get_logger("stage2"), "Hitting: dist=%.2f yaw=%.2f", sensor_.ball_dist, yaw);
-#endif
-            } else {
-                ball_done_[cur_row_][cur_col_] = true;
+            state_ = State::TURN_TO_YAW;
+            LOG_GREENF("✓ 到达位置 (%.2f, %.2f)", target_x_, target_y_);
+        } else {
+            // 第一步（wp_idx_==0）只判断 y，不管 x
+            if (wp_idx_ == 0 && std::abs(sensor_.odom_y - target_y_) < POS_THRESH) {
                 motion_.stop();
-#ifdef DEBUG_STAGE
-                RCLCPP_INFO(rclcpp::get_logger("stage2"), "Hit done [%d][%d]", cur_row_, cur_col_);
-#endif
-                state_ = State::MOVING;
-            }
-            break;
-
-        case State::TO_EXIT:
-            if (sensor_.lane_valid) {
-                float yaw = -0.5f * sensor_.lane_offset;
-                motion_.set_velocity(MOVE_SPEED, 0.0f, yaw);
-#ifdef DEBUG_MOTION
-                RCLCPP_INFO(rclcpp::get_logger("stage2"), "To exit: offset=%.2f", sensor_.lane_offset);
-#endif
+                state_ = State::TURN_TO_YAW;
+                LOG_GREENF("✓ 到达 y=%.2f（忽略x）", target_y_);
             } else {
-                done_ = true;
-                motion_.stop();
-#ifdef DEBUG_STAGE
-                RCLCPP_INFO(rclcpp::get_logger("stage2"), "Stage2 done");
-#endif
+                navigate_to(target_x_, target_y_);
             }
-            break;
+        }
+        break;
+
+    case State::TURN_TO_YAW:
+        if (reached_yaw(target_yaw_)) {
+            motion_.stop();
+            // wp_idx_가 0이면 아직 첫 임시 목표 도달, 스캔 없이 next_waypoint
+            // wp_idx_가 1 이상이면 실제 wp 도달, scan 여부 확인
+            bool do_scan = (wp_idx_ > 0) && (wp_idx_ <= NUM_WP) && waypoints_[wp_idx_-1].scan;
+            if (do_scan) {
+                scan_start_yaw_ = sensor_.yaw;
+                scan_found_     = false;
+                scan_dir_       = 1;
+                state_          = State::SCAN_LEFT;
+                LOG_GREENF("✓ 转向完成 yaw=%.2f，开始扫描", sensor_.yaw);
+            } else {
+                LOG_GREENF("✓ 转向完成 yaw=%.2f", sensor_.yaw);
+                next_waypoint();
+            }
+        } else {
+            turn_to(target_yaw_);
+        }
+        break;
+
+    case State::SCAN_LEFT: {
+        float yaw_diff = norm_yaw(sensor_.yaw - scan_start_yaw_);
+        if (yaw_diff < SCAN_ANGLE) {
+            motion_.set_velocity(0.f, 0.f, TURN_SPEED);
+        } else {
+            motion_.stop();
+            if (sensor_.ball_found && sensor_.ball_dist < BALL_DIST_THRESH && ball_in_arena()) {
+                scan_found_ = true;
+                start_x_ = sensor_.odom_x;
+                start_y_ = sensor_.odom_y;
+                state_   = State::HIT_BALL;
+                LOG_GREENF("✓ 左扫发现橙球！dist=%.2f", sensor_.ball_dist);
+            } else {
+                state_ = State::SCAN_RIGHT;
+                LOG_GREEN("→ 左扫未发现，转右扫");
+            }
+        }
+        break;
     }
 
-    // 检查是否所有球处理完毕
-    bool all_done = true;
-    for (auto& row : ball_done_)
-        for (auto v : row)
-            if (!v) { all_done = false; break; }
+    case State::SCAN_RIGHT: {
+        float yaw_diff = norm_yaw(sensor_.yaw - scan_start_yaw_);
+        if (yaw_diff > -SCAN_ANGLE) {
+            motion_.set_velocity(0.f, 0.f, -TURN_SPEED);
+        } else {
+            motion_.stop();
+            if (sensor_.ball_found && sensor_.ball_dist < BALL_DIST_THRESH && ball_in_arena()) {
+                scan_found_ = true;
+                start_x_ = sensor_.odom_x;
+                start_y_ = sensor_.odom_y;
+                state_   = State::HIT_BALL;
+                LOG_GREENF("✓ 右扫发现橙球！dist=%.2f", sensor_.ball_dist);
+            } else {
+                state_ = State::TURN_TO_YAW;
+                LOG_GREEN("→ 左右扫描未发现橙球，继续下一点");
+                next_waypoint();
+            }
+        }
+        break;
+    }
 
-    if (all_done && state_ != State::TO_EXIT) {
-        state_ = State::TO_EXIT;
+    case State::HIT_BALL:
+        if (sensor_.ball_found && sensor_.ball_dist > 0.15f) {
+            float yaw_cmd = -0.5f * sensor_.ball_x;
+            motion_.set_velocity(HIT_SPEED, 0.f, yaw_cmd);
+#ifdef DEBUG_MOTION
+            RCLCPP_INFO(rclcpp::get_logger("stage2"), "Hitting ball dist=%.2f", sensor_.ball_dist);
+#endif
+        } else {
+            motion_.stop();
+            state_ = State::BACK_TO_PATH;
+            LOG_GREENF("✓ 撞球完成，退回 (%.2f,%.2f)", start_x_, start_y_);
+        }
+        break;
+
+    case State::BACK_TO_PATH:
+        if (reached_pos(start_x_, start_y_)) {
+            motion_.stop();
+            LOG_GREEN("✓ 退回路径点完成");
+            next_waypoint();
+        } else {
+            navigate_to(start_x_, start_y_);
+        }
+        break;
+
+    case State::DONE:
+        done_ = true;
+        motion_.stop();
+        break;
     }
 }
 
 bool Stage2::is_done() { return done_; }
+
+// ── 辅助函数 ────────────────────────────────────────────────
+
+void Stage2::navigate_to(float tx, float ty) {
+    float dx = tx - sensor_.odom_x;
+    float dy = ty - sensor_.odom_y;
+    float dist = std::sqrt(dx*dx + dy*dy);
+
+    // 第一步（wp_idx_==0）：只往 y 方向直走，不转向
+    if (wp_idx_ == 0) {
+        float speed = std::min(MOVE_SPEED, std::abs(dy));
+        motion_.set_velocity(speed, 0.f, 0.f);
+        return;
+    }
+
+    // 球阵坐标（禁区中心）
+    static const float BALL_X[4] = {-0.4f, 0.8f, 2.0f, 3.2f};
+    static const float BALL_Y[4] = {1.3f, 2.1f, 2.9f, 3.7f};
+    static constexpr float DANGER_R = 0.1f;  // 禁区半径
+
+    // 检查当前位置是否接近任何球位
+    float min_ball_dist = 99.f;
+    for (int r = 0; r < 4; r++) {
+        for (int c = 0; c < 4; c++) {
+            float bdx = sensor_.odom_x - BALL_X[c];
+            float bdy = sensor_.odom_y - BALL_Y[r];
+            float bd = std::sqrt(bdx*bdx + bdy*bdy);
+            if (bd < min_ball_dist) min_ball_dist = bd;
+        }
+    }
+
+    // 接近禁区时减速
+    float speed_limit = MOVE_SPEED;
+    if (min_ball_dist < DANGER_R) {
+        speed_limit = MOVE_SPEED * (min_ball_dist / DANGER_R) * 0.5f;
+        speed_limit = std::max(0.05f, speed_limit);
+#ifdef DEBUG_MOTION
+        RCLCPP_INFO(rclcpp::get_logger("stage2"), "Near ball! dist=%.2f speed_limit=%.2f",
+                    min_ball_dist, speed_limit);
+#endif
+    }
+
+    float desired_yaw = std::atan2(dy, dx);
+    float yaw_err = norm_yaw(desired_yaw - sensor_.yaw);
+
+#ifdef DEBUG_MOTION
+    RCLCPP_INFO(rclcpp::get_logger("stage2"), "nav: pos=(%.2f,%.2f) tgt=(%.2f,%.2f) des_yaw=%.2f cur_yaw=%.2f err=%.2f",
+                sensor_.odom_x, sensor_.odom_y, tx, ty, desired_yaw, sensor_.yaw, yaw_err);
+#endif
+
+    if (std::abs(yaw_err) > 0.35f) {
+        float cmd = std::max(0.05f, std::min(0.4f, std::abs(yaw_err) * 0.6f));
+        motion_.set_velocity(0.f, 0.f, yaw_err > 0 ? -cmd : cmd);
+    } else {
+        float speed = std::min(speed_limit, dist);
+        float yaw_cmd = std::max(-0.3f, std::min(0.3f, yaw_err * 1.0f));
+        motion_.set_velocity(speed, 0.f, yaw_cmd);
+    }
+}
+
+void Stage2::turn_to(float target_yaw) {
+    float err = norm_yaw(target_yaw - sensor_.yaw);
+    float cmd = std::max(0.1f, std::min(0.4f, std::abs(err) * 0.6f));
+#ifdef DEBUG_MOTION
+    RCLCPP_INFO(rclcpp::get_logger("stage2"), "turn_to: cur=%.2f target=%.2f err=%.2f cmd=%.2f",
+                sensor_.yaw, target_yaw, err, err > 0 ? cmd : -cmd);
+#endif
+    motion_.set_velocity(0.f, 0.f, err > 0 ? -cmd : cmd);
+}
+
+bool Stage2::reached_pos(float tx, float ty) {
+    float dx = tx - sensor_.odom_x;
+    float dy = ty - sensor_.odom_y;
+    return std::sqrt(dx*dx + dy*dy) < POS_THRESH;
+}
+
+bool Stage2::reached_yaw(float target_yaw) {
+    return std::abs(norm_yaw(target_yaw - sensor_.yaw)) < YAW_THRESH;
+}
+void Stage2::next_waypoint() {
+    if (wp_idx_ >= 1) {  // 测试模式只有1个路径点
+        state_ = State::DONE;
+        return;
+    }
+    auto& wp   = waypoints_[wp_idx_++];
+    target_x_  = wp.x;
+    target_y_  = wp.y;
+    target_yaw_ = wp.yaw;
+    state_     = State::MOVE_TO_POINT;
+#ifdef DEBUG_STAGE
+    RCLCPP_INFO(rclcpp::get_logger("stage2"), "Next WP[%d] (%.2f,%.2f) yaw=%.2f scan=%d",
+                wp_idx_-1, wp.x, wp.y, wp.yaw, wp.scan);
+#endif
+}
+
+bool Stage2::ball_in_arena() {
+    // 根据当前位置和球的方向估算球的世界坐标
+    // ball_x 是归一化图像坐标[-1,1]，ball_dist 是估算距离
+    // 用当前 yaw + ball_x 偏角估算球的方向
+    float ball_angle = sensor_.yaw + sensor_.ball_x * 0.5f;  // 粗略估算
+    float ball_wx = sensor_.odom_x + sensor_.ball_dist * std::cos(ball_angle);
+    float ball_wy = sensor_.odom_y + sensor_.ball_dist * std::sin(ball_angle);
+
+    // 球阵范围：x[-0.4, 3.2]，y[1.3, 3.7]，留0.3m余量
+    bool in_x = ball_wx > -0.7f && ball_wx < 3.5f;
+    bool in_y = ball_wy > 1.0f  && ball_wy < 4.0f;
+
+#ifdef DEBUG_SENSOR
+    RCLCPP_INFO(rclcpp::get_logger("stage2"), "ball_in_arena: wx=%.2f wy=%.2f in=%d",
+                ball_wx, ball_wy, in_x && in_y);
+#endif
+    return in_x && in_y;
+}

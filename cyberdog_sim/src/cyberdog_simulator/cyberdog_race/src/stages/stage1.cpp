@@ -46,28 +46,26 @@ void Stage1::run() {
 
     // ── 路口原地转向阶段 ──────────────────────────────────────
     if (at_junction_) {
-        // 目标：转到世界坐标系 y 轴正方向（yaw = π/2）
-        constexpr float TARGET_YAW = -M_PI / 2.0f;
+        constexpr float TARGET_YAW = M_PI / 2.0f;
         float yaw_err = TARGET_YAW - sensor_.yaw;
-        // 归一化到 [-π, π]
         while (yaw_err >  M_PI) yaw_err -= 2.0f * M_PI;
         while (yaw_err < -M_PI) yaw_err += 2.0f * M_PI;
 
         if (std::abs(yaw_err) < 0.05f) {
             done_ = true;
-            motion_.set_pitch(0.0f);  // 抬头恢复正常
+            motion_.set_pitch(0.0f);
             motion_.stop();
             #ifdef DEBUG_STAGE
-            RCLCPP_INFO(rclcpp::get_logger("stage1"),
-                        "Stage1 done (junction turn complete), yaw=%.3f target=%.3f", sensor_.yaw, TARGET_YAW);
+            RCLCPP_INFO(rclcpp::get_logger("stage1"), "Stage1 done, yaw=%.3f", sensor_.yaw);
+            fprintf(stderr, "\033[1;34m[Stage1] ✓ 转向完成 yaw=%.3f，第一赛段结束\033[0m\n", sensor_.yaw);
             #endif
         } else {
-            // P控制转向，限制在 [0.08, 0.4]，误差小时慢转避免超调
+            // 右转到 π/2（yaw负值=右转）
             float turn = std::max(0.05f, std::min(0.3f, std::abs(yaw_err) * 0.4f));
-            motion_.set_velocity(0.0f, 0.0f, (yaw_err > 0 ? turn : -turn));
+            motion_.set_velocity(0.0f, 0.0f, -turn);
             #ifdef DEBUG_MOTION
             RCLCPP_INFO(rclcpp::get_logger("stage1"),
-                        "Turning: yaw=%.3f err=%.3f cmd=%.2f", sensor_.yaw, yaw_err, (yaw_err > 0 ? turn : -turn));
+                        "Turning: yaw=%.3f err=%.3f", sensor_.yaw, yaw_err);
             #endif
         }
         return;

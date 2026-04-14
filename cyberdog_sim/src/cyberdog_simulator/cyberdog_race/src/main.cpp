@@ -275,6 +275,15 @@ private:
                 return;
             }
 
+#ifdef DEBUG_END_STAGE
+            if (cur_stage_ + 1 >= DEBUG_END_STAGE) {
+                motion_.stop();
+                RCLCPP_WARN(get_logger(), "[DEBUG] Stage %d done, stopped (end stage mode)", cur_stage_ + 1);
+                timer_->cancel();
+                return;
+            }
+#endif
+
             cur_stage_++;
             if (cur_stage_ < 6) {
 #ifdef DEBUG_STAGE
