@@ -15,12 +15,16 @@ private:
 
     // 状态机
     enum class State {
-        MOVE_TO_POINT,   // 里程计导航到路径点
-        TURN_TO_YAW,     // 转向目标朝向
-        SCAN_LEFT,       // 左转40度扫描
-        SCAN_RIGHT,      // 右转40度扫描
-        HIT_BALL,        // 冲向橙色球
-        BACK_TO_PATH,    // 退回路径点
+        MOVE_TO_POINT,
+        TURN_TO_YAW,
+        SCAN_LEFT,          // 左转到40°
+        SCAN_LEFT_CHECK,    // 停下识别球
+        SCAN_LEFT_RETURN,   // 转回y正方向，左扫结束
+        SCAN_RIGHT,         // 右转到40°
+        SCAN_RIGHT_CHECK,   // 停下识别球
+        SCAN_RIGHT_RETURN,  // 转回y正方向，右扫结束
+        HIT_BALL,
+        BACK_TO_PATH,
         DONE
     } state_{State::MOVE_TO_POINT};
 
@@ -43,6 +47,7 @@ private:
     // 扫描状态
     float scan_start_yaw_{0};
     bool  scan_found_{false};
+    bool  scan_done_{false};
     int   scan_dir_{1};  // 1=先左，-1=先右
 
     // 到达判断阈值

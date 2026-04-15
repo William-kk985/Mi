@@ -18,10 +18,11 @@ static float norm_yaw(float y) {
 }
 
 void Stage2::init() {
-    done_    = false;
-    wp_idx_  = 0;
-    state_   = State::MOVE_TO_POINT;
+    done_      = false;
+    wp_idx_    = 0;
+    state_     = State::MOVE_TO_POINT;
     scan_found_ = false;
+    scan_done_  = false;
 
     // ── 路径点定义 ──────────────────────────────────────────
     // yaw: -π/2=向上(y+), 0=向右(x+), π=向左(x-), π/2=向下(y-)
@@ -33,7 +34,7 @@ void Stage2::init() {
 
     float L = 0.f, R = 2.7f;
     // 暂时只测试走到 y=1.0
-    waypoints_[0]  = {2.55f, 1.0f,   M_PI/2.f,     false};
+    waypoints_[0]  = {2.55f, 1.0f,   M_PI/2.f,     true};
     // 其余路径点暂时注释
     /*
     waypoints_[1]  = {L,     1.1f,  M_PI,         true };
@@ -85,17 +86,17 @@ void Stage2::run() {
     case State::TURN_TO_YAW:
         if (reached_yaw(target_yaw_)) {
             motion_.stop();
-            // wp_idx_가 0이면 아직 첫 임시 목표 도달, 스캔 없이 next_waypoint
-            // wp_idx_가 1 이상이면 실제 wp 도달, scan 여부 확인
-            bool do_scan = (wp_idx_ > 0) && (wp_idx_ <= NUM_WP) && waypoints_[wp_idx_-1].scan;
+            bool do_scan = (wp_idx_ > 0) && (wp_idx_ <= NUM_WP) && waypoints_[wp_idx_-1].scan && !scan_done_;
             if (do_scan) {
                 scan_start_yaw_ = sensor_.yaw;
                 scan_found_     = false;
+                scan_done_      = false;
                 scan_dir_       = 1;
                 state_          = State::SCAN_LEFT;
                 LOG_GREENF("✓ 转向完成 yaw=%.2f，开始扫描", sensor_.yaw);
             } else {
                 LOG_GREENF("✓ 转向完成 yaw=%.2f", sensor_.yaw);
+                scan_done_ = false;
                 next_waypoint();
             }
         } else {
@@ -106,19 +107,38 @@ void Stage2::run() {
     case State::SCAN_LEFT: {
         float yaw_diff = norm_yaw(sensor_.yaw - scan_start_yaw_);
         if (yaw_diff < SCAN_ANGLE) {
-            motion_.set_velocity(0.f, 0.f, TURN_SPEED);
+            motion_.set_velocity(0.f, 0.f, -TURN_SPEED);
         } else {
             motion_.stop();
-            if (sensor_.ball_found && sensor_.ball_dist < BALL_DIST_THRESH && ball_in_arena()) {
-                scan_found_ = true;
-                start_x_ = sensor_.odom_x;
-                start_y_ = sensor_.odom_y;
-                state_   = State::HIT_BALL;
-                LOG_GREENF("✓ 左扫发现橙球！dist=%.2f", sensor_.ball_dist);
-            } else {
-                state_ = State::SCAN_RIGHT;
-                LOG_GREEN("→ 左扫未发现，转右扫");
-            }
+            LOG_GREENF("→ 左扫到位 yaw=%.2f，识别中...", sensor_.yaw);
+            state_ = State::SCAN_LEFT_CHECK;
+        }
+        break;
+    }
+
+    case State::SCAN_LEFT_CHECK: {
+        if (sensor_.ball_found && sensor_.ball_dist < BALL_DIST_THRESH && ball_in_arena()) {
+            scan_found_ = true;
+            start_x_ = sensor_.odom_x;
+            start_y_ = sensor_.odom_y;
+            state_   = State::HIT_BALL;
+            LOG_GREENF("✓ 左扫发现橙球！dist=%.2f", sensor_.ball_dist);
+        } else {
+            LOG_GREEN("→ 左扫未发现球，转回中心");
+            state_ = State::SCAN_LEFT_RETURN;
+        }
+        break;
+    }
+
+    case State::SCAN_LEFT_RETURN: {
+        float err = norm_yaw(scan_start_yaw_ - sensor_.yaw);
+        if (std::abs(err) < YAW_THRESH) {
+            motion_.stop();
+            LOG_GREEN("✓ 左扫结束，开始右扫");
+            state_ = State::SCAN_RIGHT;
+        } else {
+            float cmd = std::max(0.1f, std::min(0.4f, std::abs(err) * 0.6f));
+            motion_.set_velocity(0.f, 0.f, err > 0 ? -cmd : cmd);
         }
         break;
     }
@@ -126,20 +146,40 @@ void Stage2::run() {
     case State::SCAN_RIGHT: {
         float yaw_diff = norm_yaw(sensor_.yaw - scan_start_yaw_);
         if (yaw_diff > -SCAN_ANGLE) {
-            motion_.set_velocity(0.f, 0.f, -TURN_SPEED);
+            motion_.set_velocity(0.f, 0.f, TURN_SPEED);
         } else {
             motion_.stop();
-            if (sensor_.ball_found && sensor_.ball_dist < BALL_DIST_THRESH && ball_in_arena()) {
-                scan_found_ = true;
-                start_x_ = sensor_.odom_x;
-                start_y_ = sensor_.odom_y;
-                state_   = State::HIT_BALL;
-                LOG_GREENF("✓ 右扫发现橙球！dist=%.2f", sensor_.ball_dist);
-            } else {
-                state_ = State::TURN_TO_YAW;
-                LOG_GREEN("→ 左右扫描未发现橙球，继续下一点");
-                next_waypoint();
-            }
+            LOG_GREENF("→ 右扫到位 yaw=%.2f，识别中...", sensor_.yaw);
+            state_ = State::SCAN_RIGHT_CHECK;
+        }
+        break;
+    }
+
+    case State::SCAN_RIGHT_CHECK: {
+        if (sensor_.ball_found && sensor_.ball_dist < BALL_DIST_THRESH && ball_in_arena()) {
+            scan_found_ = true;
+            start_x_ = sensor_.odom_x;
+            start_y_ = sensor_.odom_y;
+            state_   = State::HIT_BALL;
+            LOG_GREENF("✓ 右扫发现橙球！dist=%.2f", sensor_.ball_dist);
+        } else {
+            LOG_GREEN("→ 右扫未发现球，转回中心");
+            state_ = State::SCAN_RIGHT_RETURN;
+        }
+        break;
+    }
+
+    case State::SCAN_RIGHT_RETURN: {
+        float err = norm_yaw(scan_start_yaw_ - sensor_.yaw);
+        if (std::abs(err) < YAW_THRESH) {
+            motion_.stop();
+            LOG_GREEN("✓ 右扫结束，扫描完成");
+            state_      = State::TURN_TO_YAW;
+            target_yaw_ = M_PI / 2.f;
+            scan_done_  = true;
+        } else {
+            float cmd = std::max(0.1f, std::min(0.4f, std::abs(err) * 0.6f));
+            motion_.set_velocity(0.f, 0.f, err > 0 ? -cmd : cmd);
         }
         break;
     }
