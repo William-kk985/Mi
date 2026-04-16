@@ -207,8 +207,8 @@ private:
         // 图像中心线 + 文字
         cv::line(frame, {frame.cols/2, 0}, {frame.cols/2, frame.rows}, {255, 255, 255}, 1);
         cv::putText(frame,
-            cv::format("S%d | offset=%.2f curv=%.1f w=%.0fpx ball=%d",
-                cur_stage_+1, lane.offset, lane.curvature, lane.lane_width, ball.found),
+            cv::format("S%d | offset=%.2f curv=%.1f w=%.0fpx ball=%d dist=%.2f",
+                cur_stage_+1, lane.offset, lane.curvature, lane.lane_width, ball.found, ball.radius),
             {10, 30}, cv::FONT_HERSHEY_SIMPLEX, 0.65, {0, 255, 255}, 2);
         cv::putText(frame,
             cv::format("odom x=%.3f y=%.3f yaw=%.3f",

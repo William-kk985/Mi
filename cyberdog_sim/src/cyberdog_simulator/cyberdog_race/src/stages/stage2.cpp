@@ -41,6 +41,9 @@ void Stage2::init() {
     waypoints_[4]  = {2.7f,  2.6f,   M_PI/2.f,     true};
     waypoints_[5]  = {0.2f,  2.6f,   M_PI/2.f,     true};
     waypoints_[6]  = {0.2f,  3.5f,   M_PI/2.f,     true};
+    waypoints_[7]  = {2.7f,  3.5f,   M_PI/2.f,     true};
+    waypoints_[8]  = {2.7f,  4.2f,   M_PI/2.f,     false};
+    waypoints_[9]  = {-0.2f, 4.2f,   M_PI/2.f,     false};
     // 其余路径点暂时注释
     /*
     waypoints_[1]  = {L,     1.1f,  M_PI,         true };
@@ -181,7 +184,7 @@ void Stage2::run() {
             motion_.stop();
             LOG_GREEN("✓ 右扫结束，扫描完成");
             scan_done_ = true;
-            if (wp_idx_ < 7) {
+            if (wp_idx_ < 10) {
                 // 还有下一个路径点，取其朝向先转好再走
                 target_yaw_ = waypoints_[wp_idx_].yaw;
                 state_ = State::TURN_TO_YAW;
@@ -311,8 +314,9 @@ bool Stage2::reached_yaw(float target_yaw) {
     return std::abs(norm_yaw(target_yaw - sensor_.yaw)) < YAW_THRESH;
 }
 void Stage2::next_waypoint() {
-    if (wp_idx_ >= 7) {  // 测试模式只有4个路径点
+    if (wp_idx_ >= 10) {
         state_ = State::DONE;
+        LOG_GREEN("✓ 所有路径点完成，赛段2结束");
         return;
     }
     auto& wp   = waypoints_[wp_idx_++];
@@ -320,6 +324,7 @@ void Stage2::next_waypoint() {
     target_y_  = wp.y;
     target_yaw_ = wp.yaw;
     state_     = State::MOVE_TO_POINT;
+    LOG_GREENF("→ 走向 WP[%d] (%.2f, %.2f)", wp_idx_-1, wp.x, wp.y);
 #ifdef DEBUG_STAGE
     RCLCPP_INFO(rclcpp::get_logger("stage2"), "Next WP[%d] (%.2f,%.2f) yaw=%.2f scan=%d",
                 wp_idx_-1, wp.x, wp.y, wp.yaw, wp.scan);

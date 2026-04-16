@@ -18,7 +18,7 @@ docker run -d \
   -e DISPLAY=$DISPLAY \
   -v /tmp/.X11-unix:/tmp/.X11-unix \
   -v /home/kaka/Mi/cyberdog_sim/src:/home/cyberdog_sim/src \
-  cyberdog_sim:ready sleep infinity
+  cyberdog_sim:v2026 sleep infinity
 
 sleep 2
 
