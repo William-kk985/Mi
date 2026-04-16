@@ -23,6 +23,13 @@ docker run -d \
 sleep 2
 
 SETUP="cd /home/cyberdog_sim && source /opt/ros/galactic/setup.bash && source install/setup.bash"
+BUILD="cd /home/cyberdog_sim && source /opt/ros/galactic/setup.bash && colcon build --merge-install --packages-select cyberdog_race"
+
+# 先编译 cyberdog_race
+echo "编译 cyberdog_race..."
+gnome-terminal --title="Build" -- bash -c "docker exec -it $CONTAINER_NAME bash -c '$BUILD && echo 编译完成'; bash"
+
+sleep 3
 
 gnome-terminal --title="Gazebo" -- bash -c "docker exec -it $CONTAINER_NAME bash -c '$SETUP && ros2 launch cyberdog_gazebo race_gazebo.launch.py'; bash"
 
