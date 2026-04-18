@@ -1120,7 +1120,7 @@ void ConvexMpcLocoGaits::SetDefaultParams() {
 
     step_height_scale_ = 1.0;
     step_height_max_   = step_height_scale_ * ( float )user_params_->step_height_max;
-    step_height_min_   = 0.0;
+    step_height_min_   = 0.06;  // 最低抬腿高度6cm，避免被石板绊住
     step_height_ratio_ = 1.0;
 
     body_height_delta_max_     = 0.0;

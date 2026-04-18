@@ -116,7 +116,7 @@ void Stage2::run() {
     case State::SCAN_LEFT: {
         float yaw_diff = norm_yaw(sensor_.yaw - scan_start_yaw_);
         if (yaw_diff < SCAN_ANGLE) {
-            motion_.set_velocity(0.f, 0.f, -TURN_SPEED);
+            motion_.set_velocity(0.f, 0.f, TURN_SPEED);   // 左转：yaw增大
         } else {
             motion_.stop();
             LOG_GREENF("→ 左扫到位 yaw=%.2f，识别中...", sensor_.yaw);
@@ -147,7 +147,7 @@ void Stage2::run() {
             state_ = State::SCAN_RIGHT;
         } else {
             float cmd = std::max(0.1f, std::min(0.4f, std::abs(err) * 0.6f));
-            motion_.set_velocity(0.f, 0.f, err > 0 ? -cmd : cmd);
+            motion_.set_velocity(0.f, 0.f, err > 0 ? cmd : -cmd);
         }
         break;
     }
@@ -155,7 +155,7 @@ void Stage2::run() {
     case State::SCAN_RIGHT: {
         float yaw_diff = norm_yaw(sensor_.yaw - scan_start_yaw_);
         if (yaw_diff > -SCAN_ANGLE) {
-            motion_.set_velocity(0.f, 0.f, TURN_SPEED);
+            motion_.set_velocity(0.f, 0.f, -TURN_SPEED);  // 右转：yaw减小
         } else {
             motion_.stop();
             LOG_GREENF("→ 右扫到位 yaw=%.2f，识别中...", sensor_.yaw);
@@ -197,7 +197,7 @@ void Stage2::run() {
             }
         } else {
             float cmd = std::max(0.1f, std::min(0.4f, std::abs(err) * 0.6f));
-            motion_.set_velocity(0.f, 0.f, err > 0 ? -cmd : cmd);
+            motion_.set_velocity(0.f, 0.f, err > 0 ? cmd : -cmd);
         }
         break;
     }
@@ -285,11 +285,11 @@ void Stage2::navigate_to(float tx, float ty) {
 #endif
 
     if (std::abs(yaw_err) > 0.35f) {
-        float cmd = std::max(0.05f, std::min(0.4f, std::abs(yaw_err) * 0.6f));
-        motion_.set_velocity(0.f, 0.f, yaw_err > 0 ? -cmd : cmd);
+        float cmd = std::max(0.05f, std::min(0.5f, std::abs(yaw_err) * 0.8f));
+        motion_.set_velocity(0.f, 0.f, yaw_err > 0 ? cmd : -cmd);
     } else {
         float speed = std::min(speed_limit, dist);
-        float yaw_cmd = std::max(-0.5f, std::min(0.5f, -yaw_err * 2.0f));
+        float yaw_cmd = std::max(-0.5f, std::min(0.5f, yaw_err * 2.0f));
         motion_.set_velocity(speed, 0.f, yaw_cmd);
     }
 }
@@ -301,7 +301,7 @@ void Stage2::turn_to(float target_yaw) {
     RCLCPP_INFO(rclcpp::get_logger("stage2"), "turn_to: cur=%.2f target=%.2f err=%.2f cmd=%.2f",
                 sensor_.yaw, target_yaw, err, err > 0 ? cmd : -cmd);
 #endif
-    motion_.set_velocity(0.f, 0.f, err > 0 ? -cmd : cmd);
+    motion_.set_velocity(0.f, 0.f, err > 0 ? cmd : -cmd);
 }
 
 bool Stage2::reached_pos(float tx, float ty) {

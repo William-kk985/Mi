@@ -26,19 +26,6 @@
 #include "cyberdog_race/stages/stage5.hpp"
 #include "cyberdog_race/stages/stage6.hpp"
 
-// 全局指针，供信号处理访问
-static MotionCtrl* g_motion = nullptr;
-
-static void on_shutdown(int) {
-    if (g_motion) {
-        g_motion->stop();
-        rclcpp::sleep_for(std::chrono::milliseconds(200));
-        g_motion->lie_down();
-        RCLCPP_WARN(rclcpp::get_logger("race"), "Shutdown: robot stopped and lying down.");
-    }
-    rclcpp::shutdown();
-}
-
 // ============================================================
 // 调试模式说明（修改 debug_config.hpp 后重新 build）：
 //
@@ -86,7 +73,7 @@ public:
         auto param = cyberdog_msg::msg::YamlParam();
         param.name = "use_rc";
         param.kind = 2;
-        param.s64_value = 0;
+        param.s64_value = 0;  // 0=gamepad模式
         param.is_user = 0;
         rclcpp::sleep_for(std::chrono::seconds(1));
         pub->publish(param);
@@ -97,7 +84,7 @@ public:
         rclcpp::sleep_for(std::chrono::seconds(2));
         motion_.locomotion();
         rclcpp::sleep_for(std::chrono::milliseconds(500));
-        motion_.set_pitch(0.4f);  // 低头15度看地面黄线
+        motion_.set_pitch(-0.26f);  // 低头15度看地面黄线
 
         // 初始化各赛段
         stages_[0] = std::make_unique<Stage1>(motion_, sensor_);
@@ -129,9 +116,6 @@ public:
 
         RCLCPP_INFO(get_logger(), "Race controller started, stage %d", cur_stage_ + 1);
     }
-
-    // 供外部信号处理访问
-    MotionCtrl& get_motion() { return motion_; }
 
     ~RaceController() {
         lcm_running_ = false;
@@ -320,10 +304,17 @@ private:
 int main(int argc, char** argv) {
     rclcpp::init(argc, argv);
     auto node = std::make_shared<RaceController>();
-    g_motion = &node->get_motion();
-    std::signal(SIGINT,  on_shutdown);
-    std::signal(SIGTERM, on_shutdown);
+
     rclcpp::spin(node);
+
+    // Ctrl+C后立刻切stand停止运动
+    if (g_motion) {
+        g_motion->stand();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+        g_motion->lie_down();
+        fprintf(stderr, "[race] Shutdown: robot stopped.\n");
+    }
+
     rclcpp::shutdown();
     return 0;
 }

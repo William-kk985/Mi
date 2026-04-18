@@ -42,6 +42,7 @@ LaneResult LaneDetector::detect(const cv::Mat& frame) {
 
     result.valid = true;
     result.lane_width = lane_width_;
+    result.both_sides = !left_pts.empty() && !right_pts.empty();
 
     // 低通滤波
     result.offset = alpha_ * result.offset + (1.0f - alpha_) * last_offset_;

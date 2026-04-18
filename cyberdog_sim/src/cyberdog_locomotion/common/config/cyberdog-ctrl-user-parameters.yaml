@@ -209,7 +209,7 @@ acc_xy_yaw_max_follow : [1.0  , 1.    ,  2.0]
 acc_xy_yaw_min_follow : [-1.0 , -1.   , -2.0]
 vel_xy_yaw_scale      : [1.0 , 1.0  , 1.0]
 
-step_height_max     : 0.09
+step_height_max     : 0.20
 
 x_offset_pronk      : -0.05
 x_offset_bound      : [0.0, 0.0, 0.0, 0.0]

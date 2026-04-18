@@ -9,4 +9,4 @@ docker exec -it cyberdog bash -c "cd /home/cyberdog_sim && source /opt/ros/galac
 docker exec -it cyberdog bash -c "cd /home/cyberdog_sim && source /opt/ros/galactic/setup.bash && colcon build --merge-install --packages-select cyberdog_race"
 
 docker stop cyberdog
-docker rm cyberdog/
+docker rm cyberdog

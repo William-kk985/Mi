@@ -2,53 +2,41 @@
 #include <cstring>
 
 MotionCtrl::MotionCtrl() {
-    memset(&cmd_, 0, sizeof(cmd_));
+    memset(&gpad_, 0, sizeof(gpad_));
 }
 
 void MotionCtrl::set_velocity(float x, float y, float yaw) {
-    cmd_.leftStickAnalog[1] = x;
-    cmd_.leftStickAnalog[0] = y;
-    cmd_.rightStickAnalog[0] = yaw;
-    publish();
+    gpad_.y                   = 1;
+    gpad_.leftStickAnalog[1]  = x;
+    gpad_.leftStickAnalog[0]  = -y;
+    gpad_.rightStickAnalog[0] = -yaw;
+    pub_gamepad();
+    gpad_.y                   = 0;
+    gpad_.leftStickAnalog[1]  = 0;
+    gpad_.leftStickAnalog[0]  = 0;
+    gpad_.rightStickAnalog[0] = 0;
 }
 
 void MotionCtrl::set_pitch(float pitch) {
-    cmd_.rightStickAnalog[1] = pitch;
-    publish();
+    gpad_.rightStickAnalog[1] = pitch;
+    pub_gamepad();
+    gpad_.rightStickAnalog[1] = 0;
 }
 
-void MotionCtrl::stand() {
-    cmd_.x = 1;
-    publish();
-    cmd_.x = 0;
-}
-
-void MotionCtrl::locomotion() {
-    cmd_.y = 1;
-    publish();
-    cmd_.y = 0;
-}
-
-void MotionCtrl::lie_down() {
-    cmd_.a = 1;
-    publish();
-    cmd_.a = 0;
-}
-
-void MotionCtrl::recovery() {
-    cmd_.b = 1;
-    publish();
-    cmd_.b = 0;
-}
+void MotionCtrl::stand()      { gpad_.x = 1; pub_gamepad(); gpad_.x = 0; }
+void MotionCtrl::locomotion() { gpad_.y = 1; pub_gamepad(); gpad_.y = 0; }
+void MotionCtrl::lie_down()   { gpad_.a = 1; pub_gamepad(); gpad_.a = 0; }
+void MotionCtrl::recovery()   { gpad_.b = 1; pub_gamepad(); gpad_.b = 0; }
 
 void MotionCtrl::stop() {
-    cmd_.leftStickAnalog[0] = 0;
-    cmd_.leftStickAnalog[1] = 0;
-    cmd_.rightStickAnalog[0] = 0;
-    cmd_.rightStickAnalog[1] = 0;
-    publish();
+    gpad_.y                   = 1;
+    gpad_.leftStickAnalog[1]  = 0;
+    gpad_.leftStickAnalog[0]  = 0;
+    gpad_.rightStickAnalog[0] = 0;
+    pub_gamepad();
+    gpad_.y = 0;
 }
 
-void MotionCtrl::publish() {
-    lcm_.publish("gamepad_lcmt", &cmd_);
+void MotionCtrl::pub_gamepad() {
+    lcm_.publish("gamepad_lcmt", &gpad_);
 }

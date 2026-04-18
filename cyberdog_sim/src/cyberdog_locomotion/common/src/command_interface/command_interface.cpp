@@ -492,6 +492,9 @@ void CommandInterface::Gamepad2Cmd( long int* control_mode, long int* gait_id, c
     if ( gamepad_cmd_.leftBumper ) {
         *gait_id = GaitId::kTrotFast;
     }
+    if ( gamepad_cmd_.leftTriggerButton ) {
+        *gait_id = GaitId::kWalk;  // 石板路慢速walk步态
+    }
     // default is trot
     if ( *gait_id == 0 && *control_mode == MotionMode::kLocomotion )
         *gait_id = GaitId::kTrot10v5;
@@ -524,7 +527,7 @@ void CommandInterface::Gamepad2Cmd( long int* control_mode, long int* gait_id, c
         cmd_cur_.rpy_des[ 2 ]     = 0;
         cmd_cur_.rpy_des[ 1 ]     = gamepad_cmd_.rightStickAnalog[ 1 ] * 0.4;
         cmd_cur_.pos_des[ 2 ]     = ( ( robotType == RobotType::CYBERDOG2 ) ? 0.24 : 0.32 );
-        cmd_cur_.step_height[ 0 ] = ( ( robotType == RobotType::CYBERDOG2 ) ? 0.10 : 0.06 );
+        cmd_cur_.step_height[ 0 ] = ( ( robotType == RobotType::CYBERDOG2 ) ? 0.10 : 0.25 );
     }
 
     if ( cmd_cur_.duration == 0 ) {

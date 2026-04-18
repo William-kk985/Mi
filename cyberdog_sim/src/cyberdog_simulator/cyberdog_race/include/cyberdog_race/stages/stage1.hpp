@@ -18,4 +18,13 @@ private:
     bool  at_junction_{false};
     int   run_frames_{0};
     int   lane_lost_frames_{0};
+
+    // 卡住检测
+    float last_odom_x_{0.0f};
+    float last_odom_y_{0.0f};
+    int   stuck_frames_{0};
+    static constexpr int   STUCK_THRESH   = 30;   // 连续30帧（0.3s）没动视为卡住
+    static constexpr float STUCK_DIST     = 0.01f; // 移动距离小于1cm视为没动
+    static constexpr int   ESCAPE_FRAMES  = 40;   // 脱困持续帧数
+    int   escape_frames_{0};
 };

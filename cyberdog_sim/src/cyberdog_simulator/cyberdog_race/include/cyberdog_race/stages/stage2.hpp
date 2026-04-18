@@ -57,9 +57,9 @@ private:
     static constexpr float SCAN_ANGLE = 0.7f;  // 扫描角度约40度
 
     // 运动参数
-    static constexpr float MOVE_SPEED  = 0.25f;
-    static constexpr float TURN_SPEED  = 0.15f;
-    static constexpr float HIT_SPEED   = 0.35f;
+    static constexpr float MOVE_SPEED  = 0.5f;
+    static constexpr float TURN_SPEED  = 0.3f;
+    static constexpr float HIT_SPEED   = 0.5f;
 
     void navigate_to(float tx, float ty);
     void turn_to(float target_yaw);

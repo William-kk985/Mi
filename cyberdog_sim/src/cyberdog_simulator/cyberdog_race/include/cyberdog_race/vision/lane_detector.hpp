@@ -7,6 +7,7 @@ struct LaneResult {
     float curvature{0.0f};// 弯曲程度，用于判断是否在弯道
     float lane_width{0.0f};// 当前估算赛道宽度（像素），0=未校准
     bool  valid{false};
+    bool  both_sides{false}; // 是否双边检测
 };
 
 class LaneDetector {
