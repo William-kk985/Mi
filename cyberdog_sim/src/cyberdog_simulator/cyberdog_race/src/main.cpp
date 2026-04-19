@@ -122,6 +122,8 @@ public:
         if (lcm_thread_.joinable()) lcm_thread_.join();
     }
 
+    MotionCtrl& get_motion() { return motion_; }
+
 private:
     void on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
         auto cv_img = cv_bridge::toCvShare(msg, "bgr8");
@@ -135,7 +137,7 @@ private:
         sensor_.lane_valid     = lane.valid;
         sensor_.ball_found  = ball.found;
         sensor_.ball_x      = ball.cx;
-        sensor_.ball_dist   = ball.radius;
+        sensor_.ball_dist   = ball.dist_m;  // 估算距离（米）
 
 #ifdef DEBUG_VISION
         // 视觉可视化：黄线边界 + 中心线 + 球检测
@@ -181,19 +183,23 @@ private:
             }
         }
 
-        // 球检测框
+        // 球检测框 + 距离标注
         if (ball.found) {
             int bx = static_cast<int>((ball.cx + 1.0f) / 2.0f * frame.cols);
             int by = static_cast<int>((ball.cy + 1.0f) / 2.0f * frame.rows);
             cv::circle(frame, {bx, by}, static_cast<int>(ball.radius), {0, 165, 255}, 2);
+            // 在球旁边显示距离
+            cv::putText(frame,
+                cv::format("r=%.0fpx d=%.2fm", ball.radius, ball.dist_m),
+                {bx + 5, by - 5}, cv::FONT_HERSHEY_SIMPLEX, 0.5, {0, 165, 255}, 1);
         }
 
         // 图像中心线 + 文字
         cv::line(frame, {frame.cols/2, 0}, {frame.cols/2, frame.rows}, {255, 255, 255}, 1);
         cv::putText(frame,
-            cv::format("S%d | offset=%.2f curv=%.1f w=%.0fpx ball=%d dist=%.2f",
-                cur_stage_+1, lane.offset, lane.curvature, lane.lane_width, ball.found, ball.radius),
-            {10, 30}, cv::FONT_HERSHEY_SIMPLEX, 0.65, {0, 255, 255}, 2);
+            cv::format("S%d | off=%.2f curv=%.1f ball=%d r=%.0fpx dist=%.2fm",
+                cur_stage_+1, lane.offset, lane.curvature, ball.found, ball.radius, ball.dist_m),
+            {10, 30}, cv::FONT_HERSHEY_SIMPLEX, 0.55, {0, 255, 255}, 2);
         cv::putText(frame,
             cv::format("odom x=%.3f y=%.3f yaw=%.3f",
                 sensor_.odom_x, sensor_.odom_y, sensor_.yaw),
@@ -307,13 +313,15 @@ int main(int argc, char** argv) {
 
     rclcpp::spin(node);
 
-    // Ctrl+C后立刻切stand停止运动
-    if (g_motion) {
-        g_motion->stand();
-        std::this_thread::sleep_for(std::chrono::milliseconds(1500));
-        g_motion->lie_down();
-        fprintf(stderr, "[race] Shutdown: robot stopped.\n");
+    // Ctrl+C后发停止指令再坐下
+    auto& motion = node->get_motion();
+    for (int i = 0; i < 20; i++) {
+        motion.stop();
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
+    motion.stand();
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    motion.lie_down();
 
     rclcpp::shutdown();
     return 0;

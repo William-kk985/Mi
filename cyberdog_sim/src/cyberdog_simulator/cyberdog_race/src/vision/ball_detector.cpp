@@ -1,15 +1,12 @@
 #include "cyberdog_race/vision/ball_detector.hpp"
+#include <cmath>
 
 BallResult BallDetector::detect(const cv::Mat& frame, BallColor target) {
     if (frame.empty()) return {};
-
     switch (target) {
-        case BallColor::ORANGE:
-            return find_ball(frame, orange_low_, orange_high_, BallColor::ORANGE);
-        case BallColor::BLUE:
-            return find_ball(frame, blue_low_, blue_high_, BallColor::BLUE);
-        default:
-            return {};
+        case BallColor::ORANGE: return find_ball(frame, orange_low_, orange_high_, BallColor::ORANGE);
+        case BallColor::BLUE:   return find_ball(frame, blue_low_,   blue_high_,   BallColor::BLUE);
+        default: return {};
     }
 }
 
@@ -23,36 +20,45 @@ BallResult BallDetector::find_ball(const cv::Mat& frame,
     cv::cvtColor(frame, hsv, cv::COLOR_BGR2HSV);
     cv::inRange(hsv, low, high, mask);
 
-    // 形态学去噪
-    cv::erode(mask, mask, cv::Mat(), cv::Point(-1,-1), 2);
+    cv::erode(mask,  mask, cv::Mat(), cv::Point(-1,-1), 2);
     cv::dilate(mask, mask, cv::Mat(), cv::Point(-1,-1), 2);
 
-    // 找最大轮廓
     std::vector<std::vector<cv::Point>> contours;
     cv::findContours(mask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
-
     if (contours.empty()) return result;
 
-    // 取面积最大的轮廓
     size_t max_idx = 0;
     double max_area = 0;
     for (size_t i = 0; i < contours.size(); i++) {
-        double area = cv::contourArea(contours[i]);
-        if (area > max_area) { max_area = area; max_idx = i; }
+        double a = cv::contourArea(contours[i]);
+        if (a > max_area) { max_area = a; max_idx = i; }
     }
+    if (max_area < 100) return result;
 
-    if (max_area < 100) return result; // 太小忽略
+    // 面积等效半径（比外接圆稳定，遮挡时外接圆偏大）
+    float r_area = std::sqrt(static_cast<float>(max_area) / M_PI);
 
-    // 计算外接圆
     cv::Point2f center;
-    float radius;
-    cv::minEnclosingCircle(contours[max_idx], center, radius);
+    float r_enc;
+    cv::minEnclosingCircle(contours[max_idx], center, r_enc);
+
+    // 近距离时面积半径偏小（边缘漏检），用外接圆半径更准
+    // 远距离时外接圆偏大（噪点），用面积半径更准
+    // 取两者较大值，近距离时外接圆主导，远距离时面积主导
+    float radius = std::max(r_area, r_enc * 0.85f);
 
     result.found  = true;
     result.color  = color;
     result.cx     = (center.x - frame.cols / 2.0f) / (frame.cols / 2.0f);
     result.cy     = (center.y - frame.rows / 2.0f) / (frame.rows / 2.0f);
     result.radius = radius;
+
+    // 针孔模型估距，用修正后的半径
+    if (radius > 1.0f) {
+        float raw = (BALL_RADIUS * FOCAL_LEN) / radius;
+        dist_filtered_ = 0.6f * dist_filtered_ + 0.4f * raw;
+        result.dist_m = dist_filtered_;
+    }
 
     return result;
 }

@@ -6,8 +6,8 @@
 // PD控制参数
 static constexpr float KP_YAW        = 0.6f;
 static constexpr float KD_YAW        = 0.08f;
-static constexpr float BASE_SPEED    = 0.5f;
-static constexpr float TURN_SPEED    = 0.25f;
+static constexpr float BASE_SPEED    = 0.45f;
+static constexpr float TURN_SPEED    = 0.2f;
 static constexpr float CURVE_THRESH  = 60.0f;
 static constexpr float TURN_DONE_YAW = 1.3f;
 

@@ -30,3 +30,6 @@
 // #define DEBUG_SINGLE_STAGE 1
 // #define DEBUG_START_STAGE  1
 #define DEBUG_END_STAGE    2
+
+// 调试开关：禁用撞球，只观察视觉效果
+// #define DEBUG_NO_HIT

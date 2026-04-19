@@ -48,16 +48,22 @@ private:
     float scan_start_yaw_{0};
     bool  scan_found_{false};
     bool  scan_done_{false};
-    int   scan_dir_{1};  // 1=先左，-1=先右
+    int   scan_dir_{1};
+    int   scan_confirm_{0};  // 已不使用，保留兼容
+    int   scan_wait_{0};
+    bool  hit_started_{false};  // 撞球起始位置是否已记录
+    float hit_start_x_{0}, hit_start_y_{0};
 
     // 到达判断阈值
     static constexpr float POS_THRESH = 0.08f;
     static constexpr float YAW_THRESH = 0.05f;
-    static constexpr float BALL_DIST_THRESH = 0.5f;  // 只撞0.5m内的球
-    static constexpr float SCAN_ANGLE = 0.7f;  // 扫描角度约40度
+    static constexpr float BALL_DIST_THRESH = 0.75f;
+    static constexpr float SCAN_ANGLE       = 0.7f;
+    static constexpr int   SCAN_CONFIRM_FRAMES = 10;
+    static constexpr int   SCAN_WAIT_FRAMES    = 200;  // 停下等待200帧（2秒）
 
     // 运动参数
-    static constexpr float MOVE_SPEED  = 0.5f;
+    static constexpr float MOVE_SPEED  = 0.8f;
     static constexpr float TURN_SPEED  = 0.3f;
     static constexpr float HIT_SPEED   = 0.5f;
 
