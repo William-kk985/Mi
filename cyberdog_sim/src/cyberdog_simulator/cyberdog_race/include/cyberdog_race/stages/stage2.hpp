@@ -53,11 +53,15 @@ private:
     int   scan_confirm_{0};  // 转动过程中连续检测到球的帧数
     bool  hit_started_{false};
     float hit_start_x_{0}, hit_start_y_{0};
+    bool  exit_started_{false};
+    bool  exit_turning_{false};
+    float exit_start_x_{0}, exit_start_y_{0};
+    float exit_target_yaw_{0};
 
     // 到达判断阈值
     static constexpr float POS_THRESH = 0.08f;
     static constexpr float YAW_THRESH = 0.05f;
-    static constexpr float BALL_DIST_THRESH = 0.75f;
+    static constexpr float BALL_DIST_THRESH = 0.90f;
     static constexpr float SCAN_ANGLE       = 0.7f;
     static constexpr int   SCAN_CONFIRM_FRAMES = 10;
     static constexpr int   SCAN_WAIT_FRAMES    = 200;  // 停下等待200帧（2秒）

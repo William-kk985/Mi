@@ -14,9 +14,7 @@ private:
     bool  done_{false};
     float yaw_start_{0.0f};
     float prev_offset_{0.0f};
-    bool  in_turn_{false};
     bool  at_junction_{false};
-    int   run_frames_{0};
     int   lane_lost_frames_{0};
 
     // 卡住检测

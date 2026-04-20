@@ -2,7 +2,7 @@
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/laser_scan.hpp>
-#include <nav_msgs/msg/odometry.hpp>
+#include <sensor_msgs/msg/camera_info.hpp>
 #include <cyberdog_msg/msg/yaml_param.hpp>
 #include <cv_bridge/cv_bridge.h>
 #include <lcm/lcm-cpp.hpp>
@@ -10,8 +10,8 @@
 #include <thread>
 #include <atomic>
 #include <memory>
-#include <csignal>
 #include <cmath>
+#include <unistd.h>
 
 #include "simulator_lcmt.hpp"
 #include "cyberdog_race/debug_config.hpp"
@@ -136,12 +136,12 @@ private:
         auto lane = lane_detector_.detect(cv_img->image);
         auto ball = ball_detector_.detect(cv_img->image, BallColor::ORANGE);
         sensor_.lane_offset    = lane.offset;
-        sensor_.lane_yaw       = lane.yaw;
         sensor_.lane_curvature = lane.curvature;
         sensor_.lane_valid     = lane.valid;
+        sensor_.lane_both_sides = lane.both_sides;
         sensor_.ball_found  = ball.found;
         sensor_.ball_x      = ball.cx;
-        sensor_.ball_dist   = ball.dist_m;  // 估算距离（米）
+        sensor_.ball_dist   = ball.dist_m;
 
 #ifdef DEBUG_VISION
         // 视觉可视化：黄线边界 + 中心线 + 球检测

@@ -20,6 +20,8 @@ void Stage2::init() {
     scan_confirm_ = 0;
     scan_wait_    = 0;
     hit_started_  = false;
+    exit_started_ = false;
+    exit_turning_ = false;
 
     // ── 路径点定义 ──────────────────────────────────────────
     // yaw: -π/2=向上(y+), 0=向右(x+), π=向左(x-), π/2=向下(y-)
@@ -277,40 +279,30 @@ void Stage2::run() {
 
     case State::DONE:
     {
-        static bool  exit_started  = false;
-        static bool  exit_turning  = false;
-        static float exit_start_x  = 0.f, exit_start_y = 0.f;
-        static float exit_target_yaw = 0.f;
-
-        if (!exit_started) {
-            exit_start_x = sensor_.odom_x;
-            exit_start_y = sensor_.odom_y;
-            exit_started = true;
-            exit_turning = false;
+        if (!exit_started_) {
+            exit_start_x_ = sensor_.odom_x;
+            exit_start_y_ = sensor_.odom_y;
+            exit_started_ = true;
+            exit_turning_ = false;
         }
-        float dx = sensor_.odom_x - exit_start_x;
-        float dy = sensor_.odom_y - exit_start_y;
+        float dx = sensor_.odom_x - exit_start_x_;
+        float dy = sensor_.odom_y - exit_start_y_;
         float moved = std::sqrt(dx*dx + dy*dy);
 
         if (moved < 0.2f) {
-            // 先前进0.2m
             motion_.set_velocity(MOVE_SPEED, 0.f, 0.f);
-        } else if (!exit_turning) {
-            // 前进完成，开始右转10度
-            exit_target_yaw = sensor_.yaw - 0.175f;  // 右转10度
-            exit_turning = true;
+        } else if (!exit_turning_) {
+            exit_target_yaw_ = sensor_.yaw - 0.175f;
+            exit_turning_ = true;
             motion_.stop();
         } else {
-            // 右转到目标yaw
-            float yaw_err = exit_target_yaw - sensor_.yaw;
-            while (yaw_err >  M_PI) yaw_err -= 2.0f * M_PI;
-            while (yaw_err < -M_PI) yaw_err += 2.0f * M_PI;
+            float yaw_err = norm_yaw(exit_target_yaw_ - sensor_.yaw);
             if (std::abs(yaw_err) > 0.05f) {
                 float cmd = std::max(0.1f, std::min(0.4f, std::abs(yaw_err) * 0.6f));
                 motion_.set_velocity(0.f, 0.f, yaw_err > 0 ? cmd : -cmd);
             } else {
-                exit_started = false;
-                exit_turning = false;
+                exit_started_ = false;
+                exit_turning_ = false;
                 done_ = true;
                 motion_.stop();
                 LOG_GREEN("✓ 赛段2结束，前进+右转完成");

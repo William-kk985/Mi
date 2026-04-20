@@ -30,9 +30,7 @@ void Stage3::run() {
 
     // 所有路径点走完后，先转向y正方向
     if (wp_idx_ >= NUM_WP && !turning_to_y_) {
-        float yaw_err = M_PI / 2.0f - sensor_.yaw;
-        while (yaw_err >  M_PI) yaw_err -= 2.0f * M_PI;
-        while (yaw_err < -M_PI) yaw_err += 2.0f * M_PI;
+        float yaw_err = norm_yaw(M_PI / 2.0f - sensor_.yaw);
         if (std::abs(yaw_err) > 0.05f) {
             float cmd = std::max(0.1f, std::min(0.4f, std::abs(yaw_err) * 0.6f));
             motion_.set_velocity(0.f, 0.f, yaw_err > 0 ? cmd : -cmd);
@@ -45,9 +43,7 @@ void Stage3::run() {
     float exit_dx = EXIT_X - sensor_.odom_x;
     float exit_dy = EXIT_Y - sensor_.odom_y;
     if (std::sqrt(exit_dx*exit_dx + exit_dy*exit_dy) < EXIT_THRESH) {
-        float yaw_err = M_PI - sensor_.yaw;
-        while (yaw_err >  M_PI) yaw_err -= 2.0f * M_PI;
-        while (yaw_err < -M_PI) yaw_err += 2.0f * M_PI;
+        float yaw_err = norm_yaw(M_PI - sensor_.yaw);
         if (std::abs(yaw_err) > 0.05f) {
             float cmd = std::max(0.1f, std::min(0.4f, std::abs(yaw_err) * 0.6f));
             motion_.set_velocity(0.f, 0.f, yaw_err > 0 ? cmd : -cmd);
@@ -81,15 +77,10 @@ void Stage3::run() {
         float dy = WAYPOINTS[wp_idx_].y - sensor_.odom_y;
         target_yaw = std::atan2(dy, dx);
     } else {
-        // 路径点走完，朝y正方向偏x正方向20度
-        target_yaw = M_PI / 2.0f - 0.35f;
+        target_yaw = M_PI / 2.0f - 0.35f;  // y正方向偏x正方向20度
     }
 
-    float yaw_err = target_yaw - sensor_.yaw;
-    while (yaw_err >  M_PI) yaw_err -= 2.0f * M_PI;
-    while (yaw_err < -M_PI) yaw_err += 2.0f * M_PI;
-
-    // 主控：路径点方向；辅助：视觉微调
+    float yaw_err = norm_yaw(target_yaw - sensor_.yaw);
     float yaw_cmd = KP_IMU * yaw_err;
     if (sensor_.lane_valid) {
         yaw_cmd += KP_VIS * sensor_.lane_offset;

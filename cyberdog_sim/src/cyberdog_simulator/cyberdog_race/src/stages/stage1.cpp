@@ -3,25 +3,17 @@
 #include <rclcpp/rclcpp.hpp>
 #include <cmath>
 
-// 路口检测参数
-static constexpr float JUNCTION_LIDAR_THRESH = 1.2f;  // 前方障碍距离小于此值认为到路口
-static constexpr float JUNCTION_TURN_YAW     = 1.57f; // 路口原地转向角度（约90度）
-static constexpr float JUNCTION_TURN_SPEED   = 0.3f;  // 原地转向角速度
-
 void Stage1::init() {
-    done_           = false;
-    in_turn_        = false;
-    at_junction_    = false;
-    yaw_start_      = 0.0f;
-    prev_offset_    = 0.0f;
-    run_frames_     = 0;
-    last_odom_x_    = sensor_.odom_x;
-    last_odom_y_    = sensor_.odom_y;
-    stuck_frames_   = 0;
-    escape_frames_  = 0;
+    done_             = false;
+    at_junction_      = false;
+    prev_offset_      = 0.0f;
+    last_odom_x_      = sensor_.odom_x;
+    last_odom_y_      = sensor_.odom_y;
+    stuck_frames_     = 0;
+    escape_frames_    = 0;
     lane_lost_frames_ = 0;
     motion_.locomotion();
-    motion_.set_pitch(-0.26f);  // 低头约15度看地面黄线
+    motion_.set_pitch(-0.26f);
 
     #ifdef DEBUG_STAGE
     RCLCPP_INFO(rclcpp::get_logger("stage1"), "Stage1 init");
@@ -44,9 +36,7 @@ void Stage1::run() {
     // ── 路口原地转向阶段 ──────────────────────────────────────
     if (at_junction_) {
         constexpr float TARGET_YAW = M_PI / 2.0f;
-        float yaw_err = TARGET_YAW - sensor_.yaw;
-        while (yaw_err >  M_PI) yaw_err -= 2.0f * M_PI;
-        while (yaw_err < -M_PI) yaw_err += 2.0f * M_PI;
+        float yaw_err = norm_yaw(TARGET_YAW - sensor_.yaw);
 
         if (std::abs(yaw_err) < 0.05f) {
             done_ = true;
@@ -133,8 +123,7 @@ void Stage1::run() {
     if (sensor_.lane_curvature < CURVE_THRESH) {
         // IMU 回正分量
         float yaw_err = -sensor_.yaw;
-        while (yaw_err >  M_PI) yaw_err -= 2.0f * M_PI;
-        while (yaw_err < -M_PI) yaw_err += 2.0f * M_PI;
+        yaw_err = norm_yaw(yaw_err);
         float imu_cmd = std::max(-0.4f, std::min(0.4f, yaw_err * 0.8f));
 
         // 视觉分量：双边权重高，单边权重低
