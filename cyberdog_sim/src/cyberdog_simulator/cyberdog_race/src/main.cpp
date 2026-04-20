@@ -94,6 +94,10 @@ public:
         stages_[4] = std::make_unique<Stage5>(motion_, sensor_);
         stages_[5] = std::make_unique<Stage6>(motion_, sensor_);
 
+        // 根据起始赛段设置视觉模式
+        if (cur_stage_ == 2) {
+            lane_detector_.set_mode(LaneMode::RELAXED);
+        }
         stages_[cur_stage_]->init();
 
         // LCM 订阅 simulator_state，获取里程计位置
@@ -279,6 +283,12 @@ private:
 #ifdef DEBUG_STAGE
                 RCLCPP_INFO(get_logger(), "[Stage] switching to stage %d", cur_stage_ + 1);
 #endif
+                // 根据赛段切换视觉检测模式
+                if (cur_stage_ == 2) {  // stage3（0-indexed=2）用宽松模式
+                    lane_detector_.set_mode(LaneMode::RELAXED);
+                } else {
+                    lane_detector_.set_mode(LaneMode::STRICT);
+                }
                 stages_[cur_stage_]->init();
             } else {
                 RCLCPP_INFO(get_logger(), "All stages complete!");

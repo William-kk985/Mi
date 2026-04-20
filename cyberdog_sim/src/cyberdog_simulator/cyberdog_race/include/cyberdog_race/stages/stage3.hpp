@@ -1,8 +1,9 @@
 #pragma once
 #include "cyberdog_race/stages/stage_base.hpp"
+#include <cmath>
 
 // 第三赛段：曲道冲锋
-// 复用黄线巡线，S形曲道，弯道降速
+// 路径点导航（里程计）+ 视觉微调
 class Stage3 : public StageBase {
 public:
     using StageBase::StageBase;
@@ -12,4 +13,24 @@ public:
 
 private:
     bool done_{false};
+    int  wp_idx_{0};
+    bool turning_to_y_{false};  // 路径点走完后转向y正方向
+
+    struct WP { float x, y; };
+    static constexpr int NUM_WP = 5;
+    static constexpr WP WAYPOINTS[NUM_WP] = {
+        {0.0f,  5.35f},
+        {2.4f,  5.8f},
+        {2.4f,  6.0f},
+        {2.9f,  6.1f},
+        {2.9f,  6.7f},
+    };
+    static constexpr float WP_THRESH   = 0.3f;
+    static constexpr float EXIT_X      = 2.9f;
+    static constexpr float EXIT_Y      = 7.35f;
+    static constexpr float EXIT_THRESH = 0.4f;
+
+    static constexpr float KP_IMU = 0.8f;   // 路径点方向增益
+    static constexpr float KP_VIS = 0.15f;  // 视觉微调权重
+    static constexpr float SPEED  = 0.2f;
 };

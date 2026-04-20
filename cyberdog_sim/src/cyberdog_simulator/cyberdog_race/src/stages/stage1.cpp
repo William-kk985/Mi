@@ -3,14 +3,6 @@
 #include <rclcpp/rclcpp.hpp>
 #include <cmath>
 
-// PD控制参数
-static constexpr float KP_YAW        = 0.6f;
-static constexpr float KD_YAW        = 0.08f;
-static constexpr float BASE_SPEED    = 0.45f;
-static constexpr float TURN_SPEED    = 0.2f;
-static constexpr float CURVE_THRESH  = 60.0f;
-static constexpr float TURN_DONE_YAW = 1.3f;
-
 // 路口检测参数
 static constexpr float JUNCTION_LIDAR_THRESH = 1.2f;  // 前方障碍距离小于此值认为到路口
 static constexpr float JUNCTION_TURN_YAW     = 1.57f; // 路口原地转向角度（约90度）
@@ -78,7 +70,7 @@ void Stage1::run() {
     }
 
     // ── 路口检测（里程计 x 坐标触发）────────────────────────
-    if (sensor_.odom_x >= 2.95f && sensor_.odom_x <= 3.2f) {
+    if (sensor_.odom_x >= JUNCTION_X_MIN && sensor_.odom_x <= JUNCTION_X_MAX) {
         at_junction_ = true;
         yaw_start_   = sensor_.yaw;
         motion_.stop();

@@ -49,9 +49,9 @@ private:
     bool  scan_found_{false};
     bool  scan_done_{false};
     int   scan_dir_{1};
-    int   scan_confirm_{0};  // 已不使用，保留兼容
     int   scan_wait_{0};
-    bool  hit_started_{false};  // 撞球起始位置是否已记录
+    int   scan_confirm_{0};  // 转动过程中连续检测到球的帧数
+    bool  hit_started_{false};
     float hit_start_x_{0}, hit_start_y_{0};
 
     // 到达判断阈值
@@ -63,9 +63,10 @@ private:
     static constexpr int   SCAN_WAIT_FRAMES    = 200;  // 停下等待200帧（2秒）
 
     // 运动参数
-    static constexpr float MOVE_SPEED  = 0.8f;
-    static constexpr float TURN_SPEED  = 0.3f;
-    static constexpr float HIT_SPEED   = 0.5f;
+    static constexpr float MOVE_SPEED       = 0.8f;
+    static constexpr float TURN_SPEED       = 0.5f;  // 路径点转向速度
+    static constexpr float SCAN_TURN_SPEED  = 0.2f;  // 扫描时转向速度（慢，方便识别）
+    static constexpr float HIT_SPEED        = 0.5f;
 
     void navigate_to(float tx, float ty);
     void turn_to(float target_yaw);

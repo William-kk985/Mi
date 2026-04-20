@@ -3,7 +3,6 @@
 #include <rclcpp/rclcpp.hpp>
 #include <cmath>
 
-// 绿色终端打印（受 DEBUG_STAGE 控制）
 #ifdef DEBUG_STAGE
 #define LOG_GREEN(msg) LOG_STAGE_GREEN("Stage2", msg)
 #define LOG_GREENF(fmt, ...) LOG_STAGE_GREENF("Stage2", fmt, ##__VA_ARGS__)
@@ -11,11 +10,6 @@
 #define LOG_GREEN(msg)
 #define LOG_GREENF(fmt, ...)
 #endif
-static float norm_yaw(float y) {
-    while (y >  M_PI) y -= 2.f * M_PI;
-    while (y < -M_PI) y += 2.f * M_PI;
-    return y;
-}
 
 void Stage2::init() {
     done_      = false;
@@ -47,7 +41,7 @@ void Stage2::init() {
     waypoints_[6]  = {0.2f,  3.5f,   M_PI/2.f,     true};
     waypoints_[7]  = {2.7f,  3.5f,   M_PI/2.f,     true};
     waypoints_[8]  = {2.7f,  4.2f,   M_PI/2.f,     false};
-    waypoints_[9]  = {-0.2f, 4.2f,   M_PI/2.f,     false};
+    waypoints_[9]  = {-0.4f, 4.2f,   M_PI/2.f,     false};
     // 其余路径点暂时注释
     /*
     waypoints_[1]  = {L,     1.1f,  M_PI,         true };
@@ -127,7 +121,7 @@ void Stage2::run() {
             scan_confirm_ = 0;
         }
         if (yaw_diff < SCAN_ANGLE) {
-            motion_.set_velocity(0.f, 0.f, TURN_SPEED);
+            motion_.set_velocity(0.f, 0.f, SCAN_TURN_SPEED);
         } else {
             motion_.stop();
             scan_wait_ = 0;
@@ -184,7 +178,7 @@ void Stage2::run() {
             scan_confirm_ = 0;
         }
         if (yaw_diff > -SCAN_ANGLE) {
-            motion_.set_velocity(0.f, 0.f, -TURN_SPEED);
+            motion_.set_velocity(0.f, 0.f, -SCAN_TURN_SPEED);
         } else {
             motion_.stop();
             scan_wait_ = 0;
@@ -282,9 +276,48 @@ void Stage2::run() {
         break;
 
     case State::DONE:
-        done_ = true;
-        motion_.stop();
+    {
+        static bool  exit_started  = false;
+        static bool  exit_turning  = false;
+        static float exit_start_x  = 0.f, exit_start_y = 0.f;
+        static float exit_target_yaw = 0.f;
+
+        if (!exit_started) {
+            exit_start_x = sensor_.odom_x;
+            exit_start_y = sensor_.odom_y;
+            exit_started = true;
+            exit_turning = false;
+        }
+        float dx = sensor_.odom_x - exit_start_x;
+        float dy = sensor_.odom_y - exit_start_y;
+        float moved = std::sqrt(dx*dx + dy*dy);
+
+        if (moved < 0.2f) {
+            // 先前进0.2m
+            motion_.set_velocity(MOVE_SPEED, 0.f, 0.f);
+        } else if (!exit_turning) {
+            // 前进完成，开始右转10度
+            exit_target_yaw = sensor_.yaw - 0.175f;  // 右转10度
+            exit_turning = true;
+            motion_.stop();
+        } else {
+            // 右转到目标yaw
+            float yaw_err = exit_target_yaw - sensor_.yaw;
+            while (yaw_err >  M_PI) yaw_err -= 2.0f * M_PI;
+            while (yaw_err < -M_PI) yaw_err += 2.0f * M_PI;
+            if (std::abs(yaw_err) > 0.05f) {
+                float cmd = std::max(0.1f, std::min(0.4f, std::abs(yaw_err) * 0.6f));
+                motion_.set_velocity(0.f, 0.f, yaw_err > 0 ? cmd : -cmd);
+            } else {
+                exit_started = false;
+                exit_turning = false;
+                done_ = true;
+                motion_.stop();
+                LOG_GREEN("✓ 赛段2结束，前进+右转完成");
+            }
+        }
         break;
+    }
     }
 }
 

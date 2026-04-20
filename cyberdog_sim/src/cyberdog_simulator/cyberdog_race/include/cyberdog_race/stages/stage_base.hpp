@@ -1,4 +1,5 @@
 #pragma once
+#include <cmath>
 #include "cyberdog_race/motion_ctrl.hpp"
 
 // 传感器数据共享结构，由主线程填充
@@ -43,4 +44,11 @@ public:
 protected:
     MotionCtrl&  motion_;
     SensorData&  sensor_;
+
+    // 工具函数：yaw角归一化到[-π, π]
+    static float norm_yaw(float y) {
+        while (y >  M_PI) y -= 2.0f * M_PI;
+        while (y < -M_PI) y += 2.0f * M_PI;
+        return y;
+    }
 };

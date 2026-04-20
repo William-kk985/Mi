@@ -23,8 +23,21 @@ private:
     float last_odom_x_{0.0f};
     float last_odom_y_{0.0f};
     int   stuck_frames_{0};
-    static constexpr int   STUCK_THRESH   = 30;   // 连续30帧（0.3s）没动视为卡住
-    static constexpr float STUCK_DIST     = 0.01f; // 移动距离小于1cm视为没动
-    static constexpr int   ESCAPE_FRAMES  = 40;   // 脱困持续帧数
     int   escape_frames_{0};
+
+    // 控制参数
+    static constexpr float KP_YAW        = 0.6f;
+    static constexpr float KD_YAW        = 0.08f;
+    static constexpr float BASE_SPEED    = 0.45f;
+    static constexpr float TURN_SPEED    = 0.2f;
+    static constexpr float CURVE_THRESH  = 60.0f;
+
+    // 路口检测
+    static constexpr float JUNCTION_X_MIN = 2.95f;
+    static constexpr float JUNCTION_X_MAX = 3.2f;
+
+    // 卡住检测参数
+    static constexpr int   STUCK_THRESH  = 30;
+    static constexpr float STUCK_DIST    = 0.01f;
+    static constexpr int   ESCAPE_FRAMES = 40;
 };

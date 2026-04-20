@@ -83,14 +83,13 @@ void LaneDetector::scan_edges(const cv::Mat& binary,
 // 横向边界线：x坐标在某行突然大幅跳变
 void LaneDetector::filter_lateral(std::vector<cv::Point>& pts) {
     if (pts.size() < 3) return;
+    float thresh = (mode_ == LaneMode::RELAXED) ? LATERAL_THRESH_RELAXED : LATERAL_THRESH_STRICT;
     std::vector<cv::Point> filtered;
     filtered.push_back(pts[0]);
     for (size_t i = 1; i + 1 < pts.size(); i++) {
-        // 计算前后两段的x变化量
         float dx_prev = std::abs(pts[i].x - pts[i-1].x);
         float dx_next = std::abs(pts[i+1].x - pts[i].x);
-        // 如果某点与前后点的x差都很大，认为是横向干扰，丢弃
-        if (dx_prev > LATERAL_THRESH && dx_next > LATERAL_THRESH) continue;
+        if (dx_prev > thresh && dx_next > thresh) continue;
         filtered.push_back(pts[i]);
     }
     if (!pts.empty()) filtered.push_back(pts.back());
@@ -103,8 +102,8 @@ void LaneDetector::filter_continuity(std::vector<cv::Point>& pts,
                                       float& last_valid_x,
                                       int img_width) {
     if (pts.empty()) return;
+    float thresh = (mode_ == LaneMode::RELAXED) ? CONTINUITY_THRESH_RELAXED : CONTINUITY_THRESH_STRICT;
 
-    // 用底部几个点的均值代表当前帧位置
     int n = std::min((int)pts.size(), 5);
     float cur_x = 0;
     for (int i = 0; i < n; i++) cur_x += pts[i].x;
@@ -112,8 +111,7 @@ void LaneDetector::filter_continuity(std::vector<cv::Point>& pts,
 
     if (last_valid_x >= 0) {
         float jump = std::abs(cur_x - last_valid_x);
-        if (jump > img_width * CONTINUITY_THRESH) {
-            // 跳变太大，整组点丢弃，保持上一帧状态
+        if (jump > img_width * thresh) {
             pts.clear();
             return;
         }
