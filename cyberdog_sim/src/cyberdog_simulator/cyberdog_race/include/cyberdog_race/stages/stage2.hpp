@@ -61,7 +61,7 @@ private:
     // 到达判断阈值
     static constexpr float POS_THRESH = 0.08f;
     static constexpr float YAW_THRESH = 0.05f;
-    static constexpr float BALL_DIST_THRESH = 0.90f;
+    static constexpr float BALL_DIST_THRESH = 0.80f;
     static constexpr float SCAN_ANGLE       = 0.7f;
     static constexpr int   SCAN_CONFIRM_FRAMES = 10;
     static constexpr int   SCAN_WAIT_FRAMES    = 200;  // 停下等待200帧（2秒）

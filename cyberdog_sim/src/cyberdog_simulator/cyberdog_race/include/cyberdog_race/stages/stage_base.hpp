@@ -14,6 +14,10 @@ struct SensorData {
     float ball_dist{0.0f};     // 球距离（米）
     bool  ball_found{false};   // 是否找到目标球
 
+    float blue_ball_x{0.0f};   // 蓝球x坐标（归一化）
+    float blue_ball_dist{0.0f};
+    bool  blue_ball_found{false};
+
     // IMU
     float yaw{0.0f};           // 当前偏航角（rad）
     float pitch{0.0f};
@@ -22,6 +26,7 @@ struct SensorData {
     // 里程计
     float odom_x{0.0f};
     float odom_y{0.0f};
+    float body_height{0.25f};  // 身体离地高度（m）
 
     // Lidar：前方最近障碍距离
     float lidar_front{10.0f};

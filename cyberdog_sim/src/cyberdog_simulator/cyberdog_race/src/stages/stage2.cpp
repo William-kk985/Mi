@@ -34,16 +34,15 @@ void Stage2::init() {
     float L = 0.f, R = 2.7f;
     (void)L; (void)R;  // 路径点坐标参考值，暂未使用
     // 暂时只测试走到 y=1.0
-    waypoints_[0]  = {2.55f, 1.0f,   M_PI/2.f,     true};
-    waypoints_[1]  = {0.2f,  1.0f,   M_PI/2.f,     true};
-    waypoints_[2]  = {0.2f,  1.7f,   M_PI/2.f,     true};
-    waypoints_[3]  = {2.7f,  1.7f,   M_PI/2.f,     true};
-    waypoints_[4]  = {2.7f,  2.6f,   M_PI/2.f,     true};
-    waypoints_[5]  = {0.2f,  2.6f,   M_PI/2.f,     true};
-    waypoints_[6]  = {0.2f,  3.5f,   M_PI/2.f,     true};
-    waypoints_[7]  = {2.7f,  3.5f,   M_PI/2.f,     true};
-    waypoints_[8]  = {2.7f,  4.2f,   M_PI/2.f,     false};
-    waypoints_[9]  = {-0.4f, 4.2f,   M_PI/2.f,     false};
+    waypoints_[0]  = {0.2f,  1.0f,   M_PI/2.f,     true};
+    waypoints_[1]  = {0.2f,  1.7f,   M_PI/2.f,     true};
+    waypoints_[2]  = {2.7f,  1.7f,   M_PI/2.f,     true};
+    waypoints_[3]  = {2.7f,  2.6f,   M_PI/2.f,     true};
+    waypoints_[4]  = {0.2f,  2.6f,   M_PI/2.f,     true};
+    waypoints_[5]  = {0.2f,  3.5f,   M_PI/2.f,     true};
+    waypoints_[6]  = {2.7f,  3.5f,   M_PI/2.f,     true};
+    waypoints_[7]  = {2.7f,  4.2f,   M_PI/2.f,     false};
+    waypoints_[8]  = {-0.4f, 4.2f,   M_PI/2.f,     false};
     // 其余路径点暂时注释
     /*
     waypoints_[1]  = {L,     1.1f,  M_PI,         true };
@@ -221,7 +220,7 @@ void Stage2::run() {
             motion_.stop();
             LOG_GREEN("✓ 右扫结束，扫描完成");
             scan_done_ = true;
-            if (wp_idx_ < 10) {
+            if (wp_idx_ < 9) {
                 // 还有下一个路径点，取其朝向先转好再走
                 target_yaw_ = waypoints_[wp_idx_].yaw;
                 state_ = State::TURN_TO_YAW;
@@ -394,7 +393,7 @@ bool Stage2::reached_yaw(float target_yaw) {
     return std::abs(norm_yaw(target_yaw - sensor_.yaw)) < YAW_THRESH;
 }
 void Stage2::next_waypoint() {
-    if (wp_idx_ >= 10) {
+    if (wp_idx_ >= 9) {
         state_ = State::DONE;
         LOG_GREEN("✓ 所有路径点完成，赛段2结束");
         return;

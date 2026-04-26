@@ -23,8 +23,9 @@
 // ============================================================
 
 // #define DEBUG_SINGLE_STAGE 1
-// #define DEBUG_START_STAGE  3
-// #define DEBUG_END_STAGE    2
+// #define DEBUG_START_STAGE  4
+// #define DEBUG_SINGLE_STAGE 4
+#define DEBUG_END_STAGE    4
 
 // 调试开关：禁用撞球，只观察视觉效果
 // #define DEBUG_NO_HIT

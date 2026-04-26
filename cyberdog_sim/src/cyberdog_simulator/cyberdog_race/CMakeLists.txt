@@ -23,6 +23,7 @@ set(SOURCES
   src/motion_ctrl.cpp
   src/vision/lane_detector.cpp
   src/vision/ball_detector.cpp
+  src/vision/stage4_detector.cpp
   src/stages/stage1.cpp
   src/stages/stage2.cpp
   src/stages/stage3.cpp

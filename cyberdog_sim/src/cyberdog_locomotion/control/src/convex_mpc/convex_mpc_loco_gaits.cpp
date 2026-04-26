@@ -199,14 +199,14 @@ void ConvexMpcLocoGaits::Initialize( ControlFsmData< float >& data ) {
     pos_des_rel_last_ << state_est_.position( 0 ), state_est_.position( 1 ), state_est_.height;
     pos_cmd_rel_scale_.setOnes();
     pos_cmd_rel_max_ << 0.0, 0.0, user_params_->des_roll_pitch_height[ 2 ] + 0.07;  // Only z is enabled
-    pos_cmd_rel_min_ << 0.0, 0.0, 0.23;
+    pos_cmd_rel_min_ << 0.0, 0.0, 0.13;
     pos_des_ << 0.0, 0.0, user_params_->des_roll_pitch_height[ 2 ] + state_est_.position( 2 ) - state_est_.height;
 #else
     pos_cmd_ << 0.0, 0.0, user_params_->des_roll_pitch_height[ 2 ];
     pos_des_      = pos_cmd_;
     pos_des_last_ = state_est_.position;
-    pos_cmd_max_ << 0.0, 0.0, user_params_->des_roll_pitch_height[ 2 ] + 0.07;  // Only z is enabled
-    pos_cmd_min_ << 0.0, 0.0, 0.23;
+    pos_cmd_max_ << 0.0, 0.0, user_params_->des_roll_pitch_height[ 2 ] + 0.07;
+    pos_cmd_min_ << 0.0, 0.0, 0.13;
 #endif
     init_pos_des_ << 0.0, 0.0, 0.25;
     init_rpy_des_.setZero();
@@ -1120,7 +1120,7 @@ void ConvexMpcLocoGaits::SetDefaultParams() {
 
     step_height_scale_ = 1.0;
     step_height_max_   = step_height_scale_ * ( float )user_params_->step_height_max;
-    step_height_min_   = 0.06;  // 最低抬腿高度6cm，避免被石板绊住
+    step_height_min_   = 0.03;  // 最低抬腿高度3cm
     step_height_ratio_ = 1.0;
 
     body_height_delta_max_     = 0.0;
