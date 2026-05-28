@@ -1,0 +1,29 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/home/kaka/Mi/cyberdog_sim/src/**",
+                "/home/kaka/Mi/cyberdog_sim/install/include/**",
+                "/home/kaka/Mi/cyberdog_sim/build/**",
+                "/usr/include/**",
+                "/usr/local/include/**",
+                "/usr/include/eigen3/**",
+                "/usr/include/opencv4/**",
+                "/home/kaka/Mi/cyberdog_sim/src/cyberdog_simulator/cyberdog_gazebo/include/**",
+                "/home/kaka/Mi/cyberdog_sim/src/cyberdog_locomotion/common/**",
+                "/home/kaka/Mi/cyberdog_sim/src/cyberdog_locomotion/common/lcm_type/lcm/**"
+            ],
+            "defines": [
+                "ONBOARD_BUILD=0"
+            ],
+            "compilerPath": "/usr/bin/gcc",
+            "cStandard": "gnu17",
+            "cppStandard": "gnu++14",
+            "intelliSenseMode": "linux-gcc-x64",
+            "configurationProvider": "ms-vscode.cmake-tools"
+        }
+    ],
+    "version": 4
+}

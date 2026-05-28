@@ -33,8 +33,8 @@ CommandInterface::CommandInterface() {
     loco_empty_cmd_.gait_id          = 1;
     loco_empty_cmd_.contact          = 0x0F;
     loco_empty_cmd_.duration         = 200;
-    loco_empty_cmd_.step_height[ 0 ] = 0.05;
-    loco_empty_cmd_.step_height[ 1 ] = 0.05;
+    loco_empty_cmd_.step_height[ 0 ] = 0.07;
+    loco_empty_cmd_.step_height[ 1 ] = 0.07;
     loco_stand_cmd_.mode             = MotionMode::kLocomotion;
     loco_stand_cmd_.gait_id          = 31;
     loco_stand_cmd_.contact          = 0x0F;

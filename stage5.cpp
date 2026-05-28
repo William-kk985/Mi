@@ -7,14 +7,14 @@
 constexpr float BRIDGE_SPEED_FLAT  = 0.4f;
 constexpr float BRIDGE_SPEED_SLOPE = 0.4f;
 
-constexpr float LATERAL_COMPENSATION = 0.30f;
-constexpr float LATERAL_COMPENSATION_STRONG = 0.25f;
+constexpr float LATERAL_COMPENSATION = 0.23f;
+constexpr float LATERAL_COMPENSATION_STRONG = 0.18f;
 
 constexpr float WP1_Y = 12.35f;
 constexpr float WP2_X = -0.6f;
 constexpr float WP3_Y = 15.40f;
 constexpr float WP3_THRESH = 0.12f;
-constexpr float WP4_X = 3.5f;
+constexpr float WP4_X = 3.35f;
 constexpr float WP_THRESH = 0.3f;
 constexpr float WP5_TURN_Y = 13.80f;
 
@@ -228,55 +228,36 @@ void Stage5::run() {
     }
 
     case State::JUMP_PREPARE: {
-        // 导航到(3.2,13.3)，到位后跳
-        static constexpr float NAV_X = 3.2f;
-        static constexpr float NAV_Y = 13.4f;
-        static constexpr float NAV_THRESH = 0.2f;
-        float dx = NAV_X - sensor_.odom_x;
-        float dy = NAV_Y - sensor_.odom_y;
-        float dist = std::sqrt(dx*dx + dy*dy);
+    turn_frames_++;
 
-        if (dist > NAV_THRESH) {
-            float target_yaw = std::atan2(dy, dx);
-            float yaw_err = norm_yaw(target_yaw - sensor_.yaw);
-            float yaw_cmd = std::max(-0.3f, std::min(0.3f, yaw_err * 0.8f));
-            motion_.set_velocity(0.3f, 0.0f, yaw_cmd);
-        } else {
-            state_ = State::JUMP_EXECUTE;
-            jump_frames_ = 0;
-            fprintf(stderr, "\033[1;33m[Stage5] 到(3.2,13.3)，开始跳跃\033[0m\n");
-        }
-        break;
-    }
+    // 不右转了，直接往前走
+    motion_.set_pitch(0.0f);
+    motion_.set_velocity(0.38f, 0.0f, 0.0f);
 
-    case State::JUMP:
-        state_ = State::JUMP_EXECUTE;
+    if (turn_frames_ > 80) {
+        state_ = State::JUMP;
         jump_frames_ = 0;
-        break;
-
-    case State::JUMP_EXECUTE: {
-        if (jump_frames_ == 0) {
-            motion_.jump();
-            rc_mode_needed_ = true;
-            fprintf(stderr, "\033[1;35m[Stage5] 🚀 第1跳\033[0m\n");
-        }
-        jump_frames_++;
-        motion_.send_lcm_mode(12);
-        if (jump_frames_ == 250) {
-            motion_.jump();
-            fprintf(stderr, "\033[1;35m[Stage5] 🚀 第2跳\033[0m\n");
-        }
-        if (jump_frames_ == 500) {
-            motion_.jump();
-            fprintf(stderr, "\033[1;35m[Stage5] 🚀 第3跳\033[0m\n");
-        }
-        if (jump_frames_ > 750) {
-            rc_mode_needed_ = false;
-            done_ = true;
-            fprintf(stderr, "\033[1;32m[Stage5] ✓ 完成\033[0m\n");
-        }
-        break;
+        fprintf(stderr, "\033[1;33m[Stage5] ENTER STRAIGHT WALK DOWN yaw=%.3f\033[0m\n", sensor_.yaw);
     }
+
+    break;
+}
+
+case State::JUMP: {
+    jump_frames_++;
+
+    // yaw=-1.57 时 vx 正方向就是往南，继续走
+    motion_.set_pitch(0.0f);
+    motion_.set_velocity(0.45f, 0.0f, 0.0f);
+
+    // 不按帧结束，按 y 坐标结束，确保真的走下去
+    if (sensor_.odom_y < 12.80f) {
+    motion_.set_velocity(0.0f, 0.0f, 0.0f);
+    done_ = true;
+}
+
+    break;
+}
 
     }
 }

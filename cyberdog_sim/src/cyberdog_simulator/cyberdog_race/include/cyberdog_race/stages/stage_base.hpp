@@ -18,6 +18,10 @@ struct SensorData {
     float blue_ball_dist{0.0f};
     bool  blue_ball_found{false};
 
+    float white_ball_x{0.0f};    // 白球x坐标（归一化）
+    float white_ball_dist{0.0f};
+    bool  white_ball_found{false};
+
     // IMU
     float yaw{0.0f};           // 当前偏航角（rad）
     float pitch{0.0f};

@@ -2286,7 +2286,13 @@ void ConvexMpcLocoGaits::SetCmd( ControlFsmData< float >& data ) {
         }
     }
     else {
-        step_height_cmd_.setConstant( step_height_ratio_ * ctrl_cmd_->step_height[ 0 ] );
+        float base = step_height_ratio_ * ctrl_cmd_->step_height[ 0 ];
+        // 根据期望roll自动计算左右不对称步高，补偿倾斜桥面
+        float roll_diff = 1.2f * std::abs( rpy_des_( 0 ) );
+        step_height_cmd_( 0 ) = base + roll_diff;  // FL 左侧
+        step_height_cmd_( 1 ) = base - roll_diff;  // FR 右侧
+        step_height_cmd_( 2 ) = base + roll_diff;  // RL 左侧
+        step_height_cmd_( 3 ) = base - roll_diff;  // RR 右侧
     }
 
     for ( int i = 0; i < 4; i++ ) {

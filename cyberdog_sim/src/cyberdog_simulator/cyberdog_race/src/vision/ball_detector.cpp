@@ -6,6 +6,7 @@ BallResult BallDetector::detect(const cv::Mat& frame, BallColor target) {
     switch (target) {
         case BallColor::ORANGE: return find_ball(frame, orange_low_, orange_high_, BallColor::ORANGE);
         case BallColor::BLUE:   return find_ball(frame, blue_low_,   blue_high_,   BallColor::BLUE);
+        case BallColor::WHITE:  return find_ball(frame, white_low_,  white_high_,  BallColor::WHITE);
         default: return {};
     }
 }
@@ -29,11 +30,25 @@ BallResult BallDetector::find_ball(const cv::Mat& frame,
 
     size_t max_idx = 0;
     double max_area = 0;
-    for (size_t i = 0; i < contours.size(); i++) {
-        double a = cv::contourArea(contours[i]);
-        if (a > max_area) { max_area = a; max_idx = i; }
+
+    if (color == BallColor::WHITE) {
+        // 白球：遍历所有轮廓，找面积最大且满足圆度的（同 Stage4 find_football）
+        for (size_t i = 0; i < contours.size(); i++) {
+            double area = cv::contourArea(contours[i]);
+            if (area < 200) continue;
+            double perimeter = cv::arcLength(contours[i], true);
+            double circularity = 4 * M_PI * area / (perimeter * perimeter);
+            if (circularity < 0.7f) continue;
+            if (area > max_area) { max_area = area; max_idx = i; }
+        }
+        if (max_area < 200) return result;
+    } else {
+        for (size_t i = 0; i < contours.size(); i++) {
+            double a = cv::contourArea(contours[i]);
+            if (a > max_area) { max_area = a; max_idx = i; }
+        }
+        if (max_area < 100) return result;
     }
-    if (max_area < 100) return result;
 
     // 面积等效半径（比外接圆稳定，遮挡时外接圆偏大）
     float r_area = std::sqrt(static_cast<float>(max_area) / M_PI);

@@ -1,7 +1,7 @@
 #include "cyberdog_race/motion_ctrl.hpp"
 #include <cstring>
 
-MotionCtrl::MotionCtrl() {
+MotionCtrl::MotionCtrl() : ctrl_lcm_("udpm://239.255.76.67:7671?ttl=255") {
     memset(&gpad_, 0, sizeof(gpad_));
 }
 
@@ -39,4 +39,41 @@ void MotionCtrl::stop() {
 
 void MotionCtrl::pub_gamepad() {
     lcm_.publish("gamepad_lcmt", &gpad_);
+}
+
+void MotionCtrl::pub_lcm_cmd() {
+    lcm_cmd_.life_count = ++lcm_life_;
+    ctrl_lcm_.publish("robot_control_cmd", &lcm_cmd_);
+}
+
+void MotionCtrl::jump() {
+    memset(&lcm_cmd_, 0, sizeof(lcm_cmd_));
+    lcm_cmd_.mode       = 16;          // MotionMode::kJump3d
+    lcm_cmd_.gait_id    = 1;           // JumpId::kJumpPosX60（向前跳60cm）
+    lcm_cmd_.vel_des[0] = 0.4f;        // 带前向速度起跳，增加跳跃距离
+    pub_lcm_cmd();
+}
+
+void MotionCtrl::force_jump() {
+    memset(&lcm_cmd_, 0, sizeof(lcm_cmd_));
+    lcm_cmd_.mode    = 22;          // MotionMode::kForceJump
+    lcm_cmd_.gait_id = 4;
+    pub_lcm_cmd();
+}
+
+void MotionCtrl::send_lcm_mode(int mode, int gait_id) {
+    memset(&lcm_cmd_, 0, sizeof(lcm_cmd_));
+    lcm_cmd_.mode    = mode;
+    lcm_cmd_.gait_id = gait_id;
+    pub_lcm_cmd();
+}
+
+void MotionCtrl::set_step_height(float left, float right) {
+    float left_clamped  = left  < 0.0f ? 0.0f : (left  > 0.35f ? 0.35f : left);
+    float right_clamped = right < 0.0f ? 0.0f : (right > 0.35f ? 0.35f : right);
+    
+    memset(&lcm_cmd_, 0, sizeof(lcm_cmd_));
+    lcm_cmd_.step_height[0] = left_clamped;
+    lcm_cmd_.step_height[1] = right_clamped;
+    lcm_.publish("robot_control_cmd", &lcm_cmd_);
 }

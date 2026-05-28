@@ -1,7 +1,7 @@
 #pragma once
 #include <opencv2/opencv.hpp>
 
-enum class BallColor { ORANGE, BLUE, NONE };
+enum class BallColor { ORANGE, BLUE, WHITE, NONE };
 
 struct BallResult {
     BallColor color{BallColor::NONE};
@@ -16,12 +16,15 @@ class BallDetector {
 public:
     BallDetector() = default;
     BallResult detect(const cv::Mat& frame, BallColor target);
+    void reset_filter() { dist_filtered_ = 0.0f; }  // 切换赛段时重置
 
 private:
     cv::Scalar orange_low_{5, 80, 80};
     cv::Scalar orange_high_{25, 255, 255};
     cv::Scalar blue_low_{95, 80, 80};
     cv::Scalar blue_high_{125, 255, 255};
+    cv::Scalar white_low_{0, 0, 180};
+    cv::Scalar white_high_{180, 40, 255};  // 完全同 Stage4 find_football
 
     // RGB_camera: fov=1.3962rad, width=640 → fx=320/tan(0.6981)≈402px
     static constexpr float FOCAL_LEN   = 402.0f;

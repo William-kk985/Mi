@@ -25,7 +25,9 @@
 #include "cyberdog_race/stages/stage3.hpp"
 #include "cyberdog_race/stages/stage4.hpp"
 #include "cyberdog_race/stages/stage5.hpp"
+#include "cyberdog_race/stages/stage5.hpp"
 #include "cyberdog_race/stages/stage6.hpp"
+#include "cyberdog_race/stages/stage7.hpp"
 
 // ============================================================
 // 调试模式说明（修改 debug_config.hpp 后重新 build）：
@@ -94,10 +96,14 @@ public:
         stages_[3] = std::make_unique<Stage4>(motion_, sensor_);
         stages_[4] = std::make_unique<Stage5>(motion_, sensor_);
         stages_[5] = std::make_unique<Stage6>(motion_, sensor_);
+        stages_[6] = std::make_unique<Stage7>(motion_, sensor_);
 
         // 根据起始赛段设置视觉模式
         if (cur_stage_ == 2) {
             lane_detector_.set_mode(LaneMode::RELAXED);
+        }
+        if (cur_stage_ == 5) {
+            ball_detector_.reset_filter();
         }
         stages_[cur_stage_]->init();
 
@@ -137,6 +143,7 @@ private:
         auto lane = lane_detector_.detect(cv_img->image);
         auto ball = ball_detector_.detect(cv_img->image, BallColor::ORANGE);
         auto blue = ball_detector_.detect(cv_img->image, BallColor::BLUE);
+        auto white = ball_detector_.detect(cv_img->image, BallColor::WHITE);
         sensor_.lane_offset    = lane.offset;
         sensor_.lane_curvature = lane.curvature;
         sensor_.lane_valid     = lane.valid;
@@ -147,6 +154,15 @@ private:
         sensor_.blue_ball_found = blue.found;
         sensor_.blue_ball_x     = blue.cx;
         sensor_.blue_ball_dist  = blue.dist_m;
+        sensor_.white_ball_found = white.found;
+        sensor_.white_ball_x     = white.cx;
+        sensor_.white_ball_dist  = white.dist_m;
+
+        // stage6 白球检测（已禁用）
+        // if (cur_stage_ == 5) {
+        //     auto s6 = static_cast<Stage6*>(stages_[5].get());
+        //     s6->process_vision(cv_img->image);
+        // }
 
         // stage4 视觉检测
         if (cur_stage_ == 3) {
@@ -250,6 +266,8 @@ private:
             draw_status(r.coke_found,     r.coke_dist,     "coke",     {80,  80,  80 });
             draw_status(r.obstacle_found, r.obstacle_dist, "obstacle", {255, 128, 0  });
         }
+
+
         cv::imshow("RaceDebug", frame);
         cv::waitKey(1);
 #endif
@@ -296,25 +314,63 @@ private:
     }
 
     void control_loop() {
-        if (cur_stage_ >= 6) return;
+        if (cur_stage_ >= 7) return;
 
         stages_[cur_stage_]->run();
 
-        // stage4 蹲下/恢复身高（目标高度变化后持续重复发送，确保控制器收到）
+        // Stage5/Stage7: 跳跃需要切换 use_rc=1 让LCM命令生效
+        if ((cur_stage_ == 4 || cur_stage_ == 5 || cur_stage_ == 6) && yaml_pub_) {
+            bool need_rc = false;
+            if (cur_stage_ == 4) {
+                need_rc = static_cast<Stage5*>(stages_[4].get())->needs_rc_mode();
+            } else if (cur_stage_ == 5) {
+                need_rc = static_cast<Stage6*>(stages_[5].get())->needs_rc_mode();
+            } else {
+                need_rc = static_cast<Stage7*>(stages_[6].get())->needs_rc_mode();
+            }
+            static bool last_rc_mode = false;
+            if (need_rc != last_rc_mode) {
+                last_rc_mode = need_rc;
+                auto p = cyberdog_msg::msg::YamlParam();
+                p.name = "use_rc";
+                p.kind = 2;
+                p.s64_value = need_rc ? 1 : 0;
+                p.is_user = 0;
+                yaml_pub_->publish(p);
+                fprintf(stderr, "\033[1;35m[Main] use_rc=%d (Stage%d RC mode)\033[0m\n", need_rc ? 1 : 0, cur_stage_ + 1);
+            }
+        }
+
+        // stage4 蹲下/恢复身高（按高度判断持续发送，带超时保护）
         if (cur_stage_ == 3 && yaml_pub_) {
             auto s4 = static_cast<Stage4*>(stages_[3].get());
             float target_h      = s4->crouch_active ? Stage4::CROUCH_HEIGHT : 0.25f;
             float target_step_h = s4->crouch_active ? 0.03f : 0.20f;  // 蹲下时步高降到3cm
             static float last_height = -1.f;
             static int send_counter = 0;
+            static bool crouch_done = false;  // ✅ 标记是否已到位
+            
+            // 检测目标高度变化，重置状态
             if (std::abs(target_h - last_height) > 0.01f) {
                 last_height = target_h;
                 send_counter = 0;
+                crouch_done = false;  // ✅ 重置完成标记
                 fprintf(stderr, "\033[1;33m[Main] 切换身体高度: %.2f 步高: %.2f\033[0m\n", target_h, target_step_h);
             }
-            // 高度切换后持续发送30帧，保证控制器收到
-            if (send_counter < 30) {
+            
+            // ✅ 按高度判断：只要没到位就持续发送
+            float current_height = sensor_.body_height;
+            bool height_reached = std::abs(current_height - target_h) < 0.02f;
+            
+            if (!crouch_done && !height_reached) {
                 send_counter++;
+                
+                // 每10帧打印一次调试信息
+                if (send_counter % 10 == 0) {
+                    fprintf(stderr, "\033[1;33m[Main] Stage4 调整中: 当前=%.3f 目标=%.2f 帧数=%d\033[0m\n",
+                            current_height, target_h, send_counter);
+                }
+                
                 // 发送身体高度
                 cyberdog_msg::msg::YamlParam p;
                 p.name = "des_roll_pitch_height";
@@ -331,8 +387,114 @@ private:
                 p2.is_user = 1;
                 p2.double_value = target_step_h;  // kind=DOUBLE 必须用 double_value
                 yaml_pub_->publish(p2);
+                
+                // ✅ 超时后重置计数器，继续尝试（防止控制器响应慢）
+                if (send_counter >= 300) {
+                    send_counter = 0;
+                    fprintf(stderr, "\033[1;33m[Main] Stage4 ⚠ 超时重置，继续发送: 当前=%.3f\033[0m\n", current_height);
+                }
+            } else if (height_reached && !crouch_done) {
+                crouch_done = true;
+                fprintf(stderr, "\033[1;32m[Main] Stage4 ✓ 调整完成: height=%.3f\033[0m\n", current_height);
             }
         }
+
+        // stage5 走桥时蹲下降低重心 + roll 补偿（按高度判断持续发送，带超时保护）
+        if (cur_stage_ == 4 && yaml_pub_) {
+            auto s5 = static_cast<Stage5*>(stages_[4].get());
+            float target_h      = s5->crouch_active ? Stage5::CROUCH_HEIGHT : 0.25f;
+            float target_step_h = s5->crouch_active ? 0.15f : 0.20f;  // 走桥时步高放宽以支持左右不对称
+            float target_roll   = s5->roll_active   ? s5->target_roll : 0.0f;
+            static float s5_last_height = -1.f;
+            static float s5_last_roll   = -999.f;
+            static int s5_send_counter = 0;
+            static bool s5_crouch_done = false;  // ✅ 标记是否已到位
+            
+            // 检测目标高度变化，重置状态
+            if (std::abs(target_h - s5_last_height) > 0.01f) {
+                s5_last_height = target_h;
+                s5_send_counter = 0;
+                s5_crouch_done = false;  // ✅ 重置完成标记
+                fprintf(stderr, "\033[1;33m[Main] Stage5 切换: 身高=%.2f roll=%.3f step_h=%.2f\033[0m\n",
+                        target_h, target_roll, target_step_h);
+            }
+            
+            // roll变化时也更新last值，但不重置计数器
+            if (std::abs(target_roll - s5_last_roll) > 0.01f) {
+                s5_last_roll = target_roll;
+            }
+            
+            // ✅ 按高度判断：只要没到位就持续发送
+            float current_height = sensor_.body_height;
+            bool height_reached = std::abs(current_height - target_h) < 0.02f;
+            
+            if (!s5_crouch_done && !height_reached) {
+                s5_send_counter++;
+                
+                // 每10帧打印一次调试信息
+                if (s5_send_counter % 10 == 0) {
+                    fprintf(stderr, "\033[1;33m[Main] Stage5 调整中: 当前=%.3f 目标=%.2f roll=%.3f 帧数=%d\033[0m\n",
+                            current_height, target_h, target_roll, s5_send_counter);
+                }
+                
+                // des_roll_pitch_height: [roll, pitch, height] 三值一起发
+                cyberdog_msg::msg::YamlParam p;
+                p.name = "des_roll_pitch_height";
+                p.kind = 3;
+                p.is_user = 1;
+                p.vecxd_value[0] = target_roll;  // roll 补偿
+                p.vecxd_value[1] = 0.0;
+                p.vecxd_value[2] = target_h;
+                yaml_pub_->publish(p);
+                // 步高上限
+                cyberdog_msg::msg::YamlParam p2;
+                p2.name = "step_height_max";
+                p2.kind = 1;
+                p2.is_user = 1;
+                p2.double_value = target_step_h;
+                yaml_pub_->publish(p2);
+                
+                // ✅ 超时后重置计数器，继续尝试（防止控制器响应慢）
+                if (s5_send_counter >= 300) {
+                    s5_send_counter = 0;
+                    fprintf(stderr, "\033[1;33m[Main] Stage5 ⚠ 超时重置，继续发送: 当前=%.3f\033[0m\n", current_height);
+                }
+            } else if (height_reached && !s5_crouch_done) {
+                s5_crouch_done = true;
+                fprintf(stderr, "\033[1;32m[Main] Stage5 ✓ 调整完成: height=%.3f roll=%.3f\033[0m\n", 
+                        current_height, target_roll);
+            }
+        }
+
+        // stage6 下台阶参数
+        if (cur_stage_ == 5 && yaml_pub_) {
+            static int s6_send_counter = 0;
+            s6_send_counter++;
+            if (s6_send_counter % 30 == 0) {  // 每30帧发一次
+                cyberdog_msg::msg::YamlParam p;
+                p.name = "downstairs_height_cmd";
+                p.kind = 1;
+                p.is_user = 1;
+                p.double_value = 0.20;
+                yaml_pub_->publish(p);
+
+                cyberdog_msg::msg::YamlParam p2;
+                p2.name = "downstairs_depth";
+                p2.kind = 1;
+                p2.is_user = 1;
+                p2.double_value = -0.075;
+                yaml_pub_->publish(p2);
+
+                cyberdog_msg::msg::YamlParam p3;
+                p3.name = "step_height_max";
+                p3.kind = 1;
+                p3.is_user = 1;
+                p3.double_value = 0.25;
+                yaml_pub_->publish(p3);
+            }
+        }
+
+
 
         if (stages_[cur_stage_]->is_done()) {
 #ifdef DEBUG_STAGE
@@ -356,7 +518,7 @@ private:
 #endif
 
             cur_stage_++;
-            if (cur_stage_ < 6) {
+            if (cur_stage_ < 7) {
 #ifdef DEBUG_STAGE
                 RCLCPP_INFO(get_logger(), "[Stage] switching to stage %d", cur_stage_ + 1);
 #endif
@@ -365,6 +527,10 @@ private:
                     lane_detector_.set_mode(LaneMode::RELAXED);
                 } else {
                     lane_detector_.set_mode(LaneMode::STRICT);
+                }
+                // 切换到 stage6 时重置球距离滤波，避免上一赛段污染
+                if (cur_stage_ == 5) {
+                    ball_detector_.reset_filter();
                 }
                 stages_[cur_stage_]->init();
             } else {
@@ -387,7 +553,7 @@ private:
 
     int  cur_stage_{0};
     bool single_stage_mode_{false};
-    std::unique_ptr<StageBase> stages_[6];
+    std::unique_ptr<StageBase> stages_[7];
 
     rclcpp::TimerBase::SharedPtr timer_;
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr     sub_rgb_;

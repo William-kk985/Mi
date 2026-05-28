@@ -16,6 +16,8 @@ find_package(cv_bridge REQUIRED)
 
 include_directories(include ${OpenCV_INCLUDE_DIRS}
   ${CMAKE_CURRENT_SOURCE_DIR}/../cyberdog_gazebo/include
+  ${CMAKE_CURRENT_SOURCE_DIR}/../../cyberdog_locomotion/common
+  ${CMAKE_CURRENT_SOURCE_DIR}/../../cyberdog_locomotion/common/lcm_type/lcm
 )
 
 set(SOURCES
@@ -30,6 +32,7 @@ set(SOURCES
   src/stages/stage4.cpp
   src/stages/stage5.cpp
   src/stages/stage6.cpp
+  src/stages/stage7.cpp
 )
 
 add_executable(race_controller ${SOURCES})
