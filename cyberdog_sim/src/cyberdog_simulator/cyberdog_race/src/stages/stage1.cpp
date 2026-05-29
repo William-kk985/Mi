@@ -14,6 +14,7 @@ void Stage1::init() {
     lane_lost_frames_ = 0;
     motion_.locomotion();
     motion_.set_pitch(-0.26f);
+    motion_.set_step_height(0.25f, 0.25f);
 
     #ifdef DEBUG_STAGE
     RCLCPP_INFO(rclcpp::get_logger("stage1"), "Stage1 init");

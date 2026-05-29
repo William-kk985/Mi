@@ -10,7 +10,7 @@ constexpr float BRIDGE_SPEED_SLOPE = 0.4f;
 constexpr float LATERAL_COMPENSATION = 0.30f;
 constexpr float LATERAL_COMPENSATION_STRONG = 0.25f;
 
-constexpr float WP1_Y = 12.35f;
+constexpr float WP1_Y = 12.40f;
 constexpr float WP2_X = -0.6f;
 constexpr float WP3_Y = 15.40f;
 constexpr float WP3_THRESH = 0.12f;

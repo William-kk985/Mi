@@ -172,7 +172,7 @@ void Stage6::run() {
         break;
     }
 
-    // ── ⑦ 原地转向y负偏x正10° ──
+    // ── ⑦ 原地转向西偏南10° ──
     case State::TURN_Y_NEG: {
         float yaw_err = norm_yaw(M_PI - 0.1745f - sensor_.yaw);  // 西偏南10°
         if (std::abs(yaw_err) > 0.05f) {
@@ -181,7 +181,7 @@ void Stage6::run() {
             motion_.stop();
             state_ = State::GO_TO_WP4;
 #ifdef DEBUG_STAGE
-            fprintf(stderr, "\033[1;34m[Stage6] ✓ 转向y负偏x正20°完成\033[0m\n");
+            fprintf(stderr, "\033[1;34m[Stage6] ✓ 转向西完成\033[0m\n");
 #endif
         }
         break;
@@ -216,7 +216,7 @@ void Stage6::run() {
     case State::TURN_X_POS_SLOW: {
         float yaw_err = norm_yaw(0.0f - sensor_.yaw);
         if (std::abs(yaw_err) > 0.05f) {
-            float cmd = std::max(0.08f, std::min(0.25f, std::abs(yaw_err) * 0.4f));
+            float cmd = std::max(0.08f, std::min(1.0f, std::abs(yaw_err) * 0.4f));
             motion_.set_velocity(0.f, 0.f, yaw_err > 0 ? cmd : -cmd);
         } else {
             motion_.stop();

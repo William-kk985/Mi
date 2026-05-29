@@ -26,10 +26,10 @@ private:
     static constexpr float WP1_Y = 13.0f;   // 第一个路点 Y
     static constexpr float WP2_X = 2.35f;   // 第二个路点 X
     static constexpr float WP2_Y = 14.75f;  // 第二个路点 Y
-    static constexpr float WP3_X = 0.4f;   // 第三个路点 X
+    static constexpr float WP3_X = 0.35f;   // 第三个路点 X
     static constexpr float WP3_Y = 15.0f;   // 第三个路点 Y
-    static constexpr float WP4_X = 0.15f;   // 第四个路点 X
-    static constexpr float WP4_Y = 13.0f;   // 第四个路点 Y
+    static constexpr float WP4_X = 0.25f;   // 第四个路点 X
+    static constexpr float WP4_Y = 13.15f;   // 第四个路点 Y
     static constexpr float WP5_X = 2.35f;   // 第五个路点 X
     static constexpr float WP5_Y = 13.0f;   // 第五个路点 Y
 
