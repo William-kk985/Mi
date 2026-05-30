@@ -34,7 +34,7 @@ void Stage6::run() {
         }
         motion_.recovery();  // gamepad b=1 → kRecoveryStand
         turn_frames_++;
-        if (turn_frames_ > 200) {  // 等2秒完成恢复
+        if (turn_frames_ > 300) {  // 等3秒完成恢复
             motion_.locomotion();
             state_ = State::TURN_X_NEG_INIT;
             turn_frames_ = 0;
@@ -245,15 +245,40 @@ void Stage6::run() {
             }
         } else {
             motion_.stop();
-            state_ = State::FINAL_LIE_DOWN;
+            state_ = State::GO_TO_WP6;
 #ifdef DEBUG_STAGE
-            fprintf(stderr, "\033[1;34m[Stage6] ✓ 到达(%.2f,%.2f)，趴下\033[0m\n", WP5_X, WP5_Y);
+            fprintf(stderr, "\033[1;34m[Stage6] ✓ 到达(%.2f,%.2f)，走向(%.1f,%.1f)\033[0m\n", WP5_X, WP5_Y, WP6_X, WP6_Y);
 #endif
         }
         break;
     }
 
-    // ── ⑬ 最后趴下 ──
+    // ── ⑬ 走到 (3.1, 13.0) ──
+    case State::GO_TO_WP6: {
+        float dx = WP6_X - sensor_.odom_x;
+        float dy = WP6_Y - sensor_.odom_y;
+        float dist = std::sqrt(dx*dx + dy*dy);
+        if (dist > 0.15f) {
+            float target_yaw = std::atan2(dy, dx);
+            float yaw_err = norm_yaw(target_yaw - sensor_.yaw);
+            if (std::abs(yaw_err) > 0.052f) {
+                float cmd = std::max(0.1f, std::min(0.4f, std::abs(yaw_err) * 0.6f));
+                motion_.set_velocity(0.f, 0.f, yaw_err > 0 ? cmd : -cmd);
+            } else {
+                float yaw_cmd = std::max(-0.5f, std::min(0.5f, KP_IMU * yaw_err));
+                motion_.set_velocity(SPEED, 0.f, yaw_cmd);
+            }
+        } else {
+            motion_.stop();
+            state_ = State::FINAL_LIE_DOWN;
+#ifdef DEBUG_STAGE
+            fprintf(stderr, "\033[1;34m[Stage6] ✓ 到达(%.2f,%.2f)，趴下\033[0m\n", WP6_X, WP6_Y);
+#endif
+        }
+        break;
+    }
+
+    // ── ⑭ 最后趴下 ──
     case State::FINAL_LIE_DOWN: {
         motion_.lie_down();
         done_ = true;

@@ -71,6 +71,6 @@ private:
         {2.15f, 9.75f},
     };
     static constexpr float WP_THRESH = 0.3f;
-    static constexpr float SPEED     = 0.75f;
+    static constexpr float SPEED     = 0.82f;
     static constexpr float KP_IMU    = 0.8f;
 };

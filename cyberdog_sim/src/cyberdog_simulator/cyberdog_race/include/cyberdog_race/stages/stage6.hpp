@@ -32,6 +32,8 @@ private:
     static constexpr float WP4_Y = 13.15f;   // 第四个路点 Y
     static constexpr float WP5_X = 2.35f;   // 第五个路点 X
     static constexpr float WP5_Y = 13.0f;   // 第五个路点 Y
+    static constexpr float WP6_X = 3.1f;    // 第六个路点 X
+    static constexpr float WP6_Y = 13.0f;   // 第六个路点 Y
 
     enum class State {
         STAND,              // 起立
@@ -45,6 +47,7 @@ private:
         GO_TO_WP4,          // 走到(0.15,13.0)
         TURN_X_POS_SLOW,    // 慢速转向x正方向
         GO_TO_WP5,          // 走到(2.35,13.0)
+        GO_TO_WP6,          // 走到(3.1,13.0)
         FINAL_LIE_DOWN      // 最后趴下
     } state_{State::STAND};
 };

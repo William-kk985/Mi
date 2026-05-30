@@ -281,7 +281,7 @@ void Stage4::run() {
         } else {
             motion_.stop();
 #ifdef DEBUG_STAGE
-            fprintf(stderr, "\033[1;34m[Stage4] ✓ 转向y正方向完成，走向(0.9,9.75)\033[0m\n");
+            fprintf(stderr, "\033[1;34m[Stage4] ✓ 转向y正方向完成，走向(1.25,9.75)\033[0m\n");
 #endif
             state_ = State::EXIT_MOVE4;
         }
@@ -289,7 +289,7 @@ void Stage4::run() {
     }
 
     case State::EXIT_MOVE4: {
-        float dx = 0.9f - sensor_.odom_x;
+        float dx = 1.25f - sensor_.odom_x;
         float dy = 9.75f - sensor_.odom_y;
         float dist = std::sqrt(dx*dx + dy*dy);
         if (dist > 0.2f) {
@@ -300,7 +300,7 @@ void Stage4::run() {
         } else {
             motion_.stop();
 #ifdef DEBUG_STAGE
-            fprintf(stderr, "\033[1;34m[Stage4] ✓ 到达(0.9,9.75)，开始识别蓝球\033[0m\n");
+            fprintf(stderr, "\033[1;34m[Stage4] ✓ 到达(1.25,9.75)，开始识别蓝球\033[0m\n");
 #endif
             detect_wait_ = 0;
             state_ = State::DETECT_BLUE;

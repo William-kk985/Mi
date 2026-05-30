@@ -24,7 +24,6 @@ private:
         SCAN_RIGHT_CHECK,   // 停下识别球
         SCAN_RIGHT_RETURN,  // 转回y正方向，右扫结束
         HIT_BALL,
-        BACK_TO_PATH,
         DONE
     } state_{State::MOVE_TO_POINT};
 
@@ -42,7 +41,7 @@ private:
 
     // 当前导航目标
     float target_x_{0}, target_y_{0}, target_yaw_{0};
-    float start_x_{0}, start_y_{0};  // 冲击前记录位置，用于退回
+    float start_x_{0}, start_y_{0};  // 冲击前记录位置（保留但不再使用）
 
     // 扫描状态
     float scan_start_yaw_{0};
@@ -63,14 +62,14 @@ private:
     static constexpr float YAW_THRESH = 0.05f;
     static constexpr float BALL_DIST_THRESH = 0.80f;
     static constexpr float SCAN_ANGLE       = 0.7f;
-    static constexpr int   SCAN_CONFIRM_FRAMES = 10;
-    static constexpr int   SCAN_WAIT_FRAMES    = 200;  // 停下等待200帧（2秒）
+    static constexpr int   SCAN_CONFIRM_FRAMES = 8;  //确认帧数 10
+    static constexpr int   SCAN_WAIT_FRAMES    = 100;  // 停下等待200帧（2秒）
 
     // 运动参数
-    static constexpr float MOVE_SPEED       = 0.8f;
-    static constexpr float TURN_SPEED       = 0.5f;  // 路径点转向速度
-    static constexpr float SCAN_TURN_SPEED  = 0.2f;  // 扫描时转向速度（慢，方便识别）
-    static constexpr float HIT_SPEED        = 0.5f;
+    static constexpr float MOVE_SPEED       = 1.0f; //0.8
+    static constexpr float TURN_SPEED       = 0.7f;  // 路径点转向速度0.5
+    static constexpr float SCAN_TURN_SPEED  = 0.25f;  // 扫描时转向速度（慢，方便识别）0.2
+    static constexpr float HIT_SPEED        = 0.8f; //0.5
 
     void navigate_to(float tx, float ty);
     void turn_to(float target_yaw);
