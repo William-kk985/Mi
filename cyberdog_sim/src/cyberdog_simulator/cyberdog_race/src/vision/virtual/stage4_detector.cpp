@@ -1,4 +1,4 @@
-#include "cyberdog_race/vision/stage4_detector.hpp"
+#include "cyberdog_race/vision/virtual/stage4_detector.hpp"
 #include <cmath>
 
 Stage4Result Stage4Detector::detect(const cv::Mat& frame) {

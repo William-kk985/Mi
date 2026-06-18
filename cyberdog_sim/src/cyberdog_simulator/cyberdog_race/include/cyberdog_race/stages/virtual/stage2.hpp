@@ -8,7 +8,7 @@ public:
     using StageBase::StageBase;
     void init() override;
     void run() override;
-    bool is_done() override;
+    [[nodiscard]] bool is_done() override;
 
 private:
     bool done_{false};
@@ -34,20 +34,19 @@ private:
         bool scan;        // 是否在此点扫描
     };
 
-    // 路径点序列
-    static constexpr int NUM_WP = 12;
+    // 路径点序列（实际使用7个，见 init()）
+    static constexpr int NUM_WP = 7;
+    static_assert(NUM_WP <= 12, "路径点数组超出预期上限，请检查 NUM_WP");
     WayPoint waypoints_[NUM_WP];
     int wp_idx_{0};
 
     // 当前导航目标
     float target_x_{0}, target_y_{0}, target_yaw_{0};
-    float start_x_{0}, start_y_{0};  // 冲击前记录位置（保留但不再使用）
 
     // 扫描状态
     float scan_start_yaw_{0};
     bool  scan_found_{false};
     bool  scan_done_{false};
-    int   scan_dir_{1};
     int   scan_wait_{0};
     int   scan_confirm_{0};  // 转动过程中连续检测到球的帧数
     bool  hit_started_{false};
@@ -62,7 +61,6 @@ private:
     static constexpr float YAW_THRESH = 0.05f;
     static constexpr float BALL_DIST_THRESH = 0.80f;
     static constexpr float SCAN_ANGLE       = 0.7f;
-    static constexpr int   SCAN_CONFIRM_FRAMES = 8;  //确认帧数 10
     static constexpr int   SCAN_WAIT_FRAMES    = 100;  // 停下等待200帧（2秒）
 
     // 运动参数
@@ -73,8 +71,7 @@ private:
 
     void navigate_to(float tx, float ty);
     void turn_to(float target_yaw);
-    bool reached_pos(float tx, float ty);
-    bool reached_yaw(float target_yaw);
-    bool ball_in_arena();
+    [[nodiscard]] bool reached_pos(float tx, float ty);
+    [[nodiscard]] bool reached_yaw(float target_yaw);
     void next_waypoint();
 };

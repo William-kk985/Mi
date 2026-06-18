@@ -1,4 +1,4 @@
-#include "cyberdog_race/vision/ball_detector.hpp"
+#include "cyberdog_race/vision/virtual/ball_detector.hpp"
 #include <cmath>
 
 BallResult BallDetector::detect(const cv::Mat& frame, BallColor target) {

@@ -1,7 +1,7 @@
 #pragma once
 #include <rclcpp/rclcpp.hpp>
 #include "cyberdog_race/stages/stage_base.hpp"
-#include "cyberdog_race/vision/stage4_detector.hpp"
+#include "cyberdog_race/vision/virtual/stage4_detector.hpp"
 
 // 第四赛段：深隧寻珍
 // 路径点导航 → 蹲下识别足球 → 蛇形路径 → 识别蓝球 → 蹲下穿越 → 退出
@@ -10,7 +10,9 @@ public:
     using StageBase::StageBase;
     void init() override;
     void run() override;
-    bool is_done() override;
+    [[nodiscard]] bool is_done() override;
+    float get_desired_height() const override;
+    float get_desired_step_height() const override;
 
     Stage4Result vision_result;
     bool crouch_active{false};

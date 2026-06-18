@@ -35,7 +35,7 @@ sleep 3
 
 gnome-terminal --title="Gazebo" -- bash -c "docker exec -it $CONTAINER_NAME bash -c '$SETUP && ros2 launch cyberdog_gazebo race_gazebo.launch.py'; bash"
 
-gnome-terminal --title="Control" -- bash -c "docker exec -it $CONTAINER_NAME bash -c 'until ls /dev/shm/development-simulator 2>/dev/null; do sleep 1; done && $SETUP && ros2 launch cyberdog_gazebo cyberdog_control_launch.py'; bash"
+gnome-terminal --title="Control" -- bash -c "docker exec -it $CONTAINER_NAME bash -c 'cnt=0; until ls /dev/shm/development-simulator 2>/dev/null; do sleep 1; cnt=\$((cnt+1)); if [ \$cnt -ge 30 ]; then echo \"超时：等待 development-simulator 超时(30s)，继续启动...\"; break; fi; done && $SETUP && ros2 launch cyberdog_gazebo cyberdog_control_launch.py'; bash"
 
 gnome-terminal --title="Rviz" -- bash -c "sleep 5 && docker exec -it $CONTAINER_NAME bash -c '$SETUP && ros2 launch cyberdog_visual cyberdog_visual.launch.py'; bash"
 

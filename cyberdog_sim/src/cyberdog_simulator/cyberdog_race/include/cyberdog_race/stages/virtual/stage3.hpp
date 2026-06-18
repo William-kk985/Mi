@@ -9,7 +9,7 @@ public:
     using StageBase::StageBase;
     void init() override;
     void run() override;
-    bool is_done() override;
+    [[nodiscard]] bool is_done() override;
 
 private:
     bool done_{false};

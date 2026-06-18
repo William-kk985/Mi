@@ -1,4 +1,4 @@
-#include "cyberdog_race/stages/stage1.hpp"
+#include "cyberdog_race/stages/virtual/stage1.hpp"
 #include "cyberdog_race/debug_config.hpp"
 #include <rclcpp/rclcpp.hpp>
 #include <cmath>

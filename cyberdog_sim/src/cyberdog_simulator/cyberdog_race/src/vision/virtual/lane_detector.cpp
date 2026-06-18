@@ -1,4 +1,4 @@
-#include "cyberdog_race/vision/lane_detector.hpp"
+#include "cyberdog_race/vision/virtual/lane_detector.hpp"
 #include <numeric>
 
 LaneResult LaneDetector::detect(const cv::Mat& frame) {

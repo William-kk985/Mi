@@ -1,4 +1,4 @@
-#include "cyberdog_race/stages/stage4.hpp"
+#include "cyberdog_race/stages/virtual/stage4.hpp"
 #include "cyberdog_race/debug_config.hpp"
 #include <rclcpp/rclcpp.hpp>
 #include <cmath>
@@ -662,6 +662,14 @@ void Stage4::run() {
 #endif
         break;
     }
+}
+
+float Stage4::get_desired_height() const {
+    return crouch_active ? CROUCH_HEIGHT : 0.25f;
+}
+
+float Stage4::get_desired_step_height() const {
+    return crouch_active ? 0.03f : 0.20f;
 }
 
 bool Stage4::is_done() { return done_; }

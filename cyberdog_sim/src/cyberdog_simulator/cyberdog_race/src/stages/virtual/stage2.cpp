@@ -1,4 +1,4 @@
-#include "cyberdog_race/stages/stage2.hpp"
+#include "cyberdog_race/stages/virtual/stage2.hpp"
 #include "cyberdog_race/debug_config.hpp"
 #include <rclcpp/rclcpp.hpp>
 #include <cmath>
@@ -130,8 +130,6 @@ void Stage2::run() {
 
             if (scan_confirm_ > 0) {
                 scan_found_ = true;
-                start_x_ = sensor_.odom_x;
-                start_y_ = sensor_.odom_y;
                 state_   = State::HIT_BALL;
                 LOG_GREENF("✓ 左扫转动中发现橙球！dist=%.2f", sensor_.ball_dist);
             } else {
@@ -148,8 +146,6 @@ void Stage2::run() {
         if (sensor_.ball_found && sensor_.ball_dist < BALL_DIST_THRESH) {
             scan_wait_  = 0;
             scan_found_ = true;
-            start_x_ = sensor_.odom_x;
-            start_y_ = sensor_.odom_y;
             state_   = State::HIT_BALL;
             LOG_GREENF("✓ 左扫发现橙球！dist=%.2f", sensor_.ball_dist);
         } else if (scan_wait_ >= SCAN_WAIT_FRAMES) {
@@ -192,8 +188,6 @@ void Stage2::run() {
 
             if (scan_confirm_ > 0) {
                 scan_found_ = true;
-                start_x_ = sensor_.odom_x;
-                start_y_ = sensor_.odom_y;
                 state_   = State::HIT_BALL;
                 LOG_GREENF("✓ 右扫转动中发现橙球！dist=%.2f", sensor_.ball_dist);
             } else {
@@ -210,8 +204,6 @@ void Stage2::run() {
         if (sensor_.ball_found && sensor_.ball_dist < BALL_DIST_THRESH) {
             scan_wait_  = 0;
             scan_found_ = true;
-            start_x_ = sensor_.odom_x;
-            start_y_ = sensor_.odom_y;
             state_   = State::HIT_BALL;
             LOG_GREENF("✓ 右扫发现橙球！dist=%.2f", sensor_.ball_dist);
         } else if (scan_wait_ >= SCAN_WAIT_FRAMES) {
@@ -422,19 +414,3 @@ void Stage2::next_waypoint() {
 #endif
 }
 
-bool Stage2::ball_in_arena() {
-    float ball_angle = sensor_.yaw + sensor_.ball_x * 0.5f;
-    float ball_wx = sensor_.odom_x + sensor_.ball_dist * std::cos(ball_angle);
-    float ball_wy = sensor_.odom_y + sensor_.ball_dist * std::sin(ball_angle);
-
-    bool in_x = ball_wx > -0.7f && ball_wx < 3.5f;
-    bool in_y = ball_wy > 1.0f  && ball_wy < 4.0f;
-
-#ifdef DEBUG_SENSOR
-    RCLCPP_INFO(rclcpp::get_logger("stage2"),
-                "ball_in_arena: wx=%.2f wy=%.2f in=%d",
-                ball_wx, ball_wy, in_x && in_y);
-#endif
-
-    return in_x && in_y;
-}

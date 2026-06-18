@@ -8,7 +8,8 @@ public:
     using StageBase::StageBase;
     void init() override;
     void run() override;
-    bool is_done() override;
+    [[nodiscard]] bool is_done() override;
+    float get_desired_step_height() const override { return 0.35f; }
 
 private:
     bool  done_{false};

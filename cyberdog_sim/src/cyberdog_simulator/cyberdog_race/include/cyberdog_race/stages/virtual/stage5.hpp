@@ -7,8 +7,11 @@ public:
     using StageBase::StageBase;
     void init() override;
     void run() override;
-    bool is_done() override;
-    bool needs_rc_mode() const { return rc_mode_needed_; }
+    [[nodiscard]] bool is_done() override;
+    bool needs_rc_mode() const override { return rc_mode_needed_; }
+    float get_desired_height() const override;
+    float get_desired_roll() const override;
+    float get_desired_step_height() const override;
 
     // main.cpp 兼容字段（保持默认值即可）
     bool  crouch_active{false};

@@ -10,8 +10,9 @@ public:
     using StageBase::StageBase;
     void init() override;
     void run() override;
-    bool is_done() override;
-    bool needs_rc_mode() const { return rc_mode_needed_; }
+    [[nodiscard]] bool is_done() override;
+    bool needs_rc_mode() const override { return rc_mode_needed_; }
+    std::vector<ExtraParam> get_extra_params() const override;
 
 private:
     bool done_{false};

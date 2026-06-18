@@ -22,17 +22,18 @@ include_directories(include ${OpenCV_INCLUDE_DIRS}
 
 set(SOURCES
   src/main.cpp
+  src/race_controller.cpp
+  src/behavior_test.cpp
   src/motion_ctrl.cpp
-  src/vision/lane_detector.cpp
-  src/vision/ball_detector.cpp
-  src/vision/stage4_detector.cpp
-  src/stages/stage1.cpp
-  src/stages/stage2.cpp
-  src/stages/stage3.cpp
-  src/stages/stage4.cpp
-  src/stages/stage5.cpp
-  src/stages/stage6.cpp
-  src/stages/stage7.cpp
+  src/vision/virtual/lane_detector.cpp
+  src/vision/virtual/ball_detector.cpp
+  src/vision/virtual/stage4_detector.cpp
+  src/stages/virtual/stage1.cpp
+  src/stages/virtual/stage2.cpp
+  src/stages/virtual/stage3.cpp
+  src/stages/virtual/stage4.cpp
+  src/stages/virtual/stage5.cpp
+  src/stages/virtual/stage6.cpp
 )
 
 add_executable(race_controller ${SOURCES})

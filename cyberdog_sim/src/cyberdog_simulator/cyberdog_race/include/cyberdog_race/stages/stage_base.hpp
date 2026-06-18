@@ -1,40 +1,9 @@
 #pragma once
 #include <cmath>
+#include <string>
+#include <vector>
 #include "cyberdog_race/motion_ctrl.hpp"
-
-// 传感器数据共享结构，由主线程填充
-struct SensorData {
-    // 视觉结果（视觉线程写，主线程读）
-    float lane_offset{0.0f};    // 黄线中心偏差，正=偏右
-    float lane_curvature{0.0f}; // 弯曲程度（斜率标准差）
-    bool  lane_valid{false};    // 黄线是否有效
-    bool  lane_both_sides{false}; // 是否双边检测
-
-    float ball_x{0.0f};        // 球在图像中的x坐标（归一化）
-    float ball_dist{0.0f};     // 球距离（米）
-    bool  ball_found{false};   // 是否找到目标球
-
-    float blue_ball_x{0.0f};   // 蓝球x坐标（归一化）
-    float blue_ball_dist{0.0f};
-    bool  blue_ball_found{false};
-
-    float white_ball_x{0.0f};    // 白球x坐标（归一化）
-    float white_ball_dist{0.0f};
-    bool  white_ball_found{false};
-
-    // IMU
-    float yaw{0.0f};           // 当前偏航角（rad）
-    float pitch{0.0f};
-    float roll{0.0f};
-
-    // 里程计
-    float odom_x{0.0f};
-    float odom_y{0.0f};
-    float body_height{0.25f};  // 身体离地高度（m）
-
-    // Lidar：前方最近障碍距离
-    float lidar_front{10.0f};
-};
+#include "cyberdog_race/sensor_data.hpp"
 
 class StageBase {
 public:
@@ -44,7 +13,16 @@ public:
 
     virtual void init() = 0;
     virtual void run() = 0;
-    virtual bool is_done() = 0;
+    [[nodiscard]] virtual bool is_done() = 0;
+
+    // ── 参数查询：赛段按需 override，main.cpp 统一下发 ──
+    virtual float get_desired_height()      const { return 0.25f; }
+    virtual float get_desired_roll()        const { return 0.0f; }
+    virtual float get_desired_step_height()  const { return 0.20f; }
+    virtual bool  needs_rc_mode()           const { return false; }
+
+    struct ExtraParam { std::string name; double value; };
+    virtual std::vector<ExtraParam> get_extra_params() const { return {}; }
 
 protected:
     MotionCtrl&  motion_;

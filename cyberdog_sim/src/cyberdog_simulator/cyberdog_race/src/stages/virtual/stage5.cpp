@@ -1,4 +1,4 @@
-#include "cyberdog_race/stages/stage5.hpp"
+#include "cyberdog_race/stages/virtual/stage5.hpp"
 #include "cyberdog_race/debug_config.hpp"
 #include <rclcpp/rclcpp.hpp>
 #include <cmath>
@@ -7,8 +7,8 @@
 constexpr float BRIDGE_SPEED_FLAT  = 0.4f;
 constexpr float BRIDGE_SPEED_SLOPE = 0.4f;
 
-constexpr float LATERAL_COMPENSATION = 0.30f;
-constexpr float LATERAL_COMPENSATION_STRONG = 0.25f;
+constexpr float LATERAL_COMPENSATION = 0.25f;       // 普通横向补偿
+constexpr float LATERAL_COMPENSATION_STRONG = 0.30f; // 强横向补偿（转弯时防侧滑）
 
 constexpr float WP1_Y = 12.40f;
 constexpr float WP2_X = -0.6f;
@@ -244,7 +244,9 @@ void Stage5::run() {
         } else {
             state_ = State::JUMP_EXECUTE;
             jump_frames_ = 0;
+#ifdef DEBUG_STAGE
             fprintf(stderr, "\033[1;33m[Stage5] 到(3.2,13.3)，开始跳跃\033[0m\n");
+#endif
         }
         break;
     }
@@ -258,22 +260,30 @@ void Stage5::run() {
         if (jump_frames_ == 0) {
             motion_.jump();
             rc_mode_needed_ = true;
+#ifdef DEBUG_STAGE
             fprintf(stderr, "\033[1;35m[Stage5] 🚀 第1跳\033[0m\n");
+#endif
         }
         jump_frames_++;
         motion_.send_lcm_mode(12);
         if (jump_frames_ == 250) {
             motion_.jump();
+#ifdef DEBUG_STAGE
             fprintf(stderr, "\033[1;35m[Stage5] 🚀 第2跳\033[0m\n");
+#endif
         }
         if (jump_frames_ == 500) {
             motion_.jump();
+#ifdef DEBUG_STAGE
             fprintf(stderr, "\033[1;35m[Stage5] 🚀 第3跳\033[0m\n");
+#endif
         }
         if (jump_frames_ > 750) {
             rc_mode_needed_ = false;
             done_ = true;
+#ifdef DEBUG_STAGE
             fprintf(stderr, "\033[1;32m[Stage5] ✓ 完成\033[0m\n");
+#endif
         }
         break;
     }
@@ -283,4 +293,16 @@ void Stage5::run() {
 
 bool Stage5::is_done() {
     return done_;
+}
+
+float Stage5::get_desired_height() const {
+    return crouch_active ? CROUCH_HEIGHT : 0.25f;
+}
+
+float Stage5::get_desired_roll() const {
+    return roll_active ? target_roll : 0.0f;
+}
+
+float Stage5::get_desired_step_height() const {
+    return crouch_active ? 0.15f : 0.20f;
 }
