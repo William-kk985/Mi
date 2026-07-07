@@ -75,5 +75,5 @@ void MotionCtrl::set_step_height(float left, float right) {
     memset(&lcm_cmd_, 0, sizeof(lcm_cmd_));
     lcm_cmd_.step_height[0] = left_clamped;
     lcm_cmd_.step_height[1] = right_clamped;
-    lcm_.publish("robot_control_cmd", &lcm_cmd_);
+    ctrl_lcm_.publish("robot_control_cmd", &lcm_cmd_);  // P2 fix: 与其他 robot_control_cmd 统一用 7671 端口
 }

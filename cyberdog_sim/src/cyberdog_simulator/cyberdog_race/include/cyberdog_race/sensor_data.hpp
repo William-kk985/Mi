@@ -30,6 +30,7 @@ struct SensorData {
     float odom_y{0.0f};
     float body_height{0.25f};  // 身体离地高度（m）
 
-    // Lidar：前方最近障碍距离
+    // Lidar：前方最近障碍距离 + 全扫描数据
     float lidar_front{10.0f};
+    std::vector<float> lidar_ranges;  // 完整扫描点（180点，用于可视化）
 };

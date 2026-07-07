@@ -1,0 +1,524 @@
+#include "cyberdog_race/vision/real/web_streamer.hpp"
+
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+#include <cstdio>
+#include <cstring>
+#include <sstream>
+
+// ═══════════════════════════════════════════════════════════
+// HTML 交互式双面板页面
+//   · 左面板固定原始画面  · 右面板 Tab 切换标注/雷达
+//   · [+] 放大面板 / [-] 还原
+// ═══════════════════════════════════════════════════════════
+static const char* kHtmlPage = R"raw(
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CyberDog 调试面板</title>
+<style>
+  :root { --bg:#0d1117; --panel:#161b22; --border:#30363d; --accent:#e94560;
+          --green:#3fb950; --blue:#58a6ff; --text:#c9d1d9; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font-family:'Segoe UI',sans-serif;
+         padding:8px; min-height:100vh; }
+  .topbar { display:flex; gap:16px; align-items:center; padding:6px 12px;
+            background:var(--panel); border:1px solid var(--border); border-radius:6px;
+            margin-bottom:8px; font-size:0.82em; flex-wrap:wrap; }
+  .topbar .st { color:var(--accent); font-weight:bold; }
+  .main { display:flex; gap:8px; height:calc(100vh - 60px); transition:all 0.3s; }
+  .panel { flex:1; background:var(--panel); border:1px solid var(--border);
+           border-radius:8px; overflow:hidden; display:flex; flex-direction:column;
+           transition:flex 0.35s ease; min-width:0; }
+  .panel.full { flex:100; }
+  .panel.mini { flex:0.06; min-width:40px; }
+  .panel.mini .panel-body, .panel.mini .fps-bar { display:none; }
+  .panel.mini .panel-hdr { writing-mode:vertical-lr; text-orientation:mixed; }
+  .panel.mini .panel-hdr .hdr-right { display:none; }
+  .panel-hdr { display:flex; align-items:center; justify-content:space-between;
+               padding:6px 10px; background:#1c2333; border-bottom:1px solid var(--border);
+               flex-shrink:0; min-height:34px; }
+  .panel-hdr .hdr-title { font-size:0.85em; font-weight:600; white-space:nowrap; }
+  .panel-hdr .hdr-right { display:flex; align-items:center; gap:6px; }
+  .tab { background:none; border:1px solid transparent; color:#8b949e;
+         padding:3px 8px; border-radius:4px; cursor:pointer; font-size:0.78em;
+         white-space:nowrap; transition:all 0.15s; }
+  .tab:hover { color:var(--text); border-color:var(--border); }
+  .tab.on { color:var(--green); border-color:var(--green); background:#1a3020; }
+  .btn-exp { background:none; border:1px solid var(--border); color:#8b949e;
+             cursor:pointer; font-size:0.85em; padding:2px 7px; border-radius:4px;
+             line-height:1; transition:all 0.15s; }
+  .btn-exp:hover { color:var(--text); border-color:var(--accent); }
+  .panel-body { flex:1; overflow:hidden; position:relative; background:#000; }
+  .panel-body img { width:100%; height:100%; object-fit:contain; display:block; }
+  .fps-bar { font-size:0.72em; padding:3px 10px; background:#0d1b36;
+             color:var(--green); border-top:1px solid var(--border); flex-shrink:0; }
+  .placeholder { display:flex; align-items:center; justify-content:center;
+                 height:100%; color:#30363d; font-size:1.1em; }
+</style>
+</head>
+<body>
+<div class="topbar" id="topbar">
+  <span>🐕 CyberDog</span>
+  <span>赛道:<span class="st" id="st-stage">-</span></span>
+  <span>yaw:<span id="st-yaw">-</span></span>
+  <span>odom:(<span id="st-ox">-</span>,<span id="st-oy">-</span>)</span>
+  <span>身高:<span id="st-h">-</span>m</span>
+  <span style="color:#8b949e;margin-left:auto" id="st-time">--:--:--</span>
+</div>
+<div class="main" id="main">
+  <!-- 左面板：原始画面 -->
+  <div class="panel" id="pnl-left">
+    <div class="panel-hdr">
+      <span class="hdr-title">📷 原始画面</span>
+      <span class="hdr-right">
+        <button class="btn-exp" onclick="togglePanel('left')" title="放大/还原">⛶</button>
+      </span>
+    </div>
+    <div class="panel-body"><img id="img-raw" src="/stream"></div>
+    <div class="fps-bar" id="fps-raw">等待…</div>
+  </div>
+  <!-- 右面板：标注 / 雷达 -->
+  <div class="panel" id="pnl-right">
+    <div class="panel-hdr">
+      <span class="hdr-title" id="right-title">🔍 标注画面</span>
+      <span class="hdr-right">
+        <button class="tab on" data-tab="debug" onclick="switchTab(this)">🔍 标注</button>
+        <button class="tab" data-tab="lidar" onclick="switchTab(this)">📡 雷达</button>
+        <button class="tab" data-tab="track" onclick="switchTab(this)">🗺️ 轨迹</button>
+        <button class="tab" data-tab="telem" onclick="switchTab(this)">📊 遥测</button>
+        <button class="tab" data-tab="d435" onclick="switchTab(this)">📏 D435</button>
+        <button class="btn-exp" onclick="togglePanel('right')" title="放大/还原">⛶</button>
+      </span>
+    </div>
+    <div class="panel-body"><img id="img-right" src="/stream/debug"></div>
+    <div class="fps-bar" id="fps-right">等待…</div>
+  </div>
+</div>
+<script>
+const streams={debug:'/stream/debug',lidar:'/stream/lidar',
+  track:'/stream/track',telem:'/stream/telemetry',d435:'/stream/d435'};
+function switchStream(){
+  const sel=document.getElementById('stream-sel');
+  const v=sel.value, opt=sel.options[sel.selectedIndex];
+  document.getElementById('right-title').textContent=opt.text;
+  document.getElementById('img-right').src=streams[v];
+  resetFPS('right');
+}
+let expanded=null;
+function togglePanel(side){
+  const L=document.getElementById('pnl-left'),R=document.getElementById('pnl-right');
+  if(expanded===side){L.className='panel';R.className='panel';expanded=null;}
+  else{if(side==='left'){L.className='panel full';R.className='panel mini';}
+       else{R.className='panel full';L.className='panel mini';}
+       expanded=side;}
+}
+const fps={raw:{last:0,frames:0},right:{last:0,frames:0}};
+function resetFPS(k){fps[k].last=0;fps[k].frames=0;}
+function trackFPS(imgId,labelId,key){
+  const el=document.getElementById(labelId);
+  document.getElementById(imgId).addEventListener('load',()=>{
+    const f=fps[key];f.frames++;
+    const now=performance.now();
+    if(now-f.last>=1000){
+      el.textContent='FPS:'+f.frames+' | ~'+
+        ((now-f.last)/f.frames).toFixed(0)+'ms';
+      f.frames=0;f.last=now;
+    }
+  });
+}
+trackFPS('img-raw','fps-raw','raw');
+trackFPS('img-right','fps-right','right');
+// 顶部时钟
+setInterval(()=>{document.getElementById('st-time').textContent=
+  new Date().toLocaleTimeString();},1000);
+// 遥测轮询（占位，后续接 /api/telemetry）
+setInterval(()=>{fetch('/api/telemetry').then(r=>r.json()).then(d=>{
+  if(d.stage)document.getElementById('st-stage').textContent=d.stage;
+  if(d.yaw!=null)document.getElementById('st-yaw').textContent=d.yaw.toFixed(2);
+  if(d.ox!=null)document.getElementById('st-ox').textContent=d.ox.toFixed(2);
+  if(d.oy!=null)document.getElementById('st-oy').textContent=d.oy.toFixed(2);
+  if(d.height!=null)document.getElementById('st-h').textContent=d.height.toFixed(2);
+}).catch(()=>{});},500);
+</script>
+</body>
+</html>
+)raw";
+
+// ═══════════════════════════════════════════════════════════
+// 底层 I/O 辅助
+// ═══════════════════════════════════════════════════════════
+
+static std::string read_line(int fd) {
+    std::string line;
+    char c;
+    int count = 0;
+    while (count < 4096 && read(fd, &c, 1) == 1) {  // P7: 防慢速/恶意客户端拖死 accept
+        count++;
+        if (c == '\r') continue;
+        if (c == '\n') break;
+        line += c;
+    }
+    return line;
+}
+
+static void send_header(int fd, int code, const char* status,
+                        const char* content_type, size_t content_len = 0) {
+    char buf[512];
+    int n = snprintf(buf, sizeof(buf),
+                     "HTTP/1.1 %d %s\r\n"
+                     "Content-Type: %s\r\n"
+                     "Connection: close\r\n"
+                     "Access-Control-Allow-Origin: *\r\n"
+                     "Cache-Control: no-cache\r\n",
+                     code, status, content_type);
+    if (n > 0 && n < static_cast<int>(sizeof(buf))) write(fd, buf, n);  // P4: 防溢出
+    if (content_len > 0) {
+        n = snprintf(buf, sizeof(buf), "Content-Length: %zu\r\n", content_len);
+        if (n > 0 && n < static_cast<int>(sizeof(buf))) write(fd, buf, n);
+    }
+    write(fd, "\r\n", 2);
+}
+
+static bool send_all(int fd, const void* data, size_t len) {
+    const auto* p = static_cast<const char*>(data);
+    size_t remaining = len;
+    while (remaining > 0) {
+        ssize_t n = write(fd, p, remaining);
+        if (n <= 0) return false;
+        p += n;
+        remaining -= n;
+    }
+    return true;
+}
+
+/// 发送一帧 MJPEG multipart 段
+static bool send_mjpeg_part(int fd, const std::vector<uint8_t>& jpeg) {
+    char hdr[256];
+    int hn = snprintf(hdr, sizeof(hdr),
+                      "--CyberDogFrame\r\n"
+                      "Content-Type: image/jpeg\r\n"
+                      "Content-Length: %zu\r\n"
+                      "\r\n",
+                      jpeg.size());
+    return send_all(fd, hdr, hn) &&
+           send_all(fd, jpeg.data(), jpeg.size()) &&
+           send_all(fd, "\r\n", 2);
+}
+
+// ═══════════════════════════════════════════════════════════
+// 公开接口
+// ═══════════════════════════════════════════════════════════
+
+bool WebStreamer::start(int port, int max_clients) {
+    if (running_.load()) return false;
+    max_clients_ = max_clients;
+    running_ = true;
+    server_thread_ = std::thread(&WebStreamer::server_loop, this, port);
+    return true;
+}
+
+void WebStreamer::stop() {
+    running_ = false;
+    frame_cv_.notify_all();
+
+    // P0: 强制唤醒阻塞在 accept() 的 server 线程
+    if (server_fd_ >= 0) shutdown(server_fd_, SHUT_RDWR);
+    if (server_thread_.joinable()) server_thread_.join();
+
+    // 等待所有客户端线程退出
+    {
+        std::lock_guard<std::mutex> lock(client_threads_mutex_);
+        for (auto& t : client_threads_) {
+            if (t.joinable()) t.join();
+        }
+        client_threads_.clear();
+    }
+    fprintf(stderr, "[WebStreamer] stopped\n");
+}
+
+void WebStreamer::push_frame(const cv::Mat& frame) {
+    if (!running_.load()) return;
+
+    std::vector<uint8_t> jpeg;
+    std::vector<int> params = {cv::IMWRITE_JPEG_QUALITY, 70};
+    cv::imencode(".jpg", frame, jpeg, params);
+
+    {
+        std::lock_guard<std::mutex> lock(frame_mutex_);
+        jpeg_buffer_.swap(jpeg);
+        has_frame_ = true;
+        frame_seq_++;
+    }
+    frame_cv_.notify_all();
+}
+
+void WebStreamer::push_debug_frame(const cv::Mat& frame) {
+    if (!running_.load()) return;
+
+    std::vector<uint8_t> jpeg;
+    std::vector<int> params = {cv::IMWRITE_JPEG_QUALITY, 70};
+    cv::imencode(".jpg", frame, jpeg, params);
+
+    {
+        std::lock_guard<std::mutex> lock(frame_mutex_);
+        jpeg_debug_buffer_.swap(jpeg);
+        has_debug_frame_ = true;
+        debug_frame_seq_++;
+    }
+    frame_cv_.notify_all();
+}
+
+void WebStreamer::push_lidar_frame(const cv::Mat& frame) {
+    if (!running_.load()) return;
+    std::vector<uint8_t> jpeg;
+    std::vector<int> params = {cv::IMWRITE_JPEG_QUALITY, 70};
+    cv::imencode(".jpg", frame, jpeg, params);
+    { std::lock_guard<std::mutex> lock(frame_mutex_);
+      jpeg_lidar_buffer_.swap(jpeg); has_lidar_frame_ = true; lidar_frame_seq_++; }
+    frame_cv_.notify_all();
+}
+
+void WebStreamer::push_track_frame(const cv::Mat& frame) {
+    if (!running_.load()) return;
+    std::vector<uint8_t> jpeg;
+    std::vector<int> params = {cv::IMWRITE_JPEG_QUALITY, 70};
+    cv::imencode(".jpg", frame, jpeg, params);
+    { std::lock_guard<std::mutex> lock(frame_mutex_);
+      jpeg_track_buffer_.swap(jpeg); has_track_frame_ = true; track_frame_seq_++; }
+    frame_cv_.notify_all();
+}
+
+void WebStreamer::push_telemetry_frame(const cv::Mat& frame) {
+    if (!running_.load()) return;
+    std::vector<uint8_t> jpeg;
+    std::vector<int> params = {cv::IMWRITE_JPEG_QUALITY, 70};
+    cv::imencode(".jpg", frame, jpeg, params);
+    { std::lock_guard<std::mutex> lock(frame_mutex_);
+      jpeg_telem_buffer_.swap(jpeg); has_telem_frame_ = true; telem_frame_seq_++; }
+    frame_cv_.notify_all();
+}
+
+void WebStreamer::push_d435_frame(const cv::Mat& frame) {
+    if (!running_.load()) return;
+    std::vector<uint8_t> jpeg;
+    std::vector<int> params = {cv::IMWRITE_JPEG_QUALITY, 65};
+    cv::imencode(".jpg", frame, jpeg, params);
+    { std::lock_guard<std::mutex> lock(frame_mutex_);
+      jpeg_d435_buffer_.swap(jpeg); has_d435_frame_ = true; d435_frame_seq_++; }
+    frame_cv_.notify_all();
+}
+
+// ═══════════════════════════════════════════════════════════
+// accept 主循环
+// ═══════════════════════════════════════════════════════════
+
+void WebStreamer::server_loop(int port) {
+    server_fd_ = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_fd_ < 0) {
+        perror("[WebStreamer] socket() failed");
+        running_ = false;
+        return;
+    }
+
+    int opt = 1;
+    setsockopt(server_fd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+    struct sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = INADDR_ANY;
+    addr.sin_port = htons(port);
+
+    if (bind(server_fd_, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) < 0) {
+        perror("[WebStreamer] bind() failed");
+        close(server_fd_);
+        server_fd_ = -1;
+        running_ = false;
+        return;
+    }
+
+    if (listen(server_fd_, 8) < 0) {
+        perror("[WebStreamer] listen() failed");
+        close(server_fd_);
+        server_fd_ = -1;
+        running_ = false;
+        return;
+    }
+
+    fprintf(stderr, "[WebStreamer] HTTP server on 0.0.0.0:%d (max %d clients)\n",
+            port, max_clients_);
+
+    while (running_.load()) {
+        struct sockaddr_in client_addr{};
+        socklen_t client_len = sizeof(client_addr);
+        int client_fd = accept(server_fd_, reinterpret_cast<struct sockaddr*>(&client_addr),
+                               &client_len);
+        if (client_fd < 0) {
+            if (running_.load()) perror("[WebStreamer] accept() failed");
+            continue;
+        }
+
+        // P1: 用 atomic 计数替代遍历 zombie 线程向量
+        if (active_clients_.load() >= max_clients_) {
+            const char* busy = "Server busy, try later";
+            send_header(client_fd, 503, "Service Unavailable", "text/plain", strlen(busy));
+            send_all(client_fd, busy, strlen(busy));
+            close(client_fd);
+            continue;
+        }
+
+        // 设置超时
+        struct timeval tv{1, 0};
+        setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+        setsockopt(client_fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+
+        // 解析请求行
+        std::string request_line = read_line(client_fd);
+        if (request_line.empty()) { close(client_fd); continue; }
+
+        // 跳过其余头
+        std::string hdr;
+        while (running_.load()) { hdr = read_line(client_fd); if (hdr.empty()) break; }
+
+        std::istringstream iss(request_line);
+        std::string method, path, version;
+        iss >> method >> path >> version;
+
+        if (method != "GET") {
+            send_header(client_fd, 405, "Method Not Allowed", "text/plain", 0);
+            close(client_fd);
+            continue;
+        }
+
+        // ── 路由：静态页面在主线程直接返回，流媒体 spawn 子线程 ──
+        if (path == "/" || path == "/index.html") {
+            std::string page(kHtmlPage);
+            send_header(client_fd, 200, "OK", "text/html; charset=utf-8", page.size());
+            send_all(client_fd, page.data(), page.size());
+            close(client_fd);
+        } else if (path == "/stream" || path == "/stream/debug" || path == "/stream/lidar" ||
+                   path == "/stream/track" || path == "/stream/telemetry" || path == "/stream/d435") {
+            active_clients_++;
+            std::thread t(&WebStreamer::client_handler, this, client_fd, path);
+            {
+                std::lock_guard<std::mutex> lock(client_threads_mutex_);
+                client_threads_.push_back(std::move(t));
+            }
+        } else if (path == "/api/telemetry") {
+            // 遥测 JSON 端点（占位，后续填充真实数据）
+            const char* json = "{\"stage\":0}";
+            send_header(client_fd, 200, "OK", "application/json", strlen(json));
+            send_all(client_fd, json, strlen(json));
+            close(client_fd);
+        } else {
+            const char* nf = "Not Found";
+            send_header(client_fd, 404, "Not Found", "text/plain", strlen(nf));
+            send_all(client_fd, nf, strlen(nf));
+            close(client_fd);
+        }
+    }
+
+    close(server_fd_);
+    server_fd_ = -1;
+}
+
+// ═══════════════════════════════════════════════════════════
+// 单客户端 MJPEG 流
+// ═══════════════════════════════════════════════════════════
+
+void WebStreamer::client_handler(int client_fd, const std::string& path) {
+    // 流类型: 0=raw 1=debug 2=lidar 3=track 4=telem 5=d435
+    int stype = 0;
+    if      (path == "/stream/debug")     stype = 1;
+    else if (path == "/stream/lidar")     stype = 2;
+    else if (path == "/stream/track")     stype = 3;
+    else if (path == "/stream/telemetry") stype = 4;
+    else if (path == "/stream/d435")      stype = 5;
+
+    // 发送 MJPEG HTTP 头
+    const char* mjpeg_header =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: multipart/x-mixed-replace; boundary=--CyberDogFrame\r\n"
+        "Connection: close\r\n"
+        "Access-Control-Allow-Origin: *\r\n"
+        "Cache-Control: no-cache\r\n"
+        "\r\n";
+    if (!send_all(client_fd, mjpeg_header, strlen(mjpeg_header))) {
+        active_clients_--;
+        close(client_fd);
+        return;
+    }
+
+    // 等待第一帧（最多 3 秒）
+    uint64_t last_seq = 0;
+    {
+        std::unique_lock<std::mutex> lock(frame_mutex_);
+        frame_cv_.wait_for(lock, std::chrono::seconds(3), [&] {
+            if (!running_.load()) return true;
+            switch (stype) {
+                case 5: return has_d435_frame_;
+                case 4: return has_telem_frame_;
+                case 3: return has_track_frame_;
+                case 2: return has_lidar_frame_;
+                case 1: return has_debug_frame_;
+                default: return has_frame_;
+            }
+        });
+        if (!running_.load()) {
+            active_clients_--;
+            close(client_fd);
+            return;
+        }
+        switch (stype) {
+            case 5: last_seq = d435_frame_seq_;  break;
+            case 4: last_seq = telem_frame_seq_; break;
+            case 3: last_seq = track_frame_seq_; break;
+            case 2: last_seq = lidar_frame_seq_; break;
+            case 1: last_seq = debug_frame_seq_; break;
+            default: last_seq = frame_seq_;
+        }
+    }
+
+    // 推流循环
+    while (running_.load()) {
+        std::vector<uint8_t> jpeg_copy;
+        uint64_t current_seq;
+        {
+            std::unique_lock<std::mutex> lock(frame_mutex_);
+            bool got = frame_cv_.wait_for(lock, std::chrono::seconds(5), [&] {
+                if (!running_.load()) return true;
+                switch (stype) {
+                    case 5: return d435_frame_seq_  != last_seq;
+                    case 4: return telem_frame_seq_ != last_seq;
+                    case 3: return track_frame_seq_ != last_seq;
+                    case 2: return lidar_frame_seq_ != last_seq;
+                    case 1: return debug_frame_seq_ != last_seq;
+                    default: return frame_seq_      != last_seq;
+                }
+            });
+            if (!running_.load()) break;
+            if (!got) continue;
+
+            switch (stype) {
+                case 5: jpeg_copy = jpeg_d435_buffer_;  current_seq = d435_frame_seq_;  break;
+                case 4: jpeg_copy = jpeg_telem_buffer_; current_seq = telem_frame_seq_; break;
+                case 3: jpeg_copy = jpeg_track_buffer_; current_seq = track_frame_seq_; break;
+                case 2: jpeg_copy = jpeg_lidar_buffer_; current_seq = lidar_frame_seq_; break;
+                case 1: jpeg_copy = jpeg_debug_buffer_; current_seq = debug_frame_seq_; break;
+                default: jpeg_copy = jpeg_buffer_;      current_seq = frame_seq_;
+            }
+            last_seq = current_seq;
+        }
+
+        if (jpeg_copy.empty()) continue;
+        if (!send_mjpeg_part(client_fd, jpeg_copy)) break;
+    }
+
+    active_clients_--;
+    close(client_fd);
+}

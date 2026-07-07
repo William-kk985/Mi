@@ -16,6 +16,7 @@ find_package(cv_bridge REQUIRED)
 
 include_directories(include ${OpenCV_INCLUDE_DIRS}
   ${CMAKE_CURRENT_SOURCE_DIR}/../cyberdog_gazebo/include
+  ${CMAKE_CURRENT_SOURCE_DIR}/../cyberdog_visual/lcm_type
   ${CMAKE_CURRENT_SOURCE_DIR}/../../cyberdog_locomotion/common
   ${CMAKE_CURRENT_SOURCE_DIR}/../../cyberdog_locomotion/common/lcm_type/lcm
 )
@@ -28,6 +29,7 @@ set(SOURCES
   src/vision/virtual/lane_detector.cpp
   src/vision/virtual/ball_detector.cpp
   src/vision/virtual/stage4_detector.cpp
+  src/vision/real/web_streamer.cpp
   src/stages/virtual/stage1.cpp
   src/stages/virtual/stage2.cpp
   src/stages/virtual/stage3.cpp

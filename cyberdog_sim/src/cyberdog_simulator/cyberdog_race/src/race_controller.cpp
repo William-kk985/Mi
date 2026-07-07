@@ -25,14 +25,23 @@ RaceController::RaceController() : Node("race_controller") {
 
     auto qos_be = rclcpp::QoS(10).best_effort();
     sub_rgb_ = create_subscription<sensor_msgs::msg::Image>(
-        "/RGB_camera/image_raw", qos_be,
+        TOPIC_RGB_CAMERA, qos_be,
         [this](sensor_msgs::msg::Image::SharedPtr msg) { on_rgb(msg); });
     sub_imu_ = create_subscription<sensor_msgs::msg::Imu>(
-        "/imu", qos_be,
+        TOPIC_IMU, qos_be,
         [this](sensor_msgs::msg::Imu::SharedPtr msg) { on_imu(msg); });
     sub_lidar_ = create_subscription<sensor_msgs::msg::LaserScan>(
-        "/scan", 10,
+        TOPIC_LIDAR, 10,
         [this](sensor_msgs::msg::LaserScan::SharedPtr msg) { on_lidar(msg); });
+    sub_d435_ = create_subscription<sensor_msgs::msg::Image>(
+        TOPIC_D435, qos_be,
+        [this](sensor_msgs::msg::Image::SharedPtr msg) { on_d435(msg); });
+
+#ifdef REAL_DOG
+    sub_odom_ = create_subscription<nav_msgs::msg::Odometry>(
+        TOPIC_ODOM, 10,
+        [this](nav_msgs::msg::Odometry::SharedPtr msg) { on_odom(msg); });
+#endif
 
     yaml_pub_ = create_publisher<cyberdog_msg::msg::YamlParam>("yaml_parameter", 10);
     auto param = cyberdog_msg::msg::YamlParam();
@@ -62,7 +71,14 @@ RaceController::RaceController() : Node("race_controller") {
     stages_[cur_stage_]->init();
 
     if (lcm_sub_.good()) {
+#ifdef REAL_DOG
+        lcm_sub_.subscribe(LCM_STATE_ESTIMATOR,
+                           &RaceController::on_state_estimator, this);
+        RCLCPP_INFO(get_logger(), "[RealDog] Using LCM %s + ROS2 %s for odom",
+                    LCM_STATE_ESTIMATOR, TOPIC_ODOM);
+#else
         lcm_sub_.subscribe("simulator_state", &RaceController::on_sim_state, this);
+#endif
         lcm_running_ = true;
         lcm_thread_ = std::thread([this]() {
             while (lcm_running_) lcm_sub_.handleTimeout(100);
@@ -75,10 +91,18 @@ RaceController::RaceController() : Node("race_controller") {
         std::chrono::milliseconds(10),
         [this]() { control_loop(); });
 
+#ifdef ENABLE_WEB_STREAMING
+    web_streamer_.start(WEB_STREAM_PORT, 4);
+    RCLCPP_INFO(get_logger(), "[WebStreamer] Dual-stream MJPEG on http://0.0.0.0:%d (max 4 clients)", WEB_STREAM_PORT);
+#endif
+
     RCLCPP_INFO(get_logger(), "Race controller started, stage %d", cur_stage_ + 1);
 }
 
 RaceController::~RaceController() {
+#ifdef ENABLE_WEB_STREAMING
+    web_streamer_.stop();
+#endif
     lcm_running_ = false;
     if (lcm_thread_.joinable()) lcm_thread_.join();
 }
@@ -144,6 +168,19 @@ void RaceController::apply_stage_params() {
             yaml_pub_->publish(pem);
         }
     }
+
+#ifdef REAL_DOG
+    // ── 真机：同时通过 LCM control_parameter 通道下发参数 ──
+    // TODO: 确认真狗 motion 模块接受 LCM control_parameter_lcmt 还是 exec_request
+    //       如果真狗只走 LCM，需用 control_parameter_lcmt 替代 ROS2 yaml_parameter
+    // {
+    //     control_parameter_request_lcmt req;
+    //     snprintf(req.name, sizeof(req.name), "des_roll_pitch_height");
+    //     snprintf(req.value, sizeof(req.value), "%.3f,%.3f,%.3f", roll, 0.0, h);
+    //     req.parameterKind = 3;
+    //     lcm_sub_.publish(LCM_CMD_EXEC, &req);
+    // }
+#endif
 }
 
 // ── 100Hz 控制循环 ──
@@ -207,6 +244,122 @@ void RaceController::control_loop() {
             RCLCPP_INFO(get_logger(), "All stages complete!");
         }
     }
+
+#ifdef ENABLE_WEB_STREAMING
+    // ── 里程记录（100Hz 全部记录，每 5Hz 采样渲染） ──
+    odom_history_.emplace_back(sensor_.odom_x, sensor_.odom_y);
+    if (odom_history_.size() > 400) odom_history_.pop_front();  // 保留 ~40s
+
+    // ── 轨迹图渲染（5Hz） ──
+    if (++track_render_counter_ >= 20) {
+        track_render_counter_ = 0;
+        const int SIZE = 240;
+        cv::Mat track_img(SIZE, SIZE, CV_8UC3, cv::Scalar(10, 15, 30));
+
+        if (odom_history_.size() >= 2) {
+            // 计算范围
+            float min_x = 1e9, max_x = -1e9, min_y = 1e9, max_y = -1e9;
+            for (auto& p : odom_history_) {
+                if (p.first < min_x) min_x = p.first;
+                if (p.first > max_x) max_x = p.first;
+                if (p.second < min_y) min_y = p.second;
+                if (p.second > max_y) max_y = p.second;
+            }
+            float range = std::max(max_x - min_x, max_y - min_y);
+            if (range < 0.5f) range = 2.0f;
+            float pad = range * 0.15f;
+            min_x -= pad; max_x += pad; min_y -= pad; max_y += pad;
+            range = std::max(max_x - min_x, max_y - min_y);
+
+            float scale_x = (SIZE - 30) / range;
+            float scale_y = (SIZE - 30) / range;
+            int off_x = 15, off_y = SIZE - 15;
+
+            auto to_px = [&](float wx, float wy) {
+                return cv::Point(off_x + (wx - min_x) * scale_x,
+                                 off_y - (wy - min_y) * scale_y);
+            };
+
+            // 画轨迹线（灰度渐变）
+            for (size_t i = 1; i < odom_history_.size(); i++) {
+                float t = static_cast<float>(i) / odom_history_.size();
+                cv::line(track_img, to_px(odom_history_[i-1].first, odom_history_[i-1].second),
+                         to_px(odom_history_[i].first, odom_history_[i].second),
+                         cv::Scalar(50.0 + 155.0*t, 100.0+155.0*t, 255.0), 2);
+            }
+
+            // 当前位置 + yaw 箭头
+            auto cur = to_px(sensor_.odom_x, sensor_.odom_y);
+            cv::circle(track_img, cur, 6, {0, 200, 255}, -1);
+            float arrow_len = 18.0f;
+            cv::Point tip(cur.x + arrow_len * std::cos(sensor_.yaw),
+                          cur.y - arrow_len * std::sin(sensor_.yaw));
+            cv::arrowedLine(track_img, cur, tip, {0, 200, 255}, 2);
+
+            // 文字
+            cv::putText(track_img, cv::format("x:%.2f y:%.2f", sensor_.odom_x, sensor_.odom_y),
+                        {5, 15}, cv::FONT_HERSHEY_SIMPLEX, 0.4, {0, 255, 100}, 1);
+            cv::putText(track_img, cv::format("pts:%zu", odom_history_.size()),
+                        {5, 33}, cv::FONT_HERSHEY_SIMPLEX, 0.35, {120, 140, 120}, 1);
+        } else {
+            cv::putText(track_img, "waiting for odom...", {30, SIZE/2},
+                        cv::FONT_HERSHEY_SIMPLEX, 0.5, {100, 100, 100}, 1);
+        }
+
+        web_streamer_.push_track_frame(track_img);
+    }
+
+    // ── 遥测仪表盘渲染（5Hz） ──
+    if (++telem_render_counter_ >= 20) {
+        telem_render_counter_ = 0;
+        const int TW = 320, TH = 240;
+        cv::Mat telem(TH, TW, CV_8UC3, cv::Scalar(10, 15, 30));
+
+        int y = 18;
+        auto row = [&](const std::string& label, const std::string& val, cv::Scalar vc = {0,255,100}) {
+            cv::putText(telem, label, {10, y}, cv::FONT_HERSHEY_SIMPLEX, 0.45, {180,180,200}, 1);
+            cv::putText(telem, val, {140, y}, cv::FONT_HERSHEY_SIMPLEX, 0.45, vc, 1);
+            y += 22;
+        };
+        row("赛段", cv::format("%d/6", cur_stage_ + 1), {233, 69, 96});
+        row("身高", cv::format("%.2f m", sensor_.body_height));
+        row("步高上限", cv::format("%.2f m", last_sent_step_h_));
+        row("pitch", cv::format("%.3f rad", sensor_.pitch));
+        row("roll",  cv::format("%.3f rad", sensor_.roll));
+        row("yaw",   cv::format("%.2f (%.0f deg)", sensor_.yaw, sensor_.yaw * 180/M_PI));
+        row("lidar front", cv::format("%.2f m", sensor_.lidar_front),
+            sensor_.lidar_front < 1.0f ? cv::Scalar{0,0,255} : cv::Scalar{0,255,100});
+        y += 6;
+
+        // 身高柱状条
+        cv::putText(telem, "身高", {10, y}, cv::FONT_HERSHEY_SIMPLEX, 0.4, {180,180,200}, 1);
+        int bar_x = 70, bar_w = 180, bar_h = 12, bar_y = y - 10;
+        cv::rectangle(telem, {bar_x, bar_y}, {bar_x + bar_w, bar_y + bar_h}, {60,60,80}, 1);
+        float h_ratio = std::min(sensor_.body_height / 0.5f, 1.0f);
+        cv::rectangle(telem, {bar_x, bar_y},
+                      {bar_x + static_cast<int>(bar_w * h_ratio), bar_y + bar_h},
+                      {0, 180, 100}, -1);
+        cv::putText(telem, cv::format("%.2f/0.50m", sensor_.body_height),
+                    {bar_x + bar_w + 5, y}, cv::FONT_HERSHEY_SIMPLEX, 0.35, {150,150,160}, 1);
+        y += 20;
+
+        // yaw 罗盘
+        cv::putText(telem, "yaw罗盘", {10, y}, cv::FONT_HERSHEY_SIMPLEX, 0.4, {180,180,200}, 1);
+        int comp_cx = TW - 55, comp_cy = y + 18, comp_r = 28;
+        cv::circle(telem, {comp_cx, comp_cy}, comp_r, {60,60,80}, 1);
+        float ay = sensor_.yaw;
+        cv::Point arrow_tip(comp_cx + comp_r * std::cos(ay),
+                            comp_cy - comp_r * std::sin(ay));
+        cv::arrowedLine(telem, {comp_cx, comp_cy}, arrow_tip, {0, 200, 255}, 2);
+        cv::putText(telem, "N", {comp_cx - 6, comp_cy - comp_r - 4},
+                    cv::FONT_HERSHEY_SIMPLEX, 0.35, {120,120,140}, 1);
+        y += 50;
+
+        row("RC模式", last_rc_mode_ ? "ON" : "OFF", last_rc_mode_ ? cv::Scalar{0,255,0} : cv::Scalar{150,150,150});
+
+        web_streamer_.push_telemetry_frame(telem);
+    }
+#endif
 }
 
 // ── 传感器回调 ──
@@ -238,7 +391,12 @@ void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
         s4->vision_result = stage4_detector_.detect(cv_img->image);
     }
 
-#ifdef DEBUG_VISION
+#ifdef ENABLE_WEB_STREAMING
+    web_streamer_.push_frame(cv_img->image);
+#endif
+
+// ── 标注画面生成（供 DEBUG_VISION imshow 和 Web 双流共用） ──
+#if defined(DEBUG_VISION) || defined(ENABLE_WEB_STREAMING)
     cv::Mat frame = cv_img->image.clone();
     cv::Mat hsv, mask;
     cv::cvtColor(frame, hsv, cv::COLOR_BGR2HSV);
@@ -315,8 +473,22 @@ void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
         draw_status(r.obstacle_found, r.obstacle_dist, "obstacle", {255, 128, 0  });
     }
 
+#ifdef DEBUG_VISION
     cv::imshow("RaceDebug", frame);
     cv::waitKey(1);
+#endif
+#ifdef ENABLE_WEB_STREAMING
+    web_streamer_.push_debug_frame(frame);
+#endif
+#endif  // defined(DEBUG_VISION) || defined(ENABLE_WEB_STREAMING)
+}
+
+// ── D435 深度相机回调 ──
+void RaceController::on_d435(sensor_msgs::msg::Image::SharedPtr msg) {
+    (void)msg;
+#ifdef ENABLE_WEB_STREAMING
+    auto cv_img = cv_bridge::toCvShare(msg, "bgr8");
+    web_streamer_.push_d435_frame(cv_img->image);
 #endif
 }
 
@@ -327,6 +499,29 @@ void RaceController::on_sim_state(const lcm::ReceiveBuffer*, const std::string&,
     sensor_.odom_y = static_cast<float>(msg->p[1]);
     sensor_.body_height = static_cast<float>(msg->p[2]);
 }
+
+#ifdef REAL_DOG
+// ── 真机 ROS2 里程计回调 ──
+void RaceController::on_odom(nav_msgs::msg::Odometry::SharedPtr msg) {
+    std::lock_guard<std::mutex> lock(sensor_mutex_);
+    sensor_.odom_x = static_cast<float>(msg->pose.pose.position.x);
+    sensor_.odom_y = static_cast<float>(msg->pose.pose.position.y);
+    // body_height 从 LCM state_estimator 获取，此处不更新
+}
+
+// ── 真机 LCM 状态估计回调 ──
+void RaceController::on_state_estimator(const lcm::ReceiveBuffer*,
+                                         const std::string&,
+                                         const state_estimator_lcmt* msg) {
+    std::lock_guard<std::mutex> lock(sensor_mutex_);
+    // p[2] = z 方向绝对位置，可作为 body_height 参考
+    // TODO: 真机验证 body_height 是否需要减去地面高度偏移
+    sensor_.body_height = msg->p[2];
+    // 如果 ROS2 /odom 不可用，可启用下面两行作为备选里程计
+    // sensor_.odom_x = msg->p[0];
+    // sensor_.odom_y = msg->p[1];
+}
+#endif
 
 void RaceController::on_imu(sensor_msgs::msg::Imu::SharedPtr msg) {
     std::lock_guard<std::mutex> lock(sensor_mutex_);
@@ -348,5 +543,58 @@ void RaceController::on_lidar(sensor_msgs::msg::LaserScan::SharedPtr msg) {
     {
         std::lock_guard<std::mutex> lock(sensor_mutex_);
         sensor_.lidar_front = front_min;
+        sensor_.lidar_ranges = msg->ranges;
     }
+
+#ifdef ENABLE_WEB_STREAMING
+    // ── LiDAR 俯视图渲染 ──
+    {
+        const int SIZE = 240;
+        const float MAX_RANGE = 8.0f;
+        const float SCALE = (SIZE / 2) / MAX_RANGE;  // 像素/米
+        cv::Mat lidar_img(SIZE, SIZE, CV_8UC3, cv::Scalar(10, 15, 30));
+
+        int cx = SIZE / 2, cy = SIZE - 20;  // 机器人位置（偏下）
+
+        // 画同心距离环
+        for (int r = 1; r <= 4; r++) {
+            int pr = static_cast<int>(r * 2.0f * SCALE);
+            cv::circle(lidar_img, {cx, cy}, pr, {50, 50, 70}, 1);
+            cv::putText(lidar_img, std::to_string(r * 2) + "m",
+                        {cx + pr - 15, cy - 5}, cv::FONT_HERSHEY_SIMPLEX, 0.35, {70, 70, 90}, 1);
+        }
+
+        // 画扫描点
+        int num = msg->ranges.size();
+        float angle_min = msg->angle_min;  // -1.57
+        float angle_inc = msg->angle_increment;
+        for (int i = 0; i < num; i++) {
+            float dist = msg->ranges[i];
+            if (dist < 0.1f || dist > MAX_RANGE) continue;
+            float angle = angle_min + i * angle_inc;  // 相对于前方
+            int px = cx + static_cast<int>(dist * std::sin(angle) * SCALE);
+            int py = cy - static_cast<int>(dist * std::cos(angle) * SCALE);
+            if (px < 0 || px >= SIZE || py < 0 || py >= SIZE) continue;
+
+            // 距离越近越红，越远越绿
+            float ratio = std::min(dist / MAX_RANGE, 1.0f);
+            cv::Vec3b color(0, static_cast<uint8_t>(255 * (1 - ratio)),
+                              static_cast<uint8_t>(100 + 155 * ratio));
+            cv::circle(lidar_img, {px, py}, 2, color, -1);
+        }
+
+        // 画机器狗图标 + 方向箭头
+        cv::circle(lidar_img, {cx, cy}, 8, {0, 200, 255}, -1);
+        cv::line(lidar_img, {cx, cy}, {cx, cy - 20}, {0, 200, 255}, 2);
+
+        // 文字信息
+        cv::putText(lidar_img, cv::format("front: %.2fm", front_min),
+                    {5, 15}, cv::FONT_HERSHEY_SIMPLEX, 0.45, {0, 255, 100}, 1);
+        cv::putText(lidar_img, cv::format("samples: %d  FOV: %.0f deg",
+                    num, (msg->angle_max - msg->angle_min) * 180.0f / M_PI),
+                    {5, 32}, cv::FONT_HERSHEY_SIMPLEX, 0.35, {120, 120, 140}, 1);
+
+        web_streamer_.push_lidar_frame(lidar_img);
+    }
+#endif
 }
