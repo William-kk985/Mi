@@ -1,4 +1,4 @@
-#include "cyberdog_race/vision/real/web_streamer.hpp"
+#include "cyberdog_race/utils/web_streamer.hpp"
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -65,6 +65,7 @@ static const char* kHtmlPage = R"raw(
 <body>
 <div class="topbar" id="topbar">
   <span>🐕 CyberDog</span>
+  <a href="/settings" style="color:#58a6ff;text-decoration:none;font-size:0.85em">⚙️</a>
   <span>赛道:<span class="st" id="st-stage">-</span></span>
   <span>yaw:<span id="st-yaw">-</span></span>
   <span>odom:(<span id="st-ox">-</span>,<span id="st-oy">-</span>)</span>
@@ -88,11 +89,14 @@ static const char* kHtmlPage = R"raw(
     <div class="panel-hdr">
       <span class="hdr-title" id="right-title">🔍 标注画面</span>
       <span class="hdr-right">
-        <button class="tab on" data-tab="debug" onclick="switchTab(this)">🔍 标注</button>
-        <button class="tab" data-tab="lidar" onclick="switchTab(this)">📡 雷达</button>
-        <button class="tab" data-tab="track" onclick="switchTab(this)">🗺️ 轨迹</button>
-        <button class="tab" data-tab="telem" onclick="switchTab(this)">📊 遥测</button>
-        <button class="tab" data-tab="d435" onclick="switchTab(this)">📏 D435</button>
+        <select class="stream-sel" id="stream-sel" onchange="switchStream()">
+          <option value="debug" selected>🔍 标注画面</option>
+          <option value="lidar">📡 LiDAR 雷达</option>
+          <option value="dark">🌑 暗图</option>
+          <option value="track">🗺️ 里程轨迹</option>
+          <option value="telem">📊 遥测仪表</option>
+          <option value="d435">📏 D435 相机</option>
+        </select>
         <button class="btn-exp" onclick="togglePanel('right')" title="放大/还原">⛶</button>
       </span>
     </div>
@@ -101,7 +105,7 @@ static const char* kHtmlPage = R"raw(
   </div>
 </div>
 <script>
-const streams={debug:'/stream/debug',lidar:'/stream/lidar',
+const streams={debug:'/stream/debug',lidar:'/stream/lidar',dark:'/stream/dark',
   track:'/stream/track',telem:'/stream/telemetry',d435:'/stream/d435'};
 function switchStream(){
   const sel=document.getElementById('stream-sel');
@@ -145,6 +149,75 @@ setInterval(()=>{fetch('/api/telemetry').then(r=>r.json()).then(d=>{
   if(d.oy!=null)document.getElementById('st-oy').textContent=d.oy.toFixed(2);
   if(d.height!=null)document.getElementById('st-h').textContent=d.height.toFixed(2);
 }).catch(()=>{});},500);
+</script>
+</body>
+</html>
+)raw";
+
+// ── 相机设置页面 ──
+static const char* kSettingsPage = R"raw(
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>相机设置</title>
+<style>
+  :root{--bg:#0d1117;--panel:#161b22;--border:#30363d;--accent:#e94560;--green:#3fb950;--blue:#58a6ff;--text:#c9d1d9}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',sans-serif;padding:20px;max-width:500px;margin:0 auto}
+  h1{color:var(--accent);font-size:1.2em;margin-bottom:4px}
+  a.back{color:var(--blue);text-decoration:none;font-size:0.82em}
+  .row{margin:16px 0}.row label{display:block;font-size:0.85em;color:#8b949e;margin-bottom:4px}
+  .row label span{float:right;color:var(--green);font-size:0.8em}
+  input[type=range]{width:100%;accent-color:var(--accent)}
+  .btn{background:var(--accent);color:#fff;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-size:0.85em;margin-right:8px}
+  .btn.reset{background:var(--border)}.msg{font-size:0.78em;color:var(--green);margin-top:8px}
+  .info{font-size:0.75em;color:#555;margin-top:20px;line-height:1.6}
+</style>
+</head>
+<body>
+<h1>⚙️ 相机设置</h1>
+<a class="back" href="/">← 返回监控</a>
+<div class="row">
+  <label>曝光偏移（降暗） <span id="v-eo">-30</span></label>
+  <input type="range" id="eo" min="-100" max="0" value="-30" oninput="up('eo','v-eo')">
+  <div style="font-size:0.7em;color:#555;margin-top:2px">-100=最暗 &nbsp; 0=原画</div>
+</div>
+<div class="row">
+  <label>🌑暗图 JPEG 质量 <span id="v-q">70</span></label>
+  <input type="range" id="q" min="10" max="100" value="70" oninput="up('q','v-q')">
+</div>
+<div style="margin-top:16px">
+  <button class="btn" onclick="applyAll()">💾 应用并保存</button>
+  <button class="btn reset" onclick="resetAll()">↩ 默认</button>
+</div>
+<div class="msg" id="msg"></div>
+<div class="info">
+  💡 原始/标注流保持最高质量，JPEG 质量只影响 🌑暗图。<br>
+  💡 原始画面始终显示相机直出（高曝光亮图）。<br>
+  💡 右面板下拉选「🌑 暗图」即可观察降暗效果。<br>
+  💡 视觉算法使用原始图像，不受曝光偏移影响。<br>
+  💡 点击「💾 应用并保存」写入 camera_config.conf，重启自动加载。
+</div>
+<script>
+function up(s,v){document.getElementById(v).textContent=document.getElementById(s).value}
+async function applyAll(){
+  const eo=document.getElementById('eo').value;
+  const q=document.getElementById('q').value;
+  await fetch('/api/camera/settings?exposure_offset='+eo+'&jpeg_quality='+q);
+  document.getElementById('msg').textContent='✅ 已保存到 camera_config.conf';
+}
+async function resetAll(){
+  document.getElementById('eo').value=-30;up('eo','v-eo');
+  document.getElementById('q').value=70;up('q','v-q');
+  await applyAll();
+}
+(async()=>{
+  try{const r=await fetch('/api/camera/settings');const d=await r.json();
+    document.getElementById('eo').value=d.exposure_offset||-30;up('eo','v-eo');
+    document.getElementById('q').value=d.jpeg_quality||70;up('q','v-q');
+  }catch(e){}
+})();
 </script>
 </body>
 </html>
@@ -219,6 +292,7 @@ bool WebStreamer::start(int port, int max_clients) {
     if (running_.load()) return false;
     max_clients_ = max_clients;
     running_ = true;
+    load_settings();
     server_thread_ = std::thread(&WebStreamer::server_loop, this, port);
     return true;
 }
@@ -314,6 +388,19 @@ void WebStreamer::push_d435_frame(const cv::Mat& frame) {
     frame_cv_.notify_all();
 }
 
+void WebStreamer::push_dark_frame(const cv::Mat& frame) {
+    if (!running_.load()) return;
+    std::vector<uint8_t> jpeg;
+    int jq = jpeg_quality_;
+    if (jq < 1) jq = 1;
+    if (jq > 100) jq = 100;
+    std::vector<int> params = {cv::IMWRITE_JPEG_QUALITY, jq};
+    cv::imencode(".jpg", frame, jpeg, params);
+    { std::lock_guard<std::mutex> lock(frame_mutex_);
+      jpeg_dark_buffer_.swap(jpeg); has_dark_frame_ = true; dark_frame_seq_++; }
+    frame_cv_.notify_all();
+}
+
 // ═══════════════════════════════════════════════════════════
 // accept 主循环
 // ═══════════════════════════════════════════════════════════
@@ -402,13 +489,43 @@ void WebStreamer::server_loop(int port) {
             send_all(client_fd, page.data(), page.size());
             close(client_fd);
         } else if (path == "/stream" || path == "/stream/debug" || path == "/stream/lidar" ||
-                   path == "/stream/track" || path == "/stream/telemetry" || path == "/stream/d435") {
+                   path == "/stream/track" || path == "/stream/telemetry" || path == "/stream/d435" ||
+                   path == "/stream/dark") {
             active_clients_++;
             std::thread t(&WebStreamer::client_handler, this, client_fd, path);
             {
                 std::lock_guard<std::mutex> lock(client_threads_mutex_);
                 client_threads_.push_back(std::move(t));
             }
+        } else if (path == "/settings") {
+            std::string page(kSettingsPage);
+            send_header(client_fd, 200, "OK", "text/html; charset=utf-8", page.size());
+            send_all(client_fd, page.data(), page.size());
+            close(client_fd);
+        } else if (path.find("/api/camera/settings") == 0) {
+            auto qpos = path.find('?');
+            if (qpos != std::string::npos) {
+                std::string qs = path.substr(qpos + 1);
+                auto get_val = [&](const char* key, int def) -> int {
+                    std::string k(key); k += "=";
+                    size_t p = qs.find(k);
+                    if (p == std::string::npos) return def;
+                    p += k.size();
+                    size_t end = qs.find('&', p);
+                    std::string v = qs.substr(p, end == std::string::npos ? std::string::npos : end - p);
+                    try { return std::stoi(v); } catch (...) { return def; }
+                };
+                exposure_offset_ = get_val("exposure_offset", exposure_offset_);
+                jpeg_quality_    = get_val("jpeg_quality", jpeg_quality_);
+                save_settings();
+            }
+            char json[100];
+            snprintf(json, sizeof(json),
+                     "{\"exposure_offset\":%d,\"jpeg_quality\":%d}",
+                     exposure_offset_, jpeg_quality_);
+            send_header(client_fd, 200, "OK", "application/json", strlen(json));
+            send_all(client_fd, json, strlen(json));
+            close(client_fd);
         } else if (path == "/api/telemetry") {
             // 遥测 JSON 端点（占位，后续填充真实数据）
             const char* json = "{\"stage\":0}";
@@ -432,13 +549,14 @@ void WebStreamer::server_loop(int port) {
 // ═══════════════════════════════════════════════════════════
 
 void WebStreamer::client_handler(int client_fd, const std::string& path) {
-    // 流类型: 0=raw 1=debug 2=lidar 3=track 4=telem 5=d435
+    // 流类型: 0=raw 1=debug 2=lidar 3=track 4=telem 5=d435 6=dark
     int stype = 0;
     if      (path == "/stream/debug")     stype = 1;
     else if (path == "/stream/lidar")     stype = 2;
     else if (path == "/stream/track")     stype = 3;
     else if (path == "/stream/telemetry") stype = 4;
     else if (path == "/stream/d435")      stype = 5;
+    else if (path == "/stream/dark")      stype = 6;
 
     // 发送 MJPEG HTTP 头
     const char* mjpeg_header =
@@ -461,6 +579,7 @@ void WebStreamer::client_handler(int client_fd, const std::string& path) {
         frame_cv_.wait_for(lock, std::chrono::seconds(3), [&] {
             if (!running_.load()) return true;
             switch (stype) {
+                case 6: return has_dark_frame_;
                 case 5: return has_d435_frame_;
                 case 4: return has_telem_frame_;
                 case 3: return has_track_frame_;
@@ -475,6 +594,7 @@ void WebStreamer::client_handler(int client_fd, const std::string& path) {
             return;
         }
         switch (stype) {
+            case 6: last_seq = dark_frame_seq_;  break;
             case 5: last_seq = d435_frame_seq_;  break;
             case 4: last_seq = telem_frame_seq_; break;
             case 3: last_seq = track_frame_seq_; break;
@@ -493,6 +613,7 @@ void WebStreamer::client_handler(int client_fd, const std::string& path) {
             bool got = frame_cv_.wait_for(lock, std::chrono::seconds(5), [&] {
                 if (!running_.load()) return true;
                 switch (stype) {
+                    case 6: return dark_frame_seq_  != last_seq;
                     case 5: return d435_frame_seq_  != last_seq;
                     case 4: return telem_frame_seq_ != last_seq;
                     case 3: return track_frame_seq_ != last_seq;
@@ -505,6 +626,7 @@ void WebStreamer::client_handler(int client_fd, const std::string& path) {
             if (!got) continue;
 
             switch (stype) {
+                case 6: jpeg_copy = jpeg_dark_buffer_;  current_seq = dark_frame_seq_;  break;
                 case 5: jpeg_copy = jpeg_d435_buffer_;  current_seq = d435_frame_seq_;  break;
                 case 4: jpeg_copy = jpeg_telem_buffer_; current_seq = telem_frame_seq_; break;
                 case 3: jpeg_copy = jpeg_track_buffer_; current_seq = track_frame_seq_; break;
@@ -521,4 +643,28 @@ void WebStreamer::client_handler(int client_fd, const std::string& path) {
 
     active_clients_--;
     close(client_fd);
+}
+
+// ═══════════════════════════════════════════════════════════
+// 配置文件读写
+// ═══════════════════════════════════════════════════════════
+
+void WebStreamer::load_settings(const std::string& path) {
+    FILE* f = fopen(path.c_str(), "r");
+    if (!f) return;
+    char line[64];
+    while (fgets(line, sizeof(line), f)) {
+        int v;
+        if (sscanf(line, "exposure_offset=%d", &v) == 1) exposure_offset_ = v;
+        else if (sscanf(line, "jpeg_quality=%d", &v) == 1) jpeg_quality_ = v;
+    }
+    fclose(f);
+}
+
+void WebStreamer::save_settings(const std::string& path) {
+    FILE* f = fopen(path.c_str(), "w");
+    if (!f) return;
+    fprintf(f, "exposure_offset=%d\njpeg_quality=%d\n",
+            exposure_offset_, jpeg_quality_);
+    fclose(f);
 }

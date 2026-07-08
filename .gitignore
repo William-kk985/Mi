@@ -1,0 +1,10 @@
+# Build outputs
+build/
+camera_hw.yaml
+camera_config.conf
+llm_config.conf
+
+# IDE
+.vscode/
+*.swp
+*.swo

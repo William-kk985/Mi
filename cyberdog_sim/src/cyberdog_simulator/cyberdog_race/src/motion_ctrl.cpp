@@ -5,6 +5,8 @@ MotionCtrl::MotionCtrl() : ctrl_lcm_("udpm://239.255.76.67:7671?ttl=255") {
     memset(&gpad_, 0, sizeof(gpad_));
 }
 
+// NOTE: publish-then-reset 模式依赖 LCM 的同步发布语义（lcm_.publish 返回时数据已序列化完毕）。
+// 若未来 LCM 切换为异步模式或更换传输层，需在 publish 后加内存屏障或改用双缓冲。
 void MotionCtrl::set_velocity(float x, float y, float yaw) {
     gpad_.y                   = 1;
     gpad_.leftStickAnalog[1]  = x;

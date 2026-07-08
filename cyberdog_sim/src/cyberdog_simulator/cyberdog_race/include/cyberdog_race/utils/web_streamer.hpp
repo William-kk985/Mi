@@ -58,10 +58,21 @@ public:
     /// 推送 D435 相机帧（线程安全）
     void push_d435_frame(const cv::Mat& frame);
 
+    /// 推送降暗帧（曝光偏移后，线程安全）→ /stream/dark
+    void push_dark_frame(const cv::Mat& frame);
+
     /// 停止服务，等待所有客户端线程退出
     void stop();
 
     bool is_running() const { return running_.load(); }
+
+    // ── 相机设置（Web ⚙️ 页面可调，conf 文件持久化） ──
+    int  exposure_offset() const { return exposure_offset_; }
+    void set_exposure_offset(int v) { exposure_offset_ = v; }
+    int  jpeg_quality() const { return jpeg_quality_; }
+    void set_jpeg_quality(int v) { jpeg_quality_ = v; }
+    void load_settings(const std::string& path = "camera_config.conf");
+    void save_settings(const std::string& path = "camera_config.conf");
 
 private:
     void server_loop(int port);
@@ -84,18 +95,25 @@ private:
     std::vector<uint8_t>     jpeg_track_buffer_;  // 3: track
     std::vector<uint8_t>     jpeg_telem_buffer_;  // 4: telemetry
     std::vector<uint8_t>     jpeg_d435_buffer_;   // 5: d435
+    std::vector<uint8_t>     jpeg_dark_buffer_;   // 6: dark
     uint64_t                 frame_seq_{0};
     uint64_t                 debug_frame_seq_{0};
     uint64_t                 lidar_frame_seq_{0};
     uint64_t                 track_frame_seq_{0};
     uint64_t                 telem_frame_seq_{0};
     uint64_t                 d435_frame_seq_{0};
+    uint64_t                 dark_frame_seq_{0};
     bool                     has_frame_{false};
     bool                     has_debug_frame_{false};
     bool                     has_lidar_frame_{false};
     bool                     has_track_frame_{false};
     bool                     has_telem_frame_{false};
     bool                     has_d435_frame_{false};
+    bool                     has_dark_frame_{false};
+
+    // ── 相机设置 ──
+    int  exposure_offset_{-30};
+    int  jpeg_quality_{70};
 
     // ── 控制 ──
     std::atomic<bool> running_{false};

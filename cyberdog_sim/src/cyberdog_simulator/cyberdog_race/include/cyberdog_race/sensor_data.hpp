@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vector>
+
 // 传感器数据共享结构，由主循环填充并由各赛段只读访问
 struct SensorData {
     // 视觉结果（视觉线程写，主线程读）
@@ -30,7 +32,6 @@ struct SensorData {
     float odom_y{0.0f};
     float body_height{0.25f};  // 身体离地高度（m）
 
-    // Lidar：前方最近障碍距离 + 全扫描数据
+    // Lidar：前方最近障碍距离
     float lidar_front{10.0f};
-    std::vector<float> lidar_ranges;  // 完整扫描点（180点，用于可视化）
 };

@@ -44,7 +44,7 @@
 // 正式比赛前注释掉，重新 build = 零额外开销
 // ============================================================
 
-// #define ENABLE_WEB_STREAMING
+#define ENABLE_WEB_STREAMING
 #define WEB_STREAM_PORT 8080
 
 // ============================================================
@@ -70,4 +70,27 @@
   #define TOPIC_IMU           "/imu"
   #define TOPIC_LIDAR         "/scan"
   #define TOPIC_D435          "/D435/color/image_raw"
+#endif
+
+// ============================================================
+// LLM 大模型控制（二选一，都不定义=不启用）
+// LLM_MODE_PROXY : 狗→ROS2 Srv→笔记本 llm_bridge→云端 API（比赛推荐）
+// LLM_MODE_API   : 狗→libcurl→云端 API 直连
+// ============================================================
+
+#define LLM_MODE_PROXY
+// #define LLM_MODE_API
+
+#if defined(LLM_MODE_PROXY) && defined(LLM_MODE_API)
+#error "LLM_MODE_PROXY and LLM_MODE_API are mutually exclusive"
+#endif
+
+#ifdef LLM_MODE_PROXY
+  #define LLM_SERVICE_NAME  "/llm_ask"
+  #define LLM_TIMEOUT       3
+#endif
+#ifdef LLM_MODE_API
+  #define LLM_DEFAULT_URL   "https://api.deepseek.com/v1/chat/completions"
+  #define LLM_DEFAULT_MODEL "deepseek-chat"
+  #define LLM_TIMEOUT       5
 #endif

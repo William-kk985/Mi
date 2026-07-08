@@ -31,7 +31,8 @@
 #include "cyberdog_race/vision/virtual/lane_detector.hpp"
 #include "cyberdog_race/vision/virtual/ball_detector.hpp"
 #include "cyberdog_race/vision/virtual/stage4_detector.hpp"
-#include "cyberdog_race/vision/real/web_streamer.hpp"
+#include "cyberdog_race/utils/web_streamer.hpp"
+#include "cyberdog_race/llm_helper.hpp"
 
 class RaceController : public rclcpp::Node {
 public:
@@ -52,8 +53,6 @@ private:
     void control_loop();
     void apply_stage_params();
 
-    SensorData read_sensor_snapshot();
-
     MotionCtrl  motion_;
     SensorData  sensor_;
     std::mutex  sensor_mutex_;
@@ -68,6 +67,10 @@ private:
 
 #ifdef ENABLE_WEB_STREAMING
     WebStreamer web_streamer_;
+#endif
+
+#if defined(LLM_MODE_PROXY) || defined(LLM_MODE_API)
+    LLMHelper llm_;
 #endif
 
     int  cur_stage_{0};
@@ -93,5 +96,8 @@ private:
     std::deque<std::pair<float,float>> odom_history_;  // 轨迹历史 (x,y)
     int track_render_counter_{0};
     int telem_render_counter_{0};
+    void render_track_frame();
+    void render_telemetry_frame();
+    void render_lidar_frame(const std::vector<float>& ranges, float angle_min, float angle_inc, float front_min);
 #endif
 };
