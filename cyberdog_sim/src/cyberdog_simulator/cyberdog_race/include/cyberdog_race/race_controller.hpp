@@ -48,7 +48,10 @@ private:
     void on_rgb(sensor_msgs::msg::Image::SharedPtr msg);
     void on_imu(sensor_msgs::msg::Imu::SharedPtr msg);
     void on_lidar(sensor_msgs::msg::LaserScan::SharedPtr msg);
-    void on_d435(sensor_msgs::msg::Image::SharedPtr msg);
+    void on_d435_infra1(sensor_msgs::msg::Image::SharedPtr msg);  // D430i 左目红外
+    void on_d435_depth(sensor_msgs::msg::Image::SharedPtr msg);   // D430i 深度图（mono16→伪彩色）
+    void on_fish_eye_left(sensor_msgs::msg::Image::SharedPtr msg);
+    void on_fish_eye_right(sensor_msgs::msg::Image::SharedPtr msg);
     // TODO: void on_touch(protocol::msg::TouchStatus::SharedPtr msg); // 需bridges包
     void on_bms(std_msgs::msg::Float32MultiArray::SharedPtr msg);
     void on_sim_state(const lcm::ReceiveBuffer*, const std::string&,
@@ -93,7 +96,10 @@ private:
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr     sub_rgb_;
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr       sub_imu_;
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr sub_lidar_;
-    rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr     sub_d435_;
+    rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr     sub_d435_infra1_;
+    rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr     sub_d435_depth_;
+    rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr     sub_fish_eye_left_;
+    rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr     sub_fish_eye_right_;
     // rclcpp::Subscription<protocol::msg::TouchStatus>::SharedPtr sub_touch_; // TODO: 需bridges包
     rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr sub_bms_;
     // rclcpp::Subscription<protocol::msg::HeadTofPayload>::SharedPtr sub_head_tof_;  // TODO: 需bridges包

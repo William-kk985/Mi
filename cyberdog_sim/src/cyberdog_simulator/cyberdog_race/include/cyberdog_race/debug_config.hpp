@@ -57,17 +57,26 @@
 
 // ── 传感器 topic 名称（真机值依据官方 developer_guide 文档） ──
 // ⚠️ 上机前必读：以下相机 topic 依赖对应的 ROS2 节点已 lifecycle 激活，否则收不到数据！
-//   ros2 lifecycle set /stereo_camera configure && ros2 lifecycle set /stereo_camera activate  # RGB相机 /image_rgb
-//   ros2 lifecycle set /camera/camera configure && ros2 lifecycle set /camera/camera activate  # Realsense D435
-//   ros2 lifecycle set /camera/camera_align configure && ros2 lifecycle set /camera/camera_align activate  # D435对齐彩色
+//   ros2 lifecycle set /stereo_camera configure && ros2 lifecycle set /stereo_camera activate  # AI相机 /image_rgb + 鱼眼 /image_left /image_right
+//   ros2 lifecycle set /camera/camera configure && ros2 lifecycle set /camera/camera activate  # Realsense D430i 红外+深度+IMU
+//   ros2 lifecycle set /camera/camera_align configure && ros2 lifecycle set /camera/camera_align activate  # D430i对齐深度
+//
+// CyberDog 2 相机全景（2个物理模组，7个图像topic）：
+//   模组1 前置AI相机(/stereo_camera): /image_rgb(RGB) /image_left(鱼眼) /image_right(鱼眼)
+//   模组2 底部D430i(/camera/camera):  /camera/infra1|infra2(红外) /camera/depth(深度) /camera/imu
+//   对齐节点(/camera/camera_align):    /camera/aligned_depth_to_extcolor(对齐深度,mono16)
+// ⚠ D430i 无 RGB 彩色输出，只有红外+深度！不要用 cv_bridge BGR 解深度图
 #ifdef REAL_DOG
-  #define TOPIC_RGB_CAMERA    "/image_rgb"                     // RGB+鱼眼节点，编码 rgb8（⚠ 需 lifecycle 激活）
-  #define TOPIC_IMU           "/imu"                           // 身体IMU（Realsense另有/camera/imu）
-  #define TOPIC_LIDAR         "/scan"                          // sensor_msgs/LaserScan（⚠ 真狗可能发 ScanMsg，上机后 ros2 topic info /scan 确认 type）
-  #define TOPIC_D435          "/camera/aligned_depth_to_extcolor/image_raw"  // D435对齐彩色（⚠ 需 align 节点 lifecycle 激活）
-  #define TOPIC_D435_DEPTH    "/camera/depth/image_rect_raw"   // D435深度图
-  #define TOPIC_BMS           "bms_status"                    // 电池（需 protocol::msg::BmsStatus，来自真狗bridges包）
-  #define TOPIC_TOUCH         "touch_status"                  // 触摸（⚠ 需 protocol::msg::TouchStatus，非 std_msgs::Int32！拿不到bridges包前禁用）
+  #define TOPIC_RGB_CAMERA       "/image_rgb"                     // AI相机 RGB（编码 rgb8，⚠ 需 lifecycle 激活）
+  #define TOPIC_FISH_EYE_LEFT    "/image_left"                    // 左鱼眼 灰度（⚠ 需 lifecycle 激活/stereo_camera）
+  #define TOPIC_FISH_EYE_RIGHT   "/image_right"                   // 右鱼眼 灰度（⚠ 需 lifecycle 激活/stereo_camera）
+  #define TOPIC_IMU              "/imu"                           // 身体IMU（Realsense另有/camera/imu）
+  #define TOPIC_LIDAR            "/scan"                          // sensor_msgs/LaserScan（⚠ 真狗可能发 ScanMsg，上机后 ros2 topic info /scan 确认 type）
+  #define TOPIC_D435_INFRA1      "/camera/infra1/image_rect_raw"  // D430i左目红外 灰度（⚠ 需 lifecycle 激活/camera/camera）
+  #define TOPIC_D435_DEPTH       "/camera/depth/image_rect_raw"   // D430i深度图 mono16(mm)（⚠ 需 lifecycle 激活/camera/camera）
+  // 已废弃: TOPIC_D435=/camera/aligned_depth_to_extcolor/image_raw（mono16深度图，非彩色）
+  #define TOPIC_BMS              "bms_status"                    // 电池（需 protocol::msg::BmsStatus，来自真狗bridges包）
+  #define TOPIC_TOUCH            "touch_status"                  // 触摸（⚠ 需 protocol::msg::TouchStatus，非 std_msgs::Int32！拿不到bridges包前禁用）
   // ⚠️ 编码注意事项：on_rgb() 统一要求 cv_bridge 输出 BGR，cv_bridge 自动处理源编码转换（rgb8→bgr8）。
   //    所有检测器(LaneDetector/BallDetector/Stage4Detector)和调试画面均基于 BGR 颜色空间，
   //    只要 on_rgb 拿到的是 BGR 图，下游无需区分真机/仿真。上机后若画面颜色异常，执行:
@@ -77,10 +86,13 @@
   #define LCM_STATE_ESTIMATOR "state_estimator"
   #define LCM_CMD_EXEC        "exec_request"
 #else
-  #define TOPIC_RGB_CAMERA    "/RGB_camera/image_raw"
-  #define TOPIC_IMU           "/imu"
-  #define TOPIC_LIDAR         "/scan"
-  #define TOPIC_D435          "/D435/color/image_raw"
+  #define TOPIC_RGB_CAMERA       "/RGB_camera/image_raw"
+  #define TOPIC_FISH_EYE_LEFT    "/RGB_camera/image_raw"   // 仿真无独立鱼眼，复用RGB
+  #define TOPIC_FISH_EYE_RIGHT   "/RGB_camera/image_raw"
+  #define TOPIC_IMU              "/imu"
+  #define TOPIC_LIDAR            "/scan"
+  #define TOPIC_D435_INFRA1      "/D435/infra1/image_raw"  // 仿真Gazebo D435红外
+  #define TOPIC_D435_DEPTH       "/D435/depth/image_raw"
 #endif
 
 // ============================================================

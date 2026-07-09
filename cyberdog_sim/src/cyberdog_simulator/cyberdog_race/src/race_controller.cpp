@@ -33,9 +33,22 @@ RaceController::RaceController() : Node("race_controller") {
     sub_lidar_ = create_subscription<sensor_msgs::msg::LaserScan>(
         TOPIC_LIDAR, 10,
         [this](sensor_msgs::msg::LaserScan::SharedPtr msg) { on_lidar(msg); });
-    sub_d435_ = create_subscription<sensor_msgs::msg::Image>(
-        TOPIC_D435, qos_be,
-        [this](sensor_msgs::msg::Image::SharedPtr msg) { on_d435(msg); });
+    sub_d435_infra1_ = create_subscription<sensor_msgs::msg::Image>(
+        TOPIC_D435_INFRA1, qos_be,
+        [this](sensor_msgs::msg::Image::SharedPtr msg) { on_d435_infra1(msg); });
+    sub_d435_depth_ = create_subscription<sensor_msgs::msg::Image>(
+        TOPIC_D435_DEPTH, qos_be,
+        [this](sensor_msgs::msg::Image::SharedPtr msg) { on_d435_depth(msg); });
+
+#ifdef ENABLE_WEB_STREAMING
+    // 鱼眼相机（仅 web 展示用，不做检测）
+    sub_fish_eye_left_ = create_subscription<sensor_msgs::msg::Image>(
+        TOPIC_FISH_EYE_LEFT, qos_be,
+        [this](sensor_msgs::msg::Image::SharedPtr msg) { on_fish_eye_left(msg); });
+    sub_fish_eye_right_ = create_subscription<sensor_msgs::msg::Image>(
+        TOPIC_FISH_EYE_RIGHT, qos_be,
+        [this](sensor_msgs::msg::Image::SharedPtr msg) { on_fish_eye_right(msg); });
+#endif
 
 #ifdef REAL_DOG
     // BMS 电池监控（bms_status → protocol::msg::BmsStatus，暂时用 Float32MultiArray 占位）
@@ -436,12 +449,43 @@ void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
 #endif  // defined(DEBUG_VISION) || defined(ENABLE_WEB_STREAMING)
 }
 
-// ── D435 深度相机回调 ──
-void RaceController::on_d435(sensor_msgs::msg::Image::SharedPtr msg) {
+// ── D430i 左目红外回调（D430i 无RGB，只有红外+深度，红外最接近"相机画面"） ──
+void RaceController::on_d435_infra1(sensor_msgs::msg::Image::SharedPtr msg) {
     (void)msg;
 #ifdef ENABLE_WEB_STREAMING
-    auto cv_img = cv_bridge::toCvShare(msg, "bgr8");  // cv_bridge自动处理源编码
+    auto cv_img = cv_bridge::toCvShare(msg, "bgr8");  // cv_bridge自动 mono8→bgr8
     web_streamer_.push_d435_frame(cv_img->image);
+#endif
+}
+
+// ── D430i 深度图回调（mono16 mm → 归一化+JET伪彩色 → web展示） ──
+void RaceController::on_d435_depth(sensor_msgs::msg::Image::SharedPtr msg) {
+    (void)msg;
+#ifdef ENABLE_WEB_STREAMING
+    auto cv_depth = cv_bridge::toCvShare(msg, "mono16");
+    cv::Mat norm, color;
+    // 有效深度 0-5000mm 归一化到 0-255
+    cv_depth->image.convertTo(norm, CV_8UC1, 255.0 / 5000.0);
+    cv::applyColorMap(norm, color, cv::COLORMAP_JET);
+    web_streamer_.push_depth_frame(color);
+#endif
+}
+
+// ── 左鱼眼相机回调（灰度，仅 web 展示） ──
+void RaceController::on_fish_eye_left(sensor_msgs::msg::Image::SharedPtr msg) {
+    (void)msg;
+#ifdef ENABLE_WEB_STREAMING
+    auto cv_img = cv_bridge::toCvShare(msg, "bgr8");
+    web_streamer_.push_fisheye_left_frame(cv_img->image);
+#endif
+}
+
+// ── 右鱼眼相机回调（灰度，仅 web 展示） ──
+void RaceController::on_fish_eye_right(sensor_msgs::msg::Image::SharedPtr msg) {
+    (void)msg;
+#ifdef ENABLE_WEB_STREAMING
+    auto cv_img = cv_bridge::toCvShare(msg, "bgr8");
+    web_streamer_.push_fisheye_right_frame(cv_img->image);
 #endif
 }
 
