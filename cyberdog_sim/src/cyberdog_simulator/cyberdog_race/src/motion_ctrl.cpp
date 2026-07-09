@@ -50,7 +50,7 @@ void MotionCtrl::pub_lcm_cmd() {
 
 void MotionCtrl::jump() {
     memset(&lcm_cmd_, 0, sizeof(lcm_cmd_));
-    lcm_cmd_.mode       = 16;          // MotionMode::kJump3d
+    lcm_cmd_.mode       = static_cast<int8_t>(LocoMode::JUMP_3D);
     lcm_cmd_.gait_id    = 1;           // JumpId::kJumpPosX60（向前跳60cm）
     lcm_cmd_.vel_des[0] = 0.4f;        // 带前向速度起跳，增加跳跃距离
     pub_lcm_cmd();
@@ -58,7 +58,7 @@ void MotionCtrl::jump() {
 
 void MotionCtrl::force_jump() {
     memset(&lcm_cmd_, 0, sizeof(lcm_cmd_));
-    lcm_cmd_.mode    = 22;          // MotionMode::kForceJump
+    lcm_cmd_.mode    = static_cast<int8_t>(LocoMode::FORCE_JUMP);
     lcm_cmd_.gait_id = 4;
     pub_lcm_cmd();
 }

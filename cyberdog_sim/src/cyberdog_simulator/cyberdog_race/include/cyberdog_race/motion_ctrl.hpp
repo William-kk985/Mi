@@ -3,6 +3,15 @@
 #include "cyberdog_race/gamepad_lcmt.hpp"
 #include "robot_control_cmd_lcmt.hpp"
 
+// robot_control_cmd.mode 枚举（官方文档 cyberdog_loco_cn.md §2.1）
+enum class LocoMode : int8_t {
+    PURE_DAMPER   = 0,   // 纯阻尼
+    STAND         = 12,  // QP站立
+    LOCOMOTION    = 11,  // 行走模式（trot）
+    JUMP_3D       = 16,  // 离线轨迹跳跃
+    FORCE_JUMP    = 22,  // 力控跳跃
+};
+
 class MotionCtrl {
 public:
     MotionCtrl();
@@ -20,16 +29,68 @@ public:
     void lie_down();     // 趴下
     void recovery();     // 恢复站立
     void stop();         // 停止（发零速）
-    void jump();                      // kJump3d (mode=16) gait_id=4, 离线轨迹跳跃
-    void force_jump();               // kForceJump (mode=22) gait_id=4, 力控跳跃
-    void send_lcm_mode(int mode, int gait_id = 0); // 通过robot_control_cmd LCM通道发送模式命令
+    void jump();         // kJump3d (mode=16), 离线轨迹跳跃
+    void force_jump();   // kForceJump (mode=22), 力控跳跃
+    void send_lcm_mode(int mode, int gait_id = 0);
+
+    // TODO: 添加 robot_control_response 订阅以检查模式切换是否成功
+    // 真狗在 7670 端口发布 robot_control_response（robot_control_response_lcmt）
+    // 需从真狗 SDK 获取类型定义后取消注释：
+    //   bool is_mode_ok() const { return mode_ok_; }
+    // private:
+    //   std::atomic<bool> mode_ok_{false};
+    //   void on_response(const lcm::ReceiveBuffer*, const std::string&,
+    //                    const robot_control_response_lcmt* msg) {
+    //       mode_ok_ = true;
+    //   }
+    // 构造中: ctrl_lcm_.subscribe("robot_control_response", &MotionCtrl::on_response, this);
 
 private:
-    lcm::LCM              lcm_;           // 默认7667端口，给gamepad用
-    lcm::LCM              ctrl_lcm_;      // 7671端口，给robot_control_cmd用
+    lcm::LCM              lcm_;           // 7667端口，gamepad
+    lcm::LCM              ctrl_lcm_;      // 7671端口，robot_control_cmd (也用于7670订阅响应)
     gamepad_lcmt          gpad_;
     robot_control_cmd_lcmt lcm_cmd_;
     int                   lcm_life_{0};
     void pub_gamepad();
     void pub_lcm_cmd();
+
+    // ═══ TODO: 电机温度监控（需 danger_states_lcmt.hpp，lcm-gen -x 生成） ═══
+    //   float motor_temp_[12]{};
+    //   std::atomic<bool> motor_overheat_{false};
+    //   void on_motor_temp(const lcm::ReceiveBuffer*, const std::string&,
+    //                      const danger_states_lcmt* msg);
+    // 构造中: lcm_.subscribe("motor_temperature", &MotionCtrl::on_motor_temp, this);
+    // 使用:   bool is_overheat() const { return motor_overheat_; }
+    //
+    // void MotionCtrl::on_motor_temp(..., const danger_states_lcmt* msg) {
+    //     float max_t = 0;
+    //     for (int i = 0; i < 12; i++) {
+    //         motor_temp_[i] = msg->motor_temperature[i];
+    //         if (motor_temp_[i] > max_t) max_t = motor_temp_[i];
+    //     }
+    //     motor_overheat_ = (max_t > 74.f);  // 官方文档: 74°C 预警
+    // }
+
+    // ═══ TODO: robot_control_response 命令确认（需 robot_control_response_lcmt.hpp） ═══
+    //   std::atomic<bool> cmd_ok_{false};
+    //   std::atomic<int8_t> curr_mode_{0};
+    //   void on_cmd_response(const lcm::ReceiveBuffer*, const std::string&,
+    //                        const robot_control_response_lcmt* msg);
+    //   bool wait_cmd_ok(int timeout_ms = 100);
+    // 构造中: ctrl_lcm_.subscribe("robot_control_response", &MotionCtrl::on_cmd_response, this);
+    //
+    // void MotionCtrl::on_cmd_response(..., const robot_control_response_lcmt* msg) {
+    //     curr_mode_ = msg->mode;
+    //     cmd_ok_ = true;
+    // }
+    // bool MotionCtrl::wait_cmd_ok(int timeout_ms) {
+    //     auto t0 = std::chrono::steady_clock::now();
+    //     while (!cmd_ok_) {
+    //         if (std::chrono::steady_clock::now() - t0 >
+    //             std::chrono::milliseconds(timeout_ms)) return false;
+    //         std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    //     }
+    //     cmd_ok_ = false;
+    //     return true;
+    // }
 };

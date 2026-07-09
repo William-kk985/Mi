@@ -38,9 +38,39 @@ RaceController::RaceController() : Node("race_controller") {
         [this](sensor_msgs::msg::Image::SharedPtr msg) { on_d435(msg); });
 
 #ifdef REAL_DOG
-    sub_odom_ = create_subscription<nav_msgs::msg::Odometry>(
-        TOPIC_ODOM, 10,
-        [this](nav_msgs::msg::Odometry::SharedPtr msg) { on_odom(msg); });
+    // BMS 电池监控（bms_status → protocol::msg::BmsStatus，暂时用 Float32MultiArray 占位）
+    // 上机后若拿到 bridges 包，替换为 protocol::msg::BmsStatus 类型
+    sub_bms_ = create_subscription<std_msgs::msg::Float32MultiArray>(
+        TOPIC_BMS, 10,
+        [this](std_msgs::msg::Float32MultiArray::SharedPtr msg) { on_bms(msg); });
+
+    // TODO: 触摸紧急停止 — 需要 protocol::msg::TouchStatus（从真狗 bridges 包获取）
+    // touch_status topic 格式: Header header + int32 touch_state + uint64 timestamp
+    // touch_state: 0x01=单击 0x03=双击 0x07=长按
+    // 拿到 bridges 包后取消下面注释:
+    // sub_touch_ = create_subscription<protocol::msg::TouchStatus>(
+    //     TOPIC_TOUCH, 10,
+    //     [this](protocol::msg::TouchStatus::SharedPtr msg) { on_touch(msg); });
+
+    // ═══ TODO: TOF 四腿离地传感器（需 HeadTofPayload/RearTofPayload 类型） ═══
+    // 真狗4个TOF: LEFT_HEAD/RIGHT_HEAD/LEFT_REAR/RIGHT_REAR, 有效150-660mm, 8x8高程10Hz
+    // 用于 Stage5 独木桥检测: tof_clearance < 0.1m 表示偏离桥面
+    // sub_head_tof_ = create_subscription<protocol::msg::HeadTofPayload>(
+    //     "head_tof_payload", 10,
+    //     [this](protocol::msg::HeadTofPayload::SharedPtr msg) {
+    //         float min_h = 0.66f;
+    //         for (float v : msg->left_head.data)  if (v < min_h) min_h = v;
+    //         for (float v : msg->right_head.data) if (v < min_h) min_h = v;
+    //         sensor_.tof_clearance = min_h;
+    //     });
+    // sub_rear_tof_ = create_subscription<protocol::msg::RearTofPayload>(
+    //     "rear_tof_payload", 10,
+    //     [this](protocol::msg::RearTofPayload::SharedPtr msg) {
+    //         float min_h = sensor_.tof_clearance;
+    //         for (float v : msg->left_rear.data)  if (v < min_h) min_h = v;
+    //         for (float v : msg->right_rear.data) if (v < min_h) min_h = v;
+    //         sensor_.tof_clearance = min_h;
+    //     });
 #endif
 
     yaml_pub_ = create_publisher<cyberdog_msg::msg::YamlParam>("yaml_parameter", 10);
@@ -72,10 +102,12 @@ RaceController::RaceController() : Node("race_controller") {
 
     if (lcm_sub_.good()) {
 #ifdef REAL_DOG
+        lcm_sub_.subscribe(LCM_ODOM_CHANNEL,
+                           &RaceController::on_global_to_robot, this);
         lcm_sub_.subscribe(LCM_STATE_ESTIMATOR,
                            &RaceController::on_state_estimator, this);
-        RCLCPP_INFO(get_logger(), "[RealDog] Using LCM %s + ROS2 %s for odom",
-                    LCM_STATE_ESTIMATOR, TOPIC_ODOM);
+        RCLCPP_INFO(get_logger(), "[RealDog] LCM odom: %s, state: %s",
+                    LCM_ODOM_CHANNEL, LCM_STATE_ESTIMATOR);
 #else
         lcm_sub_.subscribe("simulator_state", &RaceController::on_sim_state, this);
 #endif
@@ -178,16 +210,15 @@ void RaceController::apply_stage_params() {
     }
 
 #ifdef REAL_DOG
-    // ── 真机：同时通过 LCM control_parameter 通道下发参数 ──
-    // TODO: 确认真狗 motion 模块接受 LCM control_parameter_lcmt 还是 exec_request
-    //       如果真狗只走 LCM，需用 control_parameter_lcmt 替代 ROS2 yaml_parameter
-    // {
-    //     control_parameter_request_lcmt req;
-    //     snprintf(req.name, sizeof(req.name), "des_roll_pitch_height");
-    //     snprintf(req.value, sizeof(req.value), "%.3f,%.3f,%.3f", roll, 0.0, h);
-    //     req.parameterKind = 3;
-    //     lcm_sub_.publish(LCM_CMD_EXEC, &req);
-    // }
+    // ── 真机备选：LCM control_parameter 通道下发参数 ──
+    // TODO: SSH 进真狗 `lcm-spy` 确认 control_parameter 通道是否存在及类型
+    // control_parameter_request_lcmt req;
+    // snprintf(req.name, sizeof(req.name), "des_roll_pitch_height");
+    // snprintf(req.value, sizeof(req.value), "%.3f %.3f %.3f",
+    //          stages_[cur_stage_]->get_desired_roll(), 0.0,
+    //          stages_[cur_stage_]->get_desired_height());
+    // req.parameterKind = 3;
+    // lcm_sub_.publish(LCM_CMD_EXEC, &req);
 #endif
 }
 
@@ -259,6 +290,9 @@ void RaceController::control_loop() {
 
 // ── 传感器回调 ──
 void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
+    // 统一转 BGR（检测器+调试画面全基于BGR，cv_bridge自动处理源编码rgb8→bgr8）
+    // ⚠️ 真机收不到图时先确认相机 lifecycle 已激活：
+    //    ros2 lifecycle set /stereo_camera activate
     auto cv_img = cv_bridge::toCvShare(msg, "bgr8");
 
     // ── 视觉检测（锁外，5-30ms，不阻塞 IMU/LiDAR 回调） ──
@@ -313,7 +347,7 @@ void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
 #if defined(DEBUG_VISION) || defined(ENABLE_WEB_STREAMING)
     cv::Mat frame = cv_img->image.clone();
     cv::Mat hsv, mask;
-    cv::cvtColor(frame, hsv, cv::COLOR_BGR2HSV);
+    cv::cvtColor(frame, hsv, cv::COLOR_BGR2HSV);   // 统一BGR输入
     cv::inRange(hsv, cv::Scalar(20, 100, 150), cv::Scalar(35, 255, 255), mask);
     cv::Mat overlay = frame.clone();
     overlay.setTo(cv::Scalar(0, 255, 0), mask);
@@ -406,7 +440,7 @@ void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
 void RaceController::on_d435(sensor_msgs::msg::Image::SharedPtr msg) {
     (void)msg;
 #ifdef ENABLE_WEB_STREAMING
-    auto cv_img = cv_bridge::toCvShare(msg, "bgr8");
+    auto cv_img = cv_bridge::toCvShare(msg, "bgr8");  // cv_bridge自动处理源编码
     web_streamer_.push_d435_frame(cv_img->image);
 #endif
 }
@@ -420,26 +454,53 @@ void RaceController::on_sim_state(const lcm::ReceiveBuffer*, const std::string&,
 }
 
 #ifdef REAL_DOG
-// ── 真机 ROS2 里程计回调 ──
-void RaceController::on_odom(nav_msgs::msg::Odometry::SharedPtr msg) {
+// ── 真机 LCM 里程计回调（global_to_robot → localization_lcmt, 50Hz, 7667） ──
+void RaceController::on_global_to_robot(const lcm::ReceiveBuffer*,
+                                         const std::string&,
+                                         const localization_lcmt* msg) {
     std::lock_guard<std::mutex> lock(sensor_mutex_);
-    sensor_.odom_x = static_cast<float>(msg->pose.pose.position.x);
-    sensor_.odom_y = static_cast<float>(msg->pose.pose.position.y);
-    // body_height 从 LCM state_estimator 获取，此处不更新
+    sensor_.odom_x = msg->xyz[0];
+    sensor_.odom_y = msg->xyz[1];
+    sensor_.body_height = msg->xyz[2];  // z 轴直接作为身高
 }
 
-// ── 真机 LCM 状态估计回调 ──
+// ── 真机 LCM 状态估计回调（state_estimator，备选 body_height 来源） ──
 void RaceController::on_state_estimator(const lcm::ReceiveBuffer*,
                                          const std::string&,
                                          const state_estimator_lcmt* msg) {
     std::lock_guard<std::mutex> lock(sensor_mutex_);
-    // p[2] = z 方向绝对位置，可作为 body_height 参考
-    // TODO: 真机验证 body_height 是否需要减去地面高度偏移
+    // 如果 global_to_robot.xyz[2] 不够精确，可用 state_estimator.p[2] 覆盖
     sensor_.body_height = msg->p[2];
-    // 如果 ROS2 /odom 不可用，可启用下面两行作为备选里程计
-    // sensor_.odom_x = msg->p[0];
-    // sensor_.odom_y = msg->p[1];
 }
+
+// ── 真机 BMS 电池监控（低电量自动保护） ──
+void RaceController::on_bms(std_msgs::msg::Float32MultiArray::SharedPtr msg) {
+    // TODO: 拿到 protocol::msg::BmsStatus 后替换为 batt_soc 字段
+    if (msg->data.empty()) return;
+    float soc = msg->data[0];  // 临时假设 data[0]=batt_soc 电量百分比
+    if (soc < 20.f) {
+        RCLCPP_WARN(get_logger(), "[BMS] Battery %.0f%% — EMERGENCY STOP + LIE DOWN", soc);
+        motion_.stop();
+        rclcpp::sleep_for(std::chrono::milliseconds(500));
+        motion_.lie_down();
+        timer_->cancel();
+    } else if (soc < 30.f) {
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 10000,
+                             "[BMS] Battery low: %.0f%%", soc);
+    }
+}
+
+// ── 真机触摸紧急停止（TODO：需 protocol::msg::TouchStatus 类型定义） ──
+// touch_status topic 格式: std_msgs/Header header + int32 touch_state + uint64 timestamp
+// touch_state: 0x01=单击 0x03=双击 0x07=长按(LPWG_TOUCHANDHOLD_DETECTED)
+// void RaceController::on_touch(protocol::msg::TouchStatus::SharedPtr msg) {
+//     if (msg->touch_state == 0x07) {
+//         RCLCPP_WARN(get_logger(), "[Touch] Long press — EMERGENCY STOP");
+//         motion_.stop();
+//         rclcpp::sleep_for(std::chrono::milliseconds(200));
+//         motion_.lie_down();
+//     }
+// }
 #endif
 
 void RaceController::on_imu(sensor_msgs::msg::Imu::SharedPtr msg) {
@@ -453,6 +514,9 @@ void RaceController::on_imu(sensor_msgs::msg::Imu::SharedPtr msg) {
 }
 
 void RaceController::on_lidar(sensor_msgs::msg::LaserScan::SharedPtr msg) {
+    // ⚠ 真狗 LiDAR 可能走 sensor_manager 的 ScanMsg 而非标准 LaserScan
+    //    上机后若收不到数据，先 ros2 topic info /scan 确认 type
+    //    如果是自定义 ScanMsg，需替换消息类型并适配字段映射
     if (msg->ranges.empty()) return;
     int n = msg->ranges.size();
     float front_min = 10.0f;

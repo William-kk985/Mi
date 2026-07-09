@@ -5,6 +5,9 @@
 #include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/laser_scan.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <std_msgs/msg/float32_multi_array.hpp>  // BMS 电池占位（真机需替换为 protocol::msg::BmsStatus）
+// #include "protocol/msg/TouchStatus.hpp"      // TODO: 从真狗 bridges 包获取后启用触摸紧急停止
+// #include "protocol/msg/BmsStatus.hpp"        // TODO: 从真狗 bridges 包获取后替换 Float32MultiArray
 #include <cyberdog_msg/msg/yaml_param.hpp>
 #include <cv_bridge/cv_bridge.h>
 #include <lcm/lcm-cpp.hpp>
@@ -17,6 +20,7 @@
 
 #include "simulator_lcmt.hpp"
 #include "state_estimator_lcmt.hpp"
+#include "localization_lcmt.hpp"
 #include "cyberdog_race/debug_config.hpp"
 #include "cyberdog_race/motion_ctrl.hpp"
 #include "cyberdog_race/sensor_data.hpp"
@@ -45,9 +49,12 @@ private:
     void on_imu(sensor_msgs::msg::Imu::SharedPtr msg);
     void on_lidar(sensor_msgs::msg::LaserScan::SharedPtr msg);
     void on_d435(sensor_msgs::msg::Image::SharedPtr msg);
+    // TODO: void on_touch(protocol::msg::TouchStatus::SharedPtr msg); // 需bridges包
+    void on_bms(std_msgs::msg::Float32MultiArray::SharedPtr msg);
     void on_sim_state(const lcm::ReceiveBuffer*, const std::string&,
                       const simulator_lcmt* msg);
-    void on_odom(nav_msgs::msg::Odometry::SharedPtr msg);
+    void on_global_to_robot(const lcm::ReceiveBuffer*, const std::string&,
+                            const localization_lcmt* msg);
     void on_state_estimator(const lcm::ReceiveBuffer*, const std::string&,
                             const state_estimator_lcmt* msg);
     void control_loop();
@@ -87,9 +94,10 @@ private:
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr       sub_imu_;
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr sub_lidar_;
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr     sub_d435_;
-#ifdef REAL_DOG
-    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr     sub_odom_;
-#endif
+    // rclcpp::Subscription<protocol::msg::TouchStatus>::SharedPtr sub_touch_; // TODO: 需bridges包
+    rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr sub_bms_;
+    // rclcpp::Subscription<protocol::msg::HeadTofPayload>::SharedPtr sub_head_tof_;  // TODO: 需bridges包
+    // rclcpp::Subscription<protocol::msg::RearTofPayload>::SharedPtr sub_rear_tof_;  // TODO: 需bridges包
     rclcpp::Publisher<cyberdog_msg::msg::YamlParam>::SharedPtr   yaml_pub_;
 
 #ifdef ENABLE_WEB_STREAMING

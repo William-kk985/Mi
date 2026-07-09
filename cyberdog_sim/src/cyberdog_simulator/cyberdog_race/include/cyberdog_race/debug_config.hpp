@@ -55,14 +55,25 @@
 
 // #define REAL_DOG
 
-// ── 传感器 topic 名称（REAL_DOG 下的值需 SSH 进真狗 ros2 topic list 确认后修改） ──
+// ── 传感器 topic 名称（真机值依据官方 developer_guide 文档） ──
+// ⚠️ 上机前必读：以下相机 topic 依赖对应的 ROS2 节点已 lifecycle 激活，否则收不到数据！
+//   ros2 lifecycle set /stereo_camera configure && ros2 lifecycle set /stereo_camera activate  # RGB相机 /image_rgb
+//   ros2 lifecycle set /camera/camera configure && ros2 lifecycle set /camera/camera activate  # Realsense D435
+//   ros2 lifecycle set /camera/camera_align configure && ros2 lifecycle set /camera/camera_align activate  # D435对齐彩色
 #ifdef REAL_DOG
-  #define TOPIC_RGB_CAMERA    "/camera/color/image_raw"        // TODO: 确认真狗 RGB 相机 topic
-  #define TOPIC_IMU           "/imu"                           // TODO: 确认，大概率不变
-  #define TOPIC_LIDAR         "/scan"                          // TODO: 确认真狗 LiDAR topic（可能是 /laser_scan）
-  #define TOPIC_D435          "/camera/depth/color/image_raw"  // TODO: 确认真狗 D435 相机 topic
-  #define TOPIC_ODOM          "/odom"                          // TODO: 确认真狗里程计 topic
-  // LCM 通道（真狗用 state_estimator 替代 simulator_state）
+  #define TOPIC_RGB_CAMERA    "/image_rgb"                     // RGB+鱼眼节点，编码 rgb8（⚠ 需 lifecycle 激活）
+  #define TOPIC_IMU           "/imu"                           // 身体IMU（Realsense另有/camera/imu）
+  #define TOPIC_LIDAR         "/scan"                          // sensor_msgs/LaserScan（⚠ 真狗可能发 ScanMsg，上机后 ros2 topic info /scan 确认 type）
+  #define TOPIC_D435          "/camera/aligned_depth_to_extcolor/image_raw"  // D435对齐彩色（⚠ 需 align 节点 lifecycle 激活）
+  #define TOPIC_D435_DEPTH    "/camera/depth/image_rect_raw"   // D435深度图
+  #define TOPIC_BMS           "bms_status"                    // 电池（需 protocol::msg::BmsStatus，来自真狗bridges包）
+  #define TOPIC_TOUCH         "touch_status"                  // 触摸（⚠ 需 protocol::msg::TouchStatus，非 std_msgs::Int32！拿不到bridges包前禁用）
+  // ⚠️ 编码注意事项：on_rgb() 统一要求 cv_bridge 输出 BGR，cv_bridge 自动处理源编码转换（rgb8→bgr8）。
+  //    所有检测器(LaneDetector/BallDetector/Stage4Detector)和调试画面均基于 BGR 颜色空间，
+  //    只要 on_rgb 拿到的是 BGR 图，下游无需区分真机/仿真。上机后若画面颜色异常，执行:
+  //    ros2 topic echo /image_rgb --once | grep encoding  确认源编码是否为 rgb8。
+  // LCM 通道（真狗里程计走 LCM global_to_robot，没有 ROS2 /odom）
+  #define LCM_ODOM_CHANNEL    "global_to_robot"  // localization_lcmt, 50Hz, 7667
   #define LCM_STATE_ESTIMATOR "state_estimator"
   #define LCM_CMD_EXEC        "exec_request"
 #else
