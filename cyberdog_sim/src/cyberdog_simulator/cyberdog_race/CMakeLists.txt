@@ -18,7 +18,6 @@ option(USE_TEST_REAL_STAGE4 "Real stage4 test version" OFF)
 option(USE_TEST_REAL_STAGE5 "Real stage5 test version" OFF)
 option(USE_TEST_REAL_STAGE6 "Real stage6 test version" OFF)
 option(USE_TEST_REAL_ALL   "All real stages test version" OFF)
-option(USE_TEST_BEHAVIOR   "Compile behavior_test helpers" OFF)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
@@ -39,6 +38,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
 )
 
 include_directories(include
+  src/test/inc
   src/test/real/inc
   src/test/virtual/inc
   ${OpenCV_INCLUDE_DIRS}
@@ -91,7 +91,7 @@ endif()
 set(SOURCES
   src/main.cpp
   src/race_controller.cpp
-  src/behavior_test.cpp
+  src/test/src/behavior_test.cpp
   src/motion_ctrl.cpp
   src/vision/virtual/lane_detector.cpp
   src/vision/virtual/ball_detector.cpp
@@ -127,13 +127,6 @@ add_real_test(3)
 add_real_test(4)
 add_real_test(5)
 add_real_test(6)
-
-# ── 测试辅助函数（追加到 SOURCES） ──
-if(USE_TEST_BEHAVIOR)
-  list(APPEND SOURCES src/test/behavior_test.cpp)
-  add_compile_definitions(USE_TEST_BEHAVIOR)
-  message(STATUS "[TEST] behavior_test compiled")
-endif()
 
 add_executable(race_controller ${SOURCES})
 ament_target_dependencies(race_controller rclcpp sensor_msgs nav_msgs cyberdog_msg cv_bridge)

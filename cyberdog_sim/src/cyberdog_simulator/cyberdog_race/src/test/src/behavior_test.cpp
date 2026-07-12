@@ -1,4 +1,4 @@
-#include "cyberdog_race/behavior_test.hpp"
+#include "behavior_test.hpp"
 #include <rclcpp/rclcpp.hpp>
 #include <cstdio>
 #include <cmath>
@@ -109,3 +109,15 @@ void step_height_test(MotionCtrl& motion, SensorData& sensor) {
 }
 
 } // namespace behavior
+
+// ── 通用链路测试 ──
+namespace behavior_test {
+
+void ping() { fprintf(stderr, "\033[1;36m[Test] pong\033[0m\n"); }
+void run_all() {
+    fprintf(stderr, "\033[1;36m[Test] run_all ---\033[0m\n");
+    ping();
+    fprintf(stderr, "\033[1;36m[Test] run_all done\033[0m\n");
+}
+
+} // namespace behavior_test

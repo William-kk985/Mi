@@ -31,7 +31,7 @@
 #include "cyberdog_race/stages/virtual/stage4.hpp"
 #include "cyberdog_race/stages/virtual/stage5.hpp"
 #include "cyberdog_race/stages/virtual/stage6.hpp"
-#include "cyberdog_race/behavior_test.hpp"
+#include "behavior_test.hpp"
 #include "cyberdog_race/vision/virtual/lane_detector.hpp"
 #include "cyberdog_race/vision/virtual/ball_detector.hpp"
 #include "cyberdog_race/vision/virtual/stage4_detector.hpp"

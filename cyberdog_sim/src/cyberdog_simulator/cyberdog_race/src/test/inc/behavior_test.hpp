@@ -1,11 +1,9 @@
 #pragma once
 #include "cyberdog_race/motion_ctrl.hpp"
 #include "cyberdog_race/sensor_data.hpp"
+#include <cstdio>
 
-// 行为测试模块
-// 独立测试某个算法或功能，不依赖赛段状态机
-// 在 debug_config.hpp 中定义 DEBUG_TEST_BEHAVIOR 并设置 TEST_BEHAVIOR
-
+// ── 赛段运动行为测试（DEBUG_TEST_BEHAVIOR 触发） ──
 namespace behavior {
 
 void run_test(MotionCtrl& motion, SensorData& sensor, int test_id);
@@ -20,3 +18,11 @@ void pitch_test(MotionCtrl& motion, SensorData& sensor);         // 7: 俯仰角
 void step_height_test(MotionCtrl& motion, SensorData& sensor);   // 8: 步高
 
 } // namespace behavior
+
+// ── 通用链路测试（cmake -DUSE_TEST_BEHAVIOR=ON 编译） ──
+namespace behavior_test {
+
+void ping();
+void run_all();
+
+} // namespace behavior_test
