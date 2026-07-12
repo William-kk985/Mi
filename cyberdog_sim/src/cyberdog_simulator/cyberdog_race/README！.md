@@ -57,7 +57,6 @@ cyberdog_race/
 │   ├── race_controller.hpp               # 主控制器类声明
 │   ├── motion_ctrl.hpp                   # LCM 运动控制接口
 │   ├── sensor_data.hpp                   # 传感器共享数据 POD
-│   ├── behavior_test.hpp                 # 行为测试模式
 │   ├── llm_helper.hpp                    # LLM 通信辅助
 │   │
 │   ├── stages/
@@ -85,21 +84,24 @@ cyberdog_race/
     ├── main.cpp                          # 入口 + spin + 关机序列
     ├── race_controller.cpp               # 主控制器实现
     ├── motion_ctrl.cpp                   # LCM 运动指令
-    ├── behavior_test.cpp                 # 行为测试
     ├── llm_helper.cpp                    # LLM 通信
     ├── stages/virtual/                   # 仿真赛段 .cpp
     ├── stages/real/                      # 真机赛段 .cpp（骨架）
     ├── utils/web_streamer.cpp            # HTTP 服务
     ├── vision/virtual/                   # 视觉检测器 .cpp
-    ├── test/                             # 测试代码目录（cmake 条件编译）
-    │   ├── inc/virtual/                  # 虚拟赛段测试头文件
-    │   ├── inc/real/                     # 真机赛段测试头文件
-    │   │   ├── stage1_real_test.hpp ~ stage6_real_test.hpp
-    │   ├── src/virtual/                  # 虚拟赛段测试源文件
-    │   ├── src/real/                     # 真机赛段测试源文件
-    │   │   ├── stage1_real_test.cpp ~ stage6_real_test.cpp
-    │   ├── behavior_test.hpp             # 测试辅助函数头文件
-    │   └── behavior_test.cpp             # 测试辅助函数实现
+    ├── test/                             # 测试代码（cmake 条件编译）
+    │   ├── inc/
+    │   │   ├── behavior_test.hpp         # 行为测试 + 通用链路测试
+    │   │   ├── real/                     # 真机赛段测试头文件
+    │   │   │   ├── stage1_real_test.hpp ~ stage6_real_test.hpp
+    │   │   └── virtual/                  # 虚拟赛段测试头文件
+    │   ├── src/
+    │   │   ├── behavior_test.cpp         # 行为测试 + 通用链路测试实现
+    │   │   ├── real/                     # 真机赛段测试源文件
+    │   │   │   ├── stage1_real_test.cpp ~ stage6_real_test.cpp
+    │   │   └── virtual/                  # 虚拟赛段测试源文件
+    │   ├── real/{inc,src}/               # 真机测试（自包含 inc+src）
+    │   └── virtual/{inc,src}/            # 虚拟测试
 ```
 
 ---
@@ -191,9 +193,6 @@ colcon build --cmake-args -DUSE_TEST_REAL_ALL=ON
 
 # 单个赛段用测试版
 colcon build --cmake-args -DUSE_TEST_REAL_STAGE3=ON
-
-# 带测试辅助函数
-colcon build --cmake-args -DUSE_TEST_REAL_ALL=ON -DUSE_TEST_BEHAVIOR=ON
 ```
 
 - 测试类名加 `Test` 后缀（如 `Stage1RealTest`），与正式实现完全独立
