@@ -90,7 +90,16 @@ cyberdog_race/
     ├── stages/virtual/                   # 仿真赛段 .cpp
     ├── stages/real/                      # 真机赛段 .cpp（骨架）
     ├── utils/web_streamer.cpp            # HTTP 服务
-    └── vision/virtual/                   # 视觉检测器 .cpp
+    ├── vision/virtual/                   # 视觉检测器 .cpp
+    ├── test/                             # 测试代码目录（cmake 条件编译）
+    │   ├── inc/virtual/                  # 虚拟赛段测试头文件
+    │   ├── inc/real/                     # 真机赛段测试头文件
+    │   │   ├── stage1_real_test.hpp ~ stage6_real_test.hpp
+    │   ├── src/virtual/                  # 虚拟赛段测试源文件
+    │   ├── src/real/                     # 真机赛段测试源文件
+    │   │   ├── stage1_real_test.cpp ~ stage6_real_test.cpp
+    │   ├── behavior_test.hpp             # 测试辅助函数头文件
+    │   └── behavior_test.cpp             # 测试辅助函数实现
 ```
 
 ---
@@ -169,6 +178,25 @@ API 模式需要 `libcurl`，`CMakeLists.txt` 已做 `find_package(CURL QUIET)`�
 ### 8. 新增 .cpp 文件
 
 必须在 `CMakeLists.txt` 的 `set(SOURCES ...)` 中添加，否则链接错误。
+
+### 9. 测试文件隔离
+
+- 测试代码统一放在 `src/test/` 下，`inc/` 放头文件、`src/` 放源文件，与正式代码完全分离
+- 每个平台（`real/`、`virtual/`）各自维护 `inc/` + `src/`，自包含
+- 测试通过 cmake 条件编译控制，不污染正式版：
+
+```bash
+# 全部真机赛段用测试版
+colcon build --cmake-args -DUSE_TEST_REAL_ALL=ON
+
+# 单个赛段用测试版
+colcon build --cmake-args -DUSE_TEST_REAL_STAGE3=ON
+
+# 带测试辅助函数
+colcon build --cmake-args -DUSE_TEST_REAL_ALL=ON -DUSE_TEST_BEHAVIOR=ON
+```
+
+- 测试类名加 `Test` 后缀（如 `Stage1RealTest`），与正式实现完全独立
 
 ---
 
