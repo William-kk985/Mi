@@ -11,6 +11,14 @@ option(USE_TEST_STAGE4 "Replace stage4.cpp with stage4_test.cpp" OFF)
 option(USE_TEST_STAGE5 "Replace stage5.cpp with stage5_test.cpp" OFF)
 option(USE_TEST_STAGE6 "Replace stage6.cpp with stage6_test.cpp" OFF)
 option(USE_TEST_ALL   "Replace ALL stages with _test.cpp versions" OFF)
+option(USE_TEST_REAL_STAGE1 "Real stage1 test version" OFF)
+option(USE_TEST_REAL_STAGE2 "Real stage2 test version" OFF)
+option(USE_TEST_REAL_STAGE3 "Real stage3 test version" OFF)
+option(USE_TEST_REAL_STAGE4 "Real stage4 test version" OFF)
+option(USE_TEST_REAL_STAGE5 "Real stage5 test version" OFF)
+option(USE_TEST_REAL_STAGE6 "Real stage6 test version" OFF)
+option(USE_TEST_REAL_ALL   "All real stages test version" OFF)
+option(USE_TEST_BEHAVIOR   "Compile behavior_test helpers" OFF)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
@@ -30,7 +38,10 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/LLMAsk.srv"
 )
 
-include_directories(include ${OpenCV_INCLUDE_DIRS}
+include_directories(include
+  src/test/real/inc
+  src/test/virtual/inc
+  ${OpenCV_INCLUDE_DIRS}
   ${CMAKE_CURRENT_SOURCE_DIR}/../cyberdog_gazebo/include
   ${CMAKE_CURRENT_SOURCE_DIR}/../cyberdog_visual/lcm_type
   ${CMAKE_CURRENT_SOURCE_DIR}/../../cyberdog_locomotion/common
@@ -101,6 +112,28 @@ set(SOURCES
   # src/stages/real/stage5_real.cpp
   # src/stages/real/stage6_real.cpp
 )
+
+# ── 真机赛段测试替换（追加到 SOURCES） ──
+macro(add_real_test N)
+  if(USE_TEST_REAL_ALL OR USE_TEST_REAL_STAGE${N})
+    list(APPEND SOURCES src/test/real/src/stage${N}_real_test.cpp)
+    add_compile_definitions(USE_TEST_REAL_STAGE${N})
+    message(STATUS "[TEST] Real Stage${N} → src/test/real/src/stage${N}_real_test.cpp")
+  endif()
+endmacro()
+add_real_test(1)
+add_real_test(2)
+add_real_test(3)
+add_real_test(4)
+add_real_test(5)
+add_real_test(6)
+
+# ── 测试辅助函数（追加到 SOURCES） ──
+if(USE_TEST_BEHAVIOR)
+  list(APPEND SOURCES src/test/behavior_test.cpp)
+  add_compile_definitions(USE_TEST_BEHAVIOR)
+  message(STATUS "[TEST] behavior_test compiled")
+endif()
 
 add_executable(race_controller ${SOURCES})
 ament_target_dependencies(race_controller rclcpp sensor_msgs nav_msgs cyberdog_msg cv_bridge)

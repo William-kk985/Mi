@@ -194,7 +194,17 @@ project/
     ├── controller.cpp
     ├── modules/impl_a/         # 实现 A 的 .cpp
     ├── modules/impl_b/         # 实现 B 的 .cpp
-    └── utils/
+    └── test/                   # 测试代码目录（cmake 条件编译）
+        ├── inc/                # 测试头文件（每个平台自包含）
+        │   ├── virtual/
+        │   └── real/
+        │       └── moduleN_test.hpp
+        ├── src/                # 测试源文件
+        │   ├── virtual/
+        │   └── real/
+        │       └── moduleN_test.cpp
+        ├── behavior_test.hpp   # 测试辅助函数（通用）
+        └── behavior_test.cpp
 ```
 
 ---
@@ -243,6 +253,13 @@ project/
 ### 5. 新增 .cpp 文件
 
 必须在 `CMakeLists.txt` 的 `set(SOURCES ...)` 中添加，否则链接错误。
+
+### 6. 测试文件隔离
+
+- 测试代码统一放在 `src/test/` 下，与正式代码完全分离
+- 每个平台（`real/`、`virtual/`）各自维护 `inc/` + `src/`，自包含
+- 测试通过 cmake 条件编译（`-DUSE_TEST_XXX=ON`）控制，不污染正式版
+- 测试类名加 `Test` 后缀（如 `Stage1RealTest`），与正式实现完全独立
 
 ---
 
