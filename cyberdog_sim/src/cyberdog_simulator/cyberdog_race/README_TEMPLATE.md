@@ -149,8 +149,8 @@ inline int square(int x) { return x * x; }
 // 推荐顺序（每类内部按字母序）
 #include "project/config.hpp"     // 1. 本项目的 config（最先，影响后续 include）
 
-#include <rclcpp/rclcpp.hpp>      // 2. 第三方库 / ROS2
-#include <opencv2/opencv.hpp>
+#include <opencv2/opencv.hpp>    // 2. 第三方库
+#include <curl/curl.h>
 
 #include <memory>                 // 3. C++ 标准库
 #include <string>
@@ -283,9 +283,9 @@ project/
 
 ```bash
 # 默认
-colcon build --packages-select project
+mkdir build && cd build && cmake .. && make -j
 
-# 打开某个宏：取消 config.hpp 中注释，同上
+# 打开某个宏：取消 config.hpp 中注释，或 cmake -DMACRO=ON
 ```
 
 ---

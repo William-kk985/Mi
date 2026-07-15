@@ -44,7 +44,7 @@ race_controller (ROS2 Node, 100Hz timer)
 cyberdog_race/
 ├── CMakeLists.txt                        # 编译配置（新增 .cpp 必须加 SOURCES）
 ├── package.xml                           # ROS2 包清单
-├── README.md                             # ← 本文档
+├── README！.md                           # ← 本文档
 │
 ├── doc/                                  # 文档
 │   └── LLM_GUIDE.md                      # LLM 集成指南
@@ -90,18 +90,18 @@ cyberdog_race/
     ├── utils/web_streamer.cpp            # HTTP 服务
     ├── vision/virtual/                   # 视觉检测器 .cpp
     ├── test/                             # 测试代码（cmake 条件编译）
-    │   ├── inc/
+    │   ├── inc/                          # 通用测试头文件（behavior_test）
     │   │   ├── behavior_test.hpp         # 行为测试 + 通用链路测试
     │   │   ├── real/                     # 真机赛段测试头文件
     │   │   │   ├── stage1_real_test.hpp ~ stage6_real_test.hpp
     │   │   └── virtual/                  # 虚拟赛段测试头文件
-    │   ├── src/
+    │   ├── src/                          # 通用测试源文件（behavior_test）
     │   │   ├── behavior_test.cpp         # 行为测试 + 通用链路测试实现
     │   │   ├── real/                     # 真机赛段测试源文件
     │   │   │   ├── stage1_real_test.cpp ~ stage6_real_test.cpp
     │   │   └── virtual/                  # 虚拟赛段测试源文件
-    │   ├── real/{inc,src}/               # 真机测试（自包含 inc+src）
-    │   └── virtual/{inc,src}/            # 虚拟测试
+    │   ├── real/{inc,src}/               # 真机 cmake 条件编译类（自包含）
+    │   └── virtual/{inc,src}/            # 虚拟 cmake 条件编译类
 ```
 
 ---
@@ -132,13 +132,13 @@ cyberdog_race/
 
 所有检测器、调试画面、Web 推流统一使用 **BGR** 颜色空间：
 
-
+```
 on_rgb()
   → cv_bridge::toCvShare(msg, "bgr8")   ← cv_bridge 自动处理源编码 (rgb8→bgr8)
   → LaneDetector::detect(cv_img, BGR)    ← 内部做 BGR→HSV 转换
   → BallDetector::detect(cv_img, BGR)    ← 同上
   → Stage4Detector::detect(cv_img, BGR)  ← 同上
-
+```
 
 🚫 **不要**在 `on_rgb` 之外单独订阅 ROS2 图像再转 BGR——统一入口已处理编码差异。
 
@@ -156,10 +156,11 @@ on_rgb()
 
 ### 5. LLM 模式
 
-
+```
 // #define LLM_MODE_PROXY   ← 比赛推荐（狗→ROS2 Srv→笔记本→云端）
 // #define LLM_MODE_API     ← 备选（狗→libcurl→云端直连）
 // 都不定义 → 零开销，不链接 LLM
+```
 
 
 PROXY 模式需要笔记本运行 `tools/llm_bridge.py`。
@@ -190,8 +191,12 @@ API 模式需要 `libcurl`，`CMakeLists.txt` 已做 `find_package(CURL QUIET)`�
 ```bash
 # 全部真机赛段用测试版
 colcon build --cmake-args -DUSE_TEST_REAL_ALL=ON
+真机赛段用测试版
+colcon build --cmake-args -DUSE_TEST_REAL_STAGE3=ON
 
-# 单个赛段用测试版
+# 虚拟赛段用测试版
+colcon build --cmake-args -DUSE_TEST_STAGE1=ON
+colcon build --cmake-args -DUSE_TEST_ALL
 colcon build --cmake-args -DUSE_TEST_REAL_STAGE3=ON
 ```
 
@@ -225,17 +230,18 @@ colcon build --cmake-args -DUSE_TEST_REAL_STAGE3=ON
 | 里程计 | LCM `simulator_state` | LCM `global_to_robot` | `on_sim_state`/`on_global_to_robot` | odom_x/y, body_height |
 | 状态估计 | — | LCM `state_estimator` | `on_state_estimator` | body_height 覆盖 |
 
----
-
-## 编译
-
-bash
+```bash
 # 仿真（默认）
 cd /home/cyberdog_sim && source /opt/ros/galactic/setup.bash
 colcon build --merge-install --packages-select cyberdog_race
 
 # 真机：取消 #define REAL_DOG 的注释后同上
 
+# 笔记本 LLM 桥接
+source install/setup.bash
+export LLM_API_KEY="sk-your-key-here"
+python3 tools/llm_bridge.py
+```
 # 笔记本 LLM 桥接
 source install/setup.bash
 export LLM_API_KEY="sk-your-key-here"
