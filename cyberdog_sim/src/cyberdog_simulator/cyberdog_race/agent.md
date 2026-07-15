@@ -174,7 +174,7 @@ inline int square(int x) { return x * x; }
 ```
 project/
 ├── CMakeLists.txt              # 编译配置（新增 .cpp 必须加 SOURCES）
-├── README_TEMPLATE.md          # ← 本文档
+├── agent.md                    # ← 本文档
 │
 ├── include/project/
 │   ├── config.hpp              # ★ 所有编译时宏
