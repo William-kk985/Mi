@@ -90,18 +90,17 @@ cyberdog_race/
     ├── utils/web_streamer.cpp            # HTTP 服务
     ├── vision/virtual/                   # 视觉检测器 .cpp
     ├── test/                             # 测试代码（cmake 条件编译）
-    │   ├── inc/                          # 通用测试头文件（behavior_test）
-    │   │   ├── behavior_test.hpp         # 行为测试 + 通用链路测试
-    │   │   ├── real/                     # 真机赛段测试头文件
+    │   ├── function/                     # 通用测试函数
+    │   │   ├── inc/behavior_test.hpp     # 行为测试 + 通用链路测试
+    │   │   └── src/behavior_test.cpp     # 行为测试 + 通用链路测试实现
+    │   ├── real/                         # 真机赛段测试
+    │   │   ├── inc/                      # 真机赛段测试头文件
     │   │   │   ├── stage1_real_test.hpp ~ stage6_real_test.hpp
-    │   │   └── virtual/                  # 虚拟赛段测试头文件
-    │   ├── src/                          # 通用测试源文件（behavior_test）
-    │   │   ├── behavior_test.cpp         # 行为测试 + 通用链路测试实现
-    │   │   ├── real/                     # 真机赛段测试源文件
-    │   │   │   ├── stage1_real_test.cpp ~ stage6_real_test.cpp
-    │   │   └── virtual/                  # 虚拟赛段测试源文件
-    │   ├── real/{inc,src}/               # 真机 cmake 条件编译类（自包含）
-    │   └── virtual/{inc,src}/            # 虚拟 cmake 条件编译类
+    │   │   └── src/                      # 真机赛段测试源文件
+    │   │       ├── stage1_real_test.cpp ~ stage6_real_test.cpp
+    │   └── virtual/                      # 虚拟赛段测试
+    │       ├── inc/
+    │       └── src/
 ```
 
 ---

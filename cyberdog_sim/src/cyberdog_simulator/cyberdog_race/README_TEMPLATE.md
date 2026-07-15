@@ -195,20 +195,17 @@ project/
     ├── modules/impl_a/         # 实现 A 的 .cpp
     ├── modules/impl_b/         # 实现 B 的 .cpp
     └── test/                   # 测试代码目录（cmake 条件编译）
-        ├── inc/
-        │   ├── behavior_test.hpp   # 通用测试辅助函数
-        │   ├── real/               # 真机测试头文件
-        │   │   └── moduleN_test.hpp
-        │   └── virtual/            # 虚拟测试头文件
-        ├── src/
-        │   ├── behavior_test.cpp   # 通用测试辅助函数实现
-        │   ├── real/               # 真机测试源文件
-        │   │   └── moduleN_test.cpp
-        │   └── virtual/            # 虚拟测试源文件
-        ├── real/                   # 真机测试（各平台自包含 inc+src）
+        ├── function/           # 通用测试函数
         │   ├── inc/
+        │   │   └── behavior_test.hpp
         │   └── src/
-        └── virtual/                # 虚拟测试
+        │       └── behavior_test.cpp
+        ├── real/               # 真机测试
+        │   ├── inc/
+        │   │   └── moduleN_test.hpp
+        │   └── src/
+        │       └── moduleN_test.cpp
+        └── virtual/            # 虚拟测试
             ├── inc/
             └── src/
 ```

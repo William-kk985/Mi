@@ -38,7 +38,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
 )
 
 include_directories(include
-  src/test/inc
+  src/test/function/inc
   src/test/real/inc
   src/test/virtual/inc
   ${OpenCV_INCLUDE_DIRS}
@@ -91,7 +91,7 @@ endif()
 set(SOURCES
   src/main.cpp
   src/race_controller.cpp
-  src/test/src/behavior_test.cpp
+  src/test/function/src/behavior_test.cpp
   src/motion_ctrl.cpp
   src/vision/virtual/lane_detector.cpp
   src/vision/virtual/ball_detector.cpp
