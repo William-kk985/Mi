@@ -95,13 +95,22 @@ RaceController::RaceController() : Node("race_controller") {
     rclcpp::sleep_for(std::chrono::seconds(1));
     yaml_pub_->publish(param);
 
+#if defined(DEBUG_TEST_BEHAVIOR) && (TEST_BEHAVIOR == 9 || TEST_BEHAVIOR == 10)
+    // 传感器/RGB预览模式：跳过运动控制
+    RCLCPP_WARN(get_logger(), "[Test] 跳过运动初始化");
+#else
     rclcpp::sleep_for(std::chrono::milliseconds(500));
     motion_.recovery();
     rclcpp::sleep_for(std::chrono::seconds(2));
     motion_.locomotion();
     rclcpp::sleep_for(std::chrono::milliseconds(500));
     motion_.set_pitch(-0.26f);
+#endif
 
+#if defined(DEBUG_TEST_BEHAVIOR) && (TEST_BEHAVIOR == 9 || TEST_BEHAVIOR == 10)
+    // test 模式不创建赛段
+    RCLCPP_WARN(get_logger(), "[Test] 跳过赛段初始化");
+#else
     stages_[0] = std::make_unique<Stage1>(motion_, sensor_);
     stages_[1] = std::make_unique<Stage2>(motion_, sensor_);
     stages_[2] = std::make_unique<Stage3>(motion_, sensor_);
@@ -112,6 +121,7 @@ RaceController::RaceController() : Node("race_controller") {
     if (cur_stage_ == 2) lane_detector_.set_mode(LaneMode::RELAXED);
     if (cur_stage_ == 5) ball_detector_.reset_filter();
     stages_[cur_stage_]->init();
+#endif
 
     if (lcm_sub_.good()) {
 #ifdef REAL_DOG
@@ -303,9 +313,8 @@ void RaceController::control_loop() {
 
 // ── 传感器回调 ──
 void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
+    try {
     // 统一转 BGR（检测器+调试画面全基于BGR，cv_bridge自动处理源编码rgb8→bgr8）
-    // ⚠️ 真机收不到图时先确认相机 lifecycle 已激活：
-    //    ros2 lifecycle set /stereo_camera activate
     auto cv_img = cv_bridge::toCvShare(msg, "bgr8");
 
     // ── 视觉检测（锁外，5-30ms，不阻塞 IMU/LiDAR 回调） ──
@@ -447,14 +456,38 @@ void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
     web_streamer_.push_debug_frame(frame);
 #endif
 #endif  // defined(DEBUG_VISION) || defined(ENABLE_WEB_STREAMING)
+    } catch (const cv_bridge::Exception& e) {
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+            "[RGB] cv_bridge error: %s (enc=%s)", e.what(), msg->encoding.c_str());
+    } catch (const std::exception& e) {
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+            "[RGB] error: %s", e.what());
+    }
 }
 
 // ── D430i 左目红外回调（D430i 无RGB，只有红外+深度，红外最接近"相机画面"） ──
 void RaceController::on_d435_infra1(sensor_msgs::msg::Image::SharedPtr msg) {
     (void)msg;
 #ifdef ENABLE_WEB_STREAMING
-    auto cv_img = cv_bridge::toCvShare(msg, "bgr8");  // cv_bridge自动 mono8→bgr8
-    web_streamer_.push_d435_frame(cv_img->image);
+    try {
+        cv::Mat frame;
+        if (msg->encoding == sensor_msgs::image_encodings::MONO8) {
+            auto cv_img = cv_bridge::toCvShare(msg, "mono8");
+            cv::cvtColor(cv_img->image, frame, cv::COLOR_GRAY2BGR);
+        } else if (msg->encoding == sensor_msgs::image_encodings::MONO16 || msg->encoding == "16UC1") {
+            auto cv_img = cv_bridge::toCvShare(msg, "mono16");
+            cv::Mat u8;
+            cv_img->image.convertTo(u8, CV_8UC1, 1.0 / 256.0);
+            cv::cvtColor(u8, frame, cv::COLOR_GRAY2BGR);
+        } else {
+            auto cv_img = cv_bridge::toCvShare(msg, msg->encoding);
+            if (cv_img->image.channels() == 1) cv::cvtColor(cv_img->image, frame, cv::COLOR_GRAY2BGR);
+            else frame = cv_img->image;
+        }
+        web_streamer_.push_d435_frame(frame);
+    } catch (const cv_bridge::Exception& e) {
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "[D435 infra] cv_bridge error: %s", e.what());
+    }
 #endif
 }
 
@@ -462,12 +495,32 @@ void RaceController::on_d435_infra1(sensor_msgs::msg::Image::SharedPtr msg) {
 void RaceController::on_d435_depth(sensor_msgs::msg::Image::SharedPtr msg) {
     (void)msg;
 #ifdef ENABLE_WEB_STREAMING
-    auto cv_depth = cv_bridge::toCvShare(msg, "mono16");
-    cv::Mat norm, color;
-    // 有效深度 0-5000mm 归一化到 0-255
-    cv_depth->image.convertTo(norm, CV_8UC1, 255.0 / 5000.0);
-    cv::applyColorMap(norm, color, cv::COLORMAP_JET);
-    web_streamer_.push_depth_frame(color);
+    try {
+        cv::Mat cv_depth;
+        if (msg->encoding == "16UC1" || msg->encoding == "mono16") {
+            int type = (msg->is_bigendian ? CV_16UC1 : CV_16UC1);
+            cv_depth = cv::Mat(msg->height, msg->width, CV_16UC1,
+                               const_cast<unsigned char*>(msg->data.data()), msg->step)
+                           .clone();
+        } else if (msg->encoding == sensor_msgs::image_encodings::MONO16) {
+            auto cv_ptr = cv_bridge::toCvShare(msg, "mono16");
+            cv_depth = cv_ptr->image.clone();
+        } else if (msg->encoding == sensor_msgs::image_encodings::TYPE_32FC1) {
+            auto cv_ptr = cv_bridge::toCvShare(msg, "32FC1");
+            cv_ptr->image.convertTo(cv_depth, CV_16UC1, 1.0);
+        } else {
+            RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+                "[D435 depth] unknown encoding: %s", msg->encoding.c_str());
+            return;
+        }
+        cv::Mat norm, color;
+        cv_depth.convertTo(norm, CV_8UC1, 255.0 / 5000.0);
+        cv::applyColorMap(norm, color, cv::COLORMAP_JET);
+        web_streamer_.push_depth_frame(color);
+    } catch (const std::exception& e) {
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+            "[D435 depth] error: %s (encoding: %s)", e.what(), msg->encoding.c_str());
+    }
 #endif
 }
 
@@ -475,8 +528,19 @@ void RaceController::on_d435_depth(sensor_msgs::msg::Image::SharedPtr msg) {
 void RaceController::on_fish_eye_left(sensor_msgs::msg::Image::SharedPtr msg) {
     (void)msg;
 #ifdef ENABLE_WEB_STREAMING
-    auto cv_img = cv_bridge::toCvShare(msg, "bgr8");
-    web_streamer_.push_fisheye_left_frame(cv_img->image);
+    try {
+        cv::Mat frame;
+        if (msg->encoding == sensor_msgs::image_encodings::MONO8) {
+            auto cv_img = cv_bridge::toCvShare(msg, "mono8");
+            cv::cvtColor(cv_img->image, frame, cv::COLOR_GRAY2BGR);
+        } else {
+            auto cv_img = cv_bridge::toCvShare(msg, "bgr8");
+            frame = cv_img->image;
+        }
+        web_streamer_.push_fisheye_left_frame(frame);
+    } catch (const cv_bridge::Exception& e) {
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "[FishEyeL] cv_bridge error: %s", e.what());
+    }
 #endif
 }
 
@@ -484,8 +548,19 @@ void RaceController::on_fish_eye_left(sensor_msgs::msg::Image::SharedPtr msg) {
 void RaceController::on_fish_eye_right(sensor_msgs::msg::Image::SharedPtr msg) {
     (void)msg;
 #ifdef ENABLE_WEB_STREAMING
-    auto cv_img = cv_bridge::toCvShare(msg, "bgr8");
-    web_streamer_.push_fisheye_right_frame(cv_img->image);
+    try {
+        cv::Mat frame;
+        if (msg->encoding == sensor_msgs::image_encodings::MONO8) {
+            auto cv_img = cv_bridge::toCvShare(msg, "mono8");
+            cv::cvtColor(cv_img->image, frame, cv::COLOR_GRAY2BGR);
+        } else {
+            auto cv_img = cv_bridge::toCvShare(msg, "bgr8");
+            frame = cv_img->image;
+        }
+        web_streamer_.push_fisheye_right_frame(frame);
+    } catch (const cv_bridge::Exception& e) {
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "[FishEyeR] cv_bridge error: %s", e.what());
+    }
 #endif
 }
 

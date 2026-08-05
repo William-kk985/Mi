@@ -292,6 +292,3 @@ mkdir build && cd build && cmake .. && make -j
 
 ---
 
-## 完整文档
-
-参见 `开发状态！.md` 获取当前项目进度。

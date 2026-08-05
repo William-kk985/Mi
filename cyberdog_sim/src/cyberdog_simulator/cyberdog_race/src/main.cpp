@@ -2,6 +2,7 @@
 
 int main(int argc, char** argv) {
     rclcpp::init(argc, argv);
+    try {
     auto node = std::make_shared<RaceController>();
 
     rclcpp::spin(node);
@@ -15,6 +16,13 @@ int main(int argc, char** argv) {
     motion.stand();
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     motion.lie_down();
+    } catch (const std::exception& e) {
+        std::cerr << "[FATAL] " << e.what() << std::endl;
+        return 1;
+    } catch (...) {
+        std::cerr << "[FATAL] unknown exception" << std::endl;
+        return 1;
+    }
 
     rclcpp::shutdown();
     return 0;
