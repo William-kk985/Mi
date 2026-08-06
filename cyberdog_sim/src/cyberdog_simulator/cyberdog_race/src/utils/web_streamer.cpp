@@ -5,6 +5,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <csignal>
 #include <cstdio>
 #include <cstring>
 #include <sstream>
@@ -95,7 +96,9 @@ static const char* kHtmlPage = R"raw(
           <option value="dark">🌑 暗图</option>
           <option value="track">🗺️ 里程轨迹</option>
           <option value="telem">📊 遥测仪表</option>
-          <option value="d435">� D430i红外</option>          <option value="depth">🌊 深度图</option>          <option value="fisheye_left">🐟 左鱼眼</option>
+          <option value="d435">🔆 D430i红外</option>
+          <option value="depth">🌊 深度图</option>
+          <option value="fisheye_left">🐟 左鱼眼</option>
           <option value="fisheye_right">🐟 右鱼眼</option>
         </select>
         <button class="btn-exp" onclick="togglePanel('right')" title="放大/还原">⛶</button>
@@ -108,13 +111,13 @@ static const char* kHtmlPage = R"raw(
 <script>
 const streams={debug:'/stream/debug',lidar:'/stream/lidar',dark:'/stream/dark',
   track:'/stream/track',telem:'/stream/telemetry',d435:'/stream/d435',
-  fisheye_left:'/stream/fisheye_left',fisheye_right:'/stream/fisheye_right'};
-fudepth:'/stream/depth',
-  nction switchStream(){
+  fisheye_left:'/stream/fisheye_left',fisheye_right:'/stream/fisheye_right',
+  depth:'/stream/depth'};
+  function switchStream(){
   const sel=document.getElementById('stream-sel');
   const v=sel.value, opt=sel.options[sel.selectedIndex];
   document.getElementById('right-title').textContent=opt.text;
-  document.getElementById('img-right').src=streams[v];
+  document.getElementById('img-right').src=streams[v]+'?t='+Date.now();
   resetFPS('right');
 }
 let expanded=null;
@@ -293,6 +296,10 @@ static bool send_mjpeg_part(int fd, const std::vector<uint8_t>& jpeg) {
 
 bool WebStreamer::start(int port, int max_clients) {
     if (running_.load()) return false;
+    // ★ 忽略 SIGPIPE：浏览器断开连接后旧推流线程 write() 会触发 SIGPIPE，
+    //   不忽略则整个进程崩溃（"切换画面就崩溃"的根因）。忽略后 write 返回 EPIPE，
+    //   send_all() 返回 false → client_handler 正常退出。
+    signal(SIGPIPE, SIG_IGN);
     max_clients_ = max_clients;
     running_ = true;
     load_settings();
@@ -304,23 +311,23 @@ void WebStreamer::stop() {
     running_ = false;
     frame_cv_.notify_all();
 
-    // P0: 强制唤醒阻塞在 accept() 的 server 线程
+    // 强制唤醒阻塞在 accept() 的 server 线程
     if (server_fd_ >= 0) shutdown(server_fd_, SHUT_RDWR);
     if (server_thread_.joinable()) server_thread_.join();
 
-    // 等待所有客户端线程退出
-    {
-        std::lock_guard<std::mutex> lock(client_threads_mutex_);
-        for (auto& t : client_threads_) {
-            if (t.joinable()) t.join();
-        }
-        client_threads_.clear();
+    // 客户端线程已 detach：轮询等待计数归零（最多 5s），确保 this 安全析构
+    for (int i = 0; i < 50 && active_clients_.load() > 0; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    if (active_clients_.load() > 0) {
+        fprintf(stderr, "[WebStreamer] WARN: %d 客户端线程未在 5s 内退出\n",
+                active_clients_.load());
     }
     fprintf(stderr, "[WebStreamer] stopped\n");
 }
 
 void WebStreamer::push_frame(const cv::Mat& frame) {
-    if (!running_.load()) return;
+    if (!running_.load() || frame.empty()) return;
 
     std::vector<uint8_t> jpeg;
     std::vector<int> params = {cv::IMWRITE_JPEG_QUALITY, 70};
@@ -336,7 +343,7 @@ void WebStreamer::push_frame(const cv::Mat& frame) {
 }
 
 void WebStreamer::push_debug_frame(const cv::Mat& frame) {
-    if (!running_.load()) return;
+    if (!running_.load() || frame.empty()) return;
 
     std::vector<uint8_t> jpeg;
     std::vector<int> params = {cv::IMWRITE_JPEG_QUALITY, 70};
@@ -352,7 +359,7 @@ void WebStreamer::push_debug_frame(const cv::Mat& frame) {
 }
 
 void WebStreamer::push_lidar_frame(const cv::Mat& frame) {
-    if (!running_.load()) return;
+    if (!running_.load() || frame.empty()) return;
     std::vector<uint8_t> jpeg;
     std::vector<int> params = {cv::IMWRITE_JPEG_QUALITY, 70};
     cv::imencode(".jpg", frame, jpeg, params);
@@ -362,7 +369,7 @@ void WebStreamer::push_lidar_frame(const cv::Mat& frame) {
 }
 
 void WebStreamer::push_track_frame(const cv::Mat& frame) {
-    if (!running_.load()) return;
+    if (!running_.load() || frame.empty()) return;
     std::vector<uint8_t> jpeg;
     std::vector<int> params = {cv::IMWRITE_JPEG_QUALITY, 70};
     cv::imencode(".jpg", frame, jpeg, params);
@@ -372,7 +379,7 @@ void WebStreamer::push_track_frame(const cv::Mat& frame) {
 }
 
 void WebStreamer::push_telemetry_frame(const cv::Mat& frame) {
-    if (!running_.load()) return;
+    if (!running_.load() || frame.empty()) return;
     std::vector<uint8_t> jpeg;
     std::vector<int> params = {cv::IMWRITE_JPEG_QUALITY, 70};
     cv::imencode(".jpg", frame, jpeg, params);
@@ -382,7 +389,7 @@ void WebStreamer::push_telemetry_frame(const cv::Mat& frame) {
 }
 
 void WebStreamer::push_d435_frame(const cv::Mat& frame) {
-    if (!running_.load()) return;
+    if (!running_.load() || frame.empty()) return;
     std::vector<uint8_t> jpeg;
     std::vector<int> params = {cv::IMWRITE_JPEG_QUALITY, 65};
     cv::imencode(".jpg", frame, jpeg, params);
@@ -392,7 +399,7 @@ void WebStreamer::push_d435_frame(const cv::Mat& frame) {
 }
 
 void WebStreamer::push_dark_frame(const cv::Mat& frame) {
-    if (!running_.load()) return;
+    if (!running_.load() || frame.empty()) return;
     std::vector<uint8_t> jpeg;
     int jq = jpeg_quality_;
     if (jq < 1) jq = 1;
@@ -406,7 +413,7 @@ void WebStreamer::push_dark_frame(const cv::Mat& frame) {
 
 // ── 鱼眼左相机帧 ──
 void WebStreamer::push_fisheye_left_frame(const cv::Mat& frame) {
-    if (!running_.load()) return;
+    if (!running_.load() || frame.empty()) return;
     std::vector<uint8_t> jpeg;
     std::vector<int> params = {cv::IMWRITE_JPEG_QUALITY, 70};
     cv::imencode(".jpg", frame, jpeg, params);
@@ -417,7 +424,7 @@ void WebStreamer::push_fisheye_left_frame(const cv::Mat& frame) {
 
 // ── 鱼眼右相机帧 ──
 void WebStreamer::push_fisheye_right_frame(const cv::Mat& frame) {
-    if (!running_.load()) return;
+    if (!running_.load() || frame.empty()) return;
     std::vector<uint8_t> jpeg;
     std::vector<int> params = {cv::IMWRITE_JPEG_QUALITY, 70};
     cv::imencode(".jpg", frame, jpeg, params);
@@ -428,7 +435,7 @@ void WebStreamer::push_fisheye_right_frame(const cv::Mat& frame) {
 
 // ── D430i 深度伪彩色帧（mono16→JET colormap 后） ──
 void WebStreamer::push_depth_frame(const cv::Mat& frame) {
-    if (!running_.load()) return;
+    if (!running_.load() || frame.empty()) return;
     std::vector<uint8_t> jpeg;
     std::vector<int> params = {cv::IMWRITE_JPEG_QUALITY, 70};
     cv::imencode(".jpg", frame, jpeg, params);
@@ -518,6 +525,13 @@ void WebStreamer::server_loop(int port) {
             continue;
         }
 
+        // ★ 剥离 query string：浏览器切换流会带 ?t=时间戳 防缓存（如 /stream/debug?t=1712...）
+        //   不剥离则路由匹配失败 → 404 → 切换黑屏（已 2026-08-06 定位）
+        {
+            size_t qpos = path.find('?');
+            if (qpos != std::string::npos) path = path.substr(0, qpos);
+        }
+
         // ── 路由：静态页面在主线程直接返回，流媒体 spawn 子线程 ──
         if (path == "/" || path == "/index.html") {
             std::string page(kHtmlPage);
@@ -529,11 +543,9 @@ void WebStreamer::server_loop(int port) {
                    path == "/stream/dark" || path == "/stream/fisheye_left" || path == "/stream/fisheye_right" ||
                    path == "/stream/depth") {
             active_clients_++;
-            std::thread t(&WebStreamer::client_handler, this, client_fd, path);
-            {
-                std::lock_guard<std::mutex> lock(client_threads_mutex_);
-                client_threads_.push_back(std::move(t));
-            }
+            // detach：不存 vector（存了析构 joinable std::thread 会 std::terminate）
+            // 退出靠 active_clients_ 计数归零 + stop() 轮询等待
+            std::thread(&WebStreamer::client_handler, this, client_fd, path).detach();
         } else if (path == "/settings") {
             std::string page(kSettingsPage);
             send_header(client_fd, 200, "OK", "text/html; charset=utf-8", page.size());

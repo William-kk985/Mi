@@ -97,10 +97,22 @@ void stand_lie_test(MotionCtrl& motion, SensorData& sensor) {
 
 void pitch_test(MotionCtrl& motion, SensorData& sensor) {
     (void)sensor;
-    motion.set_pitch(-0.26f); rclcpp::sleep_for(std::chrono::seconds(1));
-    motion.set_pitch(0.0f);   rclcpp::sleep_for(std::chrono::seconds(1));
-    motion.set_pitch(0.26f);  rclcpp::sleep_for(std::chrono::seconds(1));
-    motion.set_pitch(0.0f);
+    fprintf(stderr, "\033[1;35m[Pitch] 低头 15° 3秒...\033[0m\n");
+    for (int i = 0; i < 60; i++) {
+        motion.set_body_pitch(-0.26f);   // mode=21 真机姿态控制
+        rclcpp::sleep_for(std::chrono::milliseconds(50));
+    }
+    fprintf(stderr, "\033[1;35m[Pitch] 回正 2秒...\033[0m\n");
+    for (int i = 0; i < 40; i++) {
+        motion.set_body_pitch(0.0f);
+        rclcpp::sleep_for(std::chrono::milliseconds(50));
+    }
+    fprintf(stderr, "\033[1;35m[Pitch] 抬头 15° 3秒...\033[0m\n");
+    for (int i = 0; i < 60; i++) {
+        motion.set_body_pitch(0.26f);
+        rclcpp::sleep_for(std::chrono::milliseconds(50));
+    }
+    motion.set_body_pitch(0.0f);
 }
 
 void step_height_test(MotionCtrl& motion, SensorData& sensor) {

@@ -90,10 +90,10 @@ private:
 
     // ── 线程管理 ──
     std::thread              server_thread_;
-    int                      server_fd_{-1};         // P0: 保存 fd 用于 stop() 唤醒 accept
-    std::vector<std::thread> client_threads_;
-    std::mutex               client_threads_mutex_;
-    std::atomic<int>         active_clients_{0};     // P1: 活跃客户端计数
+    int                      server_fd_{-1};         // 保存 fd 用于 stop() 唤醒 accept
+    // 客户端线程 detach，不存 vector：避免 std::thread 析构时 joinable → std::terminate
+    // 用 active_clients_ 计数，stop() 轮询归零后安全析构
+    std::atomic<int>         active_clients_{0};     // 活跃客户端计数
 
     // ── 六帧缓冲 ──
     std::mutex               frame_mutex_;

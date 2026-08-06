@@ -54,8 +54,9 @@
 // ── 真狗命名空间 ──
 #define ROBOT_NS "/mi_desktop_48_b0_2d_7b_02_c7"
 
-// ── 正式模式（不跑 test，走完整状态机） ──
-// #define DEBUG_TEST_BEHAVIOR
+// ── 测试模式：7=俯仰角（低头/抬头） ──
+#define DEBUG_TEST_BEHAVIOR
+#define TEST_BEHAVIOR 7  // 7=俯仰角
 
 // ── 传感器 topic 名称（真机值经 2026-07-31 上机确认） ──
 // 相机全部已 lifecycle 激活。RGB 需额外通过 camera_service START_IMAGE_PUBLISH 启动推流

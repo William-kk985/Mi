@@ -95,22 +95,32 @@ RaceController::RaceController() : Node("race_controller") {
     rclcpp::sleep_for(std::chrono::seconds(1));
     yaml_pub_->publish(param);
 
+#ifdef REAL_DOG
+    // 挂载 CyberDog2 官方姿态控制发布器（set_body_pitch 走 motion_servo_cmd）
+    motion_.attach_motion_servo_pub(this);
+#endif
+
 #if defined(DEBUG_TEST_BEHAVIOR) && (TEST_BEHAVIOR == 9 || TEST_BEHAVIOR == 10)
     // 传感器/RGB预览模式：跳过运动控制
     RCLCPP_WARN(get_logger(), "[Test] 跳过运动初始化");
 #else
-    rclcpp::sleep_for(std::chrono::milliseconds(500));
-    motion_.recovery();
-    rclcpp::sleep_for(std::chrono::seconds(2));
-    motion_.locomotion();
-    rclcpp::sleep_for(std::chrono::milliseconds(500));
-    motion_.set_pitch(-0.26f);
+    try {
+        rclcpp::sleep_for(std::chrono::milliseconds(500));
+        motion_.recovery();
+        rclcpp::sleep_for(std::chrono::seconds(2));
+        motion_.locomotion();
+        rclcpp::sleep_for(std::chrono::milliseconds(500));
+        motion_.set_pitch(-0.26f);
+        RCLCPP_INFO(get_logger(), "Motion init OK");
+    } catch (const std::exception& e) {
+        RCLCPP_ERROR(get_logger(), "Motion init FAILED: %s", e.what());
+    }
 #endif
 
 #if defined(DEBUG_TEST_BEHAVIOR) && (TEST_BEHAVIOR == 9 || TEST_BEHAVIOR == 10)
     // test 模式不创建赛段
     RCLCPP_WARN(get_logger(), "[Test] 跳过赛段初始化");
-#else
+#elif defined(ENABLE_WEB_STREAMING) && !defined(REAL_DOG)  // 仿真Web正常创建赛段
     stages_[0] = std::make_unique<Stage1>(motion_, sensor_);
     stages_[1] = std::make_unique<Stage2>(motion_, sensor_);
     stages_[2] = std::make_unique<Stage3>(motion_, sensor_);
@@ -261,6 +271,7 @@ void RaceController::control_loop() {
 #endif
 
     if (cur_stage_ >= 6) return;
+    if (!stages_[cur_stage_]) return;  // Web模式跳过运动，无赛段
 
     stages_[cur_stage_]->run();
 
@@ -498,7 +509,6 @@ void RaceController::on_d435_depth(sensor_msgs::msg::Image::SharedPtr msg) {
     try {
         cv::Mat cv_depth;
         if (msg->encoding == "16UC1" || msg->encoding == "mono16") {
-            int type = (msg->is_bigendian ? CV_16UC1 : CV_16UC1);
             cv_depth = cv::Mat(msg->height, msg->width, CV_16UC1,
                                const_cast<unsigned char*>(msg->data.data()), msg->step)
                            .clone();

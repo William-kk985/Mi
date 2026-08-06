@@ -3,12 +3,18 @@
 #include "cyberdog_race/gamepad_lcmt.hpp"
 #include "robot_control_cmd_lcmt.hpp"
 
+#ifdef REAL_DOG
+#include <rclcpp/rclcpp.hpp>
+#include <protocol/msg/motion_servo_cmd.hpp>
+#endif
+
 // robot_control_cmd.mode 枚举（官方文档 cyberdog_loco_cn.md §2.1）
 enum class LocoMode : int8_t {
     PURE_DAMPER   = 0,   // 纯阻尼
-    STAND         = 12,  // QP站立
     LOCOMOTION    = 11,  // 行走模式（trot）
+    STAND         = 12,  // QP站立
     JUMP_3D       = 16,  // 离线轨迹跳跃
+    POSE_CTRL     = 21,  // 位控姿态模式（rpy_des 控制 roll/pitch/yaw）
     FORCE_JUMP    = 22,  // 力控跳跃
 };
 
@@ -20,8 +26,17 @@ public:
     void set_velocity(float x, float y, float yaw);
     // 俯仰角：负值低头，正值抬头
     void set_pitch(float pitch);
+    // 真机姿态控制（CyberDog2 官方接口: motion_servo_cmd + FORCECONTROL_DEFINITIVELY=201）
+    // pitch 负值低头、正值抬头，官方限 -0.25 ~ +0.30 rad
+    // 注意：需 attach_motion_servo_pub() 挂载发布器后生效；需以 ~20Hz 持续调用保持
+    void set_body_pitch(float pitch);
     // 分别设置左右侧步高（单位：m），step_height[0]=前/左侧，step_height[1]=后/右侧
     void set_step_height(float left, float right);
+
+#ifdef REAL_DOG
+    // 挂载 CyberDog2 motion_servo_cmd 发布器（RaceController 构造中调用）
+    void attach_motion_servo_pub(rclcpp::Node* node);
+#endif
 
     // 模式切换
     void stand();        // QP站立
@@ -53,6 +68,11 @@ private:
     int                   lcm_life_{0};
     void pub_gamepad();
     void pub_lcm_cmd();
+
+#ifdef REAL_DOG
+    // CyberDog2 官方姿态控制发布器（motion_servo_cmd, motion_id=201）
+    rclcpp::Publisher<protocol::msg::MotionServoCmd>::SharedPtr motion_servo_pub_;
+#endif
 
     // ═══ TODO: 电机温度监控（需 danger_states_lcmt.hpp，lcm-gen -x 生成） ═══
     //   float motor_temp_[12]{};

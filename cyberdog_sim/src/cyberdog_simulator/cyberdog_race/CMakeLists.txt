@@ -33,6 +33,12 @@ find_package(OpenCV REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 
+# CyberDog2 真机 motion 接口（protocol 包仅真机 NX 有，仿真环境没有 → QUIET 保护）
+find_package(protocol QUIET)
+if(protocol_FOUND)
+  message(STATUS "[REAL] protocol 包可用 → 启用真机 motion_servo_cmd 支持")
+endif()
+
 rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/LLMAsk.srv"
 )
@@ -130,6 +136,9 @@ add_real_test(6)
 
 add_executable(race_controller ${SOURCES})
 ament_target_dependencies(race_controller rclcpp sensor_msgs nav_msgs cyberdog_msg cv_bridge)
+if(protocol_FOUND)
+  ament_target_dependencies(race_controller protocol)
+endif()
 rosidl_target_interfaces(race_controller ${PROJECT_NAME} "rosidl_typesupport_cpp")
 target_link_libraries(race_controller lcm ${OpenCV_LIBS})
 

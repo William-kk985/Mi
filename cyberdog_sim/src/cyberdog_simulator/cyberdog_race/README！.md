@@ -52,6 +52,14 @@ cyberdog_race/
 ├── srv/                                  # ROS2 服务定义
 │   └── LLMAsk.srv
 │
+├── scripts/                              # 上机运行脚本（rsync 到 NX 后执行）
+│   ├── start_web.sh                      # Web 推流（9路 MJPEG + 环境修复）
+│   ├── start_rgb_test.sh                 # RGB imshow 预览 (TEST_BEHAVIOR=10)
+│   ├── start_sensor_check.sh             # 逐传感器检查 (TEST_BEHAVIOR=9)
+│   ├── start_pitch_test.sh               # 俯仰测试 (TEST_BEHAVIOR=7, 走新接口)
+│   ├── pitch_test_servo.py               # ★ 真机低头独立验证脚本（CyberDog2 官方接口）
+│   └── record_dataset.py                 # 数据集录制（PNG/MP4 → dataset/）
+│
 ├── include/cyberdog_race/
 │   ├── debug_config.hpp                  # ★ 所有编译时宏定义（真机/仿真切换）
 │   ├── race_controller.hpp               # 主控制器类声明
@@ -170,10 +178,21 @@ API 模式需要 `libcurl`，`CMakeLists.txt` 已做 `find_package(CURL QUIET)`�
 - 所有相机展示流定义在 `ENABLE_WEB_STREAMING` 块中
 - 新增流需要：`web_streamer.hpp` 加 push 方法 + 缓冲 → `web_streamer.cpp` 加路由 + stype + switch 分支
 - 鱼眼/深度/D430i 红外 **只做展示，不做检测**，不得在对应的 `on_*` 回调中加入赛段逻辑
+- ⚠ **SIGPIPE 必须忽略**（`main.cpp` 与 `WebStreamer::start()` 已 `signal(SIGPIPE, SIG_IGN)`）：
+  浏览器**切换流**会关闭旧连接 → 旧推流线程 `write()` 触发 SIGPIPE → 默认动作是**终止整个进程**
+  （不是 SIGSEGV，crash_handler 捕不到）——这是"一切换画面就崩"的根因
+- `client_handler` 每客户端一线程；`server_loop` 用 `pthread_tryjoin_np` 回收已结束线程（防 vector 无限增长）
+- 连接断开后 `send_all()` 返回 false → 线程正常退出，不崩溃
+- 帧缓冲全部在 `frame_mutex_` 保护下（push 用 swap、读用 copy）；socket 收发超时 1s
 
 ### 7. 运动控制
 
-- LCM `robot_control_cmd` 的 `life_count` 必须每帧递增（`++lcm_life_`）
+- **真机（CyberDog 2）必须走 ROS2 接口**，❌ 不要用 LCM `robot_control_cmd` mode=21 等铁蛋一代接口（见下方专章）
+- 真机低头/姿态：发布 `motion_servo_cmd`（`protocol/msg/MotionServoCmd`），`set_body_pitch()` 已封装
+- 发布器需在 `RaceController` 构造中调用 `motion_.attach_motion_servo_pub(this)` 挂载（仅 `REAL_DOG`）
+- `motion_servo_cmd` 需 **~20Hz 持续发布**（停发 4 帧 = Servo data lost，运动中止）
+- ⚠ `motion_ctrl.cpp` 必须先包含 `debug_config.hpp` 再包含 `motion_ctrl.hpp`（`#ifdef REAL_DOG` 依赖宏顺序）
+- 仿真：LCM `robot_control_cmd` 的 `life_count` 必须每帧递增（`++lcm_life_`）
 - 步高 clamp 在 [0, 0.35]m
 - `LocoMode` 枚举替代魔法数字
 
@@ -188,15 +207,13 @@ API 模式需要 `libcurl`，`CMakeLists.txt` 已做 `find_package(CURL QUIET)`�
 - 测试通过 cmake 条件编译控制，不污染正式版：
 
 ```bash
-# 全部真机赛段用测试版
+# 真机赛段用测试版
 colcon build --cmake-args -DUSE_TEST_REAL_ALL=ON
-真机赛段用测试版
 colcon build --cmake-args -DUSE_TEST_REAL_STAGE3=ON
 
 # 虚拟赛段用测试版
 colcon build --cmake-args -DUSE_TEST_STAGE1=ON
-colcon build --cmake-args -DUSE_TEST_ALL
-colcon build --cmake-args -DUSE_TEST_REAL_STAGE3=ON
+colcon build --cmake-args -DUSE_TEST_ALL=ON
 ```
 
 - 测试类名加 `Test` 后缀（如 `Stage1RealTest`），与正式实现完全独立
@@ -216,35 +233,100 @@ colcon build --cmake-args -DUSE_TEST_REAL_STAGE3=ON
 
 ## 传感器一览
 
-| 传感器 | Topic (仿真) | Topic (真机) | 回调 | 数据写入 |
+| 传感器 | Topic (仿真) | Topic (真机, 前缀 `ROBOT_NS`) | 回调 | 数据写入 |
 |---|---|---|---|---|
-| RGB 相机 | `/RGB_camera/image_raw` | `/image_rgb` | `on_rgb` | 视觉检测结果 |
-| 左鱼眼 | 复用 RGB | `/image_left` | `on_fish_eye_left` | Web 展示 |
-| 右鱼眼 | 复用 RGB | `/image_right` | `on_fish_eye_right` | Web 展示 |
+| RGB 相机 | `/RGB_camera/image_raw` | `/image`（camera_server 推流） | `on_rgb` | 视觉检测结果 |
+| 左/右鱼眼 | 复用 RGB | 复用 `/image`（真狗无独立鱼眼） | `on_fish_eye_*` | Web 展示 |
 | D430i 红外 | `/D435/infra1/image_raw` | `/camera/infra1/image_rect_raw` | `on_d435_infra1` | Web 展示 |
 | D430i 深度 | `/D435/depth/image_raw` | `/camera/depth/image_rect_raw` | `on_d435_depth` | Web 伪彩色展示 |
-| IMU | `/imu` | `/imu` | `on_imu` | yaw/pitch/roll |
-| LiDAR | `/scan` | `/scan` (⚠ ScanMsg) | `on_lidar` | lidar_front |
-| BMS | — | `bms_status` | `on_bms` | 低电量保护 |
+| IMU | `/imu` | `/camera/imu`（D430i 内置） | `on_imu` | yaw/pitch/roll |
+| LiDAR | `/scan` | `/scan` | `on_lidar` | lidar_front |
+| BMS | — | `/bms_status` | `on_bms` | 低电量保护 |
+| 触摸 | — | `/touch_status` | `on_touch`(TODO) | 紧急停止 |
 | 里程计 | LCM `simulator_state` | LCM `global_to_robot` | `on_sim_state`/`on_global_to_robot` | odom_x/y, body_height |
 | 状态估计 | — | LCM `state_estimator` | `on_state_estimator` | body_height 覆盖 |
 
+> 真机 topic 值以 `debug_config.hpp` 为准（2026-07-31 上机确认）。
+
+---
+
+## 🐕 真机运动控制 — CyberDog 2 官方接口（2026-08-06 验证）
+
+> ⚠️ **不要用 LCM `robot_control_cmd` 的 `mode=21 (POSE_CTRL)` 控制真机低头**——
+> 那是铁蛋一代接口。CyberDog 2 的 NX `motion_manager` 会把外部 LCM mode=21
+> 错误映射成 motion 303 = **WALK_USERTROT（走路步态）**，且与 motion_action 自己发的
+> LCM 在 7671 上互相覆盖（日志现象：`mode=21 ... then mode=7`）。正确接口是 ROS2 topic：
+
+### 接口
+
+| 项 | 值 |
+|---|---|
+| Topic | `ROBOT_NS "/motion_servo_cmd"`（`protocol/msg/MotionServoCmd`） |
+| 姿态控制 | `motion_id = 201`（FORCECONTROL_DEFINITIVELY），`rpy_des=[roll, pitch, yaw]` |
+| 低头 | `pitch` 负值（限 **-0.25** rad），抬头正值（限 +0.30） |
+| 机身高度 | `pos_des=[0, 0, 0.235]`（官方默认） |
+| 优先级 | `cmd_source = -1`（DEBUG 最高优先级） |
+| 频率 | **~20Hz 持续发布**（停发 4 帧 = Servo data lost，运动退出） |
+
+### motion_id 速查
+
+| motion_id | 名称 | 用途 |
+|---|---|---|
+| 0 | ESTOP | 急停 |
+| 101 | GETDOWN | 趴下 |
+| 111 | RECOVERYSTAND | 恢复站立（发 servo 201 时会**自动先站起**） |
+| 112 | WALK_STAND | 站立 |
+| 201 | FORCECONTROL_DEFINITIVELY | 姿态控制（低头/抬头/roll/yaw）★ |
+| 211 | POSECONTROL_DEFINITIVELY | 位控姿态（备选） |
+| 303 | WALK_USERTROT | 自定义小跑（⚠ 旧 mode=21 会被错误映射到这里） |
+
+### 代码用法
+
+```cpp
+// C++（已封装，REAL_DOG 下自动生效）
+motion_.set_body_pitch(-0.2f);   // 低头 0.2 rad（负=低头）
+// ⚠ 需在循环中 ~20Hz 持续调用保持，停发即退出
+
+// 独立验证脚本（不依赖 C++ 工程，直接在 NX 上跑）
+python3 scripts/pitch_test_servo.py --stand --pitch -0.2 --hold 3
+```
+
+### 诊断
+
+- motion_manager 日志：`/home/mi/.ros/log/motion_manager_*.log`
+  - `ServoCmd: mode, gait_id, life_count, duration` = 发给 MR813 的 LCM 命令
+  - `Receive ServoCmd from -1 with motion_id: 201` = 收到外部 servo 命令
+  - `Servo data lost time with 4 times` = 发布中断（需持续发布）
+  - `Command 111 not valid` = 处于 servo 状态时直接发 ResultCmd 被拒（属正常，发 servo 会自动先站）
+- `motion_managermachine_service` 是**节点生命周期**状态机（Uninitialized=0 / Active=4），
+  **不是运动状态**；`code=8` = 状态名不支持，勿用它查询运动状态
+- 全局状态查询：`ros2 service call .../machine_state_valget std_srvs/srv/Trigger`
+
+---
+
+## 构建与运行
+
 ```bash
-# 仿真（默认）
-cd /home/cyberdog_sim && source /opt/ros/galactic/setup.bash
+# 仿真（默认，VM）
+cd /home/kaka/Mi/cyberdog_sim
 colcon build --merge-install --packages-select cyberdog_race
 
-# 真机：取消 #define REAL_DOG 的注释后同上
+# 真机（NX 上构建）
+# 1. VM 编辑后 rsync 到 NX：
+rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" \
+  /home/kaka/Mi/cyberdog_sim/src/cyberdog_simulator/cyberdog_race/ \
+  cyberdog:/SDCARD/race_ws/src/cyberdog_race/
+# 2. NX 上构建（真机需 protocol 包——NX 有、仿真无 → CMake 已 QUIET 保护）：
+ssh cyberdog "source /etc/mi/ros2_env.conf && cd /SDCARD/race_ws && \
+  colcon build --merge-install --packages-select cyberdog_race"
+# 3. 运行（必须先 source setup.bash，不能加管道，否则环境变量丢失）：
+ssh cyberdog "/SDCARD/race_ws/src/cyberdog_race/scripts/start_pitch_test.sh"
 
-# 笔记本 LLM 桥接
+# 笔记本 LLM 桥接（PROXY 模式）
 source install/setup.bash
 export LLM_API_KEY="sk-your-key-here"
 python3 tools/llm_bridge.py
 ```
-# 笔记本 LLM 桥接
-source install/setup.bash
-export LLM_API_KEY="sk-your-key-here"
-python3 tools/llm_bridge.py
 
 
 ---

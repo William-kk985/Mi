@@ -251,7 +251,7 @@ void Stage2::run() {
         } else {
             hit_started_ = false;
             motion_.stop();
-            LOG_GREENF("✓ 撞球完成，直接前往下一点");
+            LOG_GREEN("✓ 撞球完成，直接前往下一点");
             next_waypoint();
         }
     }
