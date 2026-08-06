@@ -270,6 +270,14 @@ void RaceController::control_loop() {
             cur_stage_ + 1, sensor_.yaw, sensor_.odom_x, sensor_.odom_y,
             sensor_.body_height, sensor_.tof_clearance, sensor_.ultrasonic_range);
     }
+    // ⚠ 轨迹记录+渲染必须放这里（真机 stages_ 为空会在下方提前 return，末尾的渲染永远不执行）
+    {
+        std::lock_guard<std::mutex> lock(sensor_mutex_);
+        odom_history_.emplace_back(sensor_.odom_x, sensor_.odom_y);
+    }
+    if (odom_history_.size() > 400) odom_history_.pop_front();
+    if (++track_render_counter_ >= 20) { track_render_counter_ = 0; render_track_frame(); }
+    if (++telem_render_counter_ >= 20) { telem_render_counter_ = 0; render_telemetry_frame(); }
 #endif
     // 行为测试模式：替代正常赛段
 #ifdef DEBUG_TEST_BEHAVIOR
@@ -325,15 +333,6 @@ void RaceController::control_loop() {
         }
     }
 
-#ifdef ENABLE_WEB_STREAMING
-    {
-        std::lock_guard<std::mutex> lock(sensor_mutex_);
-        odom_history_.emplace_back(sensor_.odom_x, sensor_.odom_y);
-    }
-    if (odom_history_.size() > 400) odom_history_.pop_front();
-    if (++track_render_counter_ >= 20) { track_render_counter_ = 0; render_track_frame(); }
-    if (++telem_render_counter_ >= 20) { telem_render_counter_ = 0; render_telemetry_frame(); }
-#endif
 }
 
 // ── 传感器回调 ──
