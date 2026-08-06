@@ -738,7 +738,7 @@ void RaceController::render_track_frame() {
             int py = to_px(0, wy).y;
             cv::line(track_img, {10, py}, {SIZE - 10, py}, {25, 30, 45}, 1);
         }
-        cv::putText(track_img, cv::format("% .1fm格", grid), {SIZE - 46, SIZE - 8},
+        cv::putText(track_img, cv::format("%.1fm", grid), {SIZE - 40, SIZE - 8},
                     cv::FONT_HERSHEY_SIMPLEX, 0.3, {80, 90, 110}, 1);
 
         // ── 轨迹 ──
@@ -769,7 +769,7 @@ void RaceController::render_track_frame() {
         float dist_from_start = std::sqrt(dx*dx + dy*dy);
         cv::putText(track_img, cv::format("x:%.2f y:%.2f", ox, oy),
                     {5, 15}, cv::FONT_HERSHEY_SIMPLEX, 0.4, {0, 255, 100}, 1);
-        cv::putText(track_img, cv::format("距起点:%.1fm 航向:%ddeg", dist_from_start,
+        cv::putText(track_img, cv::format("dist:%.1fm hdg:%ddeg", dist_from_start,
                     static_cast<int>(yw * 180 / M_PI)),
                     {5, 33}, cv::FONT_HERSHEY_SIMPLEX, 0.35, {120, 140, 120}, 1);
         cv::putText(track_img, cv::format("pts:%zu", odom_history_.size()),
@@ -803,27 +803,27 @@ void RaceController::render_telemetry_frame() {
         cv::putText(telem, val, {150, y}, cv::FONT_HERSHEY_SIMPLEX, 0.45, vc, 1);
         y += 22;
     };
-    row("赛段", cv::format("%d/6", cur_stage_ + 1), {233, 69, 96});
-    row("身高", cv::format("%.2f m", bh));
-    row("步高", cv::format("%.2f m", last_sent_step_h_));
+    row("Stage", cv::format("%d/6", cur_stage_ + 1), {233, 69, 96});
+    row("Height", cv::format("%.2f m", bh));
+    row("StepH", cv::format("%.2f m", last_sent_step_h_));
     row("pitch/roll", cv::format("%.2f / %.2f rad", sp, sr));
     row("yaw", cv::format("%.0f deg", sy * 180 / M_PI));
     // TOF 离地间隙（独木桥关键：<0.15m 红警）
-    row("TOF 离地", cv::format("%.2f m", tof),
+    row("TOF", cv::format("%.2f m", tof),
         tof < 0.15f ? cv::Scalar{0,0,255} : cv::Scalar{0,255,100});
     // 超声（0=无数据，-- 显示）
-    row("超声", ultra > 0.01f ? cv::format("%.2f m", ultra) : "--",
+    row("Ultra", ultra > 0.01f ? cv::format("%.2f m", ultra) : "--",
         (ultra > 0.01f && ultra < 0.5f) ? cv::Scalar{0,255,255} : cv::Scalar{0,255,100});
     // Lidar 前方最近障碍
-    row("Lidar 前", cv::format("%.2f m", lf),
+    row("Lidar", cv::format("%.2f m", lf),
         lf < 1.0f ? cv::Scalar{0,0,255} : cv::Scalar{0,255,100});
     // 目标球检测
-    row("球", b_found ? cv::format("找到 %.2f m", b_dist) : "未找到",
+    row("Ball", b_found ? cv::format("%.2f m", b_dist) : "none",
         b_found ? cv::Scalar{0,255,0} : cv::Scalar{150,150,150});
     y += 4;
 
     // ── 身高条 ──
-    cv::putText(telem, "身高", {10, y}, cv::FONT_HERSHEY_SIMPLEX, 0.4, {180,180,200}, 1);
+    cv::putText(telem, "Height", {10, y}, cv::FONT_HERSHEY_SIMPLEX, 0.4, {180,180,200}, 1);
     int bar_x = 80, bar_w = 200, bar_h = 12, bar_y = y - 10;
     cv::rectangle(telem, {bar_x, bar_y}, {bar_x + bar_w, bar_y + bar_h}, {60,60,80}, 1);
     float h_ratio = std::min(bh / 0.5f, 1.0f);
@@ -847,7 +847,7 @@ void RaceController::render_telemetry_frame() {
     y += 24;
 
     // ── yaw 罗盘（四向刻度） ──
-    cv::putText(telem, "yaw罗盘", {10, y}, cv::FONT_HERSHEY_SIMPLEX, 0.4, {180,180,200}, 1);
+    cv::putText(telem, "Compass", {10, y}, cv::FONT_HERSHEY_SIMPLEX, 0.4, {180,180,200}, 1);
     int comp_cx = TW - 60, comp_cy = y + 24, comp_r = 32;
     cv::circle(telem, {comp_cx, comp_cy}, comp_r, {60,60,80}, 1);
     for (int d = 0; d < 4; d++) {
@@ -871,7 +871,7 @@ void RaceController::render_telemetry_frame() {
                 cv::FONT_HERSHEY_SIMPLEX, 0.35, {120,120,140}, 1);
     y += 62;
 
-    row("RC模式", last_rc_mode_ ? "ON" : "OFF", last_rc_mode_ ? cv::Scalar{0,255,0} : cv::Scalar{150,150,150});
+    row("RC", last_rc_mode_ ? "ON" : "OFF", last_rc_mode_ ? cv::Scalar{0,255,0} : cv::Scalar{150,150,150});
 
     web_streamer_.push_telemetry_frame(telem);
 }
