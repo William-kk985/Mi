@@ -4,6 +4,7 @@
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/laser_scan.hpp>
+#include <sensor_msgs/msg/range.hpp>          // 超声 ultrasonic_payload
 #include <nav_msgs/msg/odometry.hpp>
 #include <std_msgs/msg/float32_multi_array.hpp>  // BMS 电池占位（真机需替换为 protocol::msg::BmsStatus）
 // #include "protocol/msg/TouchStatus.hpp"      // TODO: 从真狗 bridges 包获取后启用触摸紧急停止
@@ -22,6 +23,10 @@
 #include "state_estimator_lcmt.hpp"
 #include "localization_lcmt.hpp"
 #include "cyberdog_race/debug_config.hpp"
+#ifdef REAL_DOG
+#include <protocol/msg/head_tof_payload.hpp>
+#include <protocol/msg/rear_tof_payload.hpp>
+#endif
 #include "cyberdog_race/motion_ctrl.hpp"
 #include "cyberdog_race/sensor_data.hpp"
 #include "cyberdog_race/stages/stage_base.hpp"
@@ -49,7 +54,13 @@ private:
     void on_imu(sensor_msgs::msg::Imu::SharedPtr msg);
     void on_lidar(sensor_msgs::msg::LaserScan::SharedPtr msg);
     void on_d435_infra1(sensor_msgs::msg::Image::SharedPtr msg);  // D430i 左目红外
+    void on_d435_infra2(sensor_msgs::msg::Image::SharedPtr msg);  // D430i 右目红外
     void on_d435_depth(sensor_msgs::msg::Image::SharedPtr msg);   // D430i 深度图（mono16→伪彩色）
+#ifdef REAL_DOG
+    void on_tof_head(protocol::msg::HeadTofPayload::SharedPtr msg);
+    void on_tof_rear(protocol::msg::RearTofPayload::SharedPtr msg);
+    void on_ultrasonic(sensor_msgs::msg::Range::SharedPtr msg);
+#endif
     void on_fish_eye_left(sensor_msgs::msg::Image::SharedPtr msg);
     void on_fish_eye_right(sensor_msgs::msg::Image::SharedPtr msg);
     // TODO: void on_touch(protocol::msg::TouchStatus::SharedPtr msg); // 需bridges包
@@ -97,7 +108,13 @@ private:
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr       sub_imu_;
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr sub_lidar_;
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr     sub_d435_infra1_;
+    rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr     sub_d435_infra2_;
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr     sub_d435_depth_;
+#ifdef REAL_DOG
+    rclcpp::Subscription<protocol::msg::HeadTofPayload>::SharedPtr sub_head_tof_;
+    rclcpp::Subscription<protocol::msg::RearTofPayload>::SharedPtr sub_rear_tof_;
+    rclcpp::Subscription<sensor_msgs::msg::Range>::SharedPtr      sub_ultrasonic_;
+#endif
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr     sub_fish_eye_left_;
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr     sub_fish_eye_right_;
     // rclcpp::Subscription<protocol::msg::TouchStatus>::SharedPtr sub_touch_; // TODO: 需bridges包

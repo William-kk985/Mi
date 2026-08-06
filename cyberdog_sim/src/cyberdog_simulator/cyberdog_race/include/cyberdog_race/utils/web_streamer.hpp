@@ -58,6 +58,9 @@ public:
     /// 推送 D430i 红外相机帧（线程安全）
     void push_d435_frame(const cv::Mat& frame);
 
+    /// 推送 D430i 右目红外帧（mono8→灰度，线程安全）→ /stream/infra2
+    void push_infra2_frame(const cv::Mat& frame);
+
     /// 推送左鱼眼相机帧（灰度，线程安全）
     void push_fisheye_left_frame(const cv::Mat& frame);
 
@@ -69,6 +72,10 @@ public:
 
     /// 推送降暗帧（曝光偏移后，线程安全）→ /stream/dark
     void push_dark_frame(const cv::Mat& frame);
+
+    /// 更新遥测数据（RaceController control_loop 调用，/api/telemetry 返回）
+    void update_telemetry(float stage, float yaw, float ox, float oy, float height,
+                          float tof, float ultra);
 
     /// 停止服务，等待所有客户端线程退出
     void stop();
@@ -98,12 +105,18 @@ private:
     // ── 六帧缓冲 ──
     std::mutex               frame_mutex_;
     std::condition_variable  frame_cv_;
+
+    // ── 遥测数据（/api/telemetry） ──
+    struct Telemetry { float stage{0}, yaw{0}, ox{0}, oy{0}, height{0}, tof{0}, ultra{0}; };
+    mutable std::mutex       telemetry_mutex_;
+    Telemetry                telemetry_;
     std::vector<uint8_t>     jpeg_buffer_;        // 0: raw
     std::vector<uint8_t>     jpeg_debug_buffer_;  // 1: debug
     std::vector<uint8_t>     jpeg_lidar_buffer_;  // 2: lidar
     std::vector<uint8_t>     jpeg_track_buffer_;  // 3: track
     std::vector<uint8_t>     jpeg_telem_buffer_;  // 4: telemetry
     std::vector<uint8_t>     jpeg_d435_buffer_;   // 5: d435 infra1
+    std::vector<uint8_t>     jpeg_infra2_buffer_; // 10: infra2 右目红外
     std::vector<uint8_t>     jpeg_dark_buffer_;   // 6: dark
     std::vector<uint8_t>     jpeg_fisheye_left_buffer_;  // 7: fisheye_left
     std::vector<uint8_t>     jpeg_fisheye_right_buffer_; // 8: fisheye_right
@@ -114,6 +127,7 @@ private:
     uint64_t                 track_frame_seq_{0};
     uint64_t                 telem_frame_seq_{0};
     uint64_t                 d435_frame_seq_{0};
+    uint64_t                 infra2_frame_seq_{0};
     uint64_t                 dark_frame_seq_{0};
     uint64_t                 fisheye_left_frame_seq_{0};
     uint64_t                 fisheye_right_frame_seq_{0};
@@ -124,6 +138,7 @@ private:
     bool                     has_track_frame_{false};
     bool                     has_telem_frame_{false};
     bool                     has_d435_frame_{false};
+    bool                     has_infra2_frame_{false};
     bool                     has_dark_frame_{false};
     bool                     has_fisheye_left_frame_{false};
     bool                     has_fisheye_right_frame_{false};

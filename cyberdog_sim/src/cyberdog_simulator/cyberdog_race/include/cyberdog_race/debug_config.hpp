@@ -55,8 +55,10 @@
 #define ROBOT_NS "/mi_desktop_48_b0_2d_7b_02_c7"
 
 // ── 测试模式：7=俯仰角（低头/抬头） ──
-#define DEBUG_TEST_BEHAVIOR
-#define TEST_BEHAVIOR 7  // 7=俯仰角
+// ⚠ 已注释：开着会让 control_loop 跑一次就 timer->cancel()，遥测冻结在启动快照
+//   2026-08-07 真机验证 Web 时发现（超声/TOF 卡初始值就是它导致）
+// #define DEBUG_TEST_BEHAVIOR
+// #define TEST_BEHAVIOR 7  // 7=俯仰角
 
 // ── 传感器 topic 名称（真机值经 2026-07-31 上机确认） ──
 // 相机全部已 lifecycle 激活。RGB 需额外通过 camera_service START_IMAGE_PUBLISH 启动推流
@@ -73,6 +75,10 @@
   #define TOPIC_D435_DEPTH       ROBOT_NS "/camera/depth/image_rect_raw"  // D430i深度图 mono16(mm) ✅
   #define TOPIC_BMS              ROBOT_NS "/bms_status"                  // protocol::msg::BmsStatus ✅
   #define TOPIC_TOUCH            ROBOT_NS "/touch_status"                // protocol::msg::TouchStatus ✅
+  #define TOPIC_D435_INFRA2      ROBOT_NS "/camera/infra2/image_rect_raw" // D430i右目红外 mono8 ✅(2026-08-06探测)
+  #define TOPIC_TOF_HEAD         ROBOT_NS "/head_tof_payload"            // 头TOF×2 8x8高程 ✅
+  #define TOPIC_TOF_REAR         ROBOT_NS "/rear_tof_payload"            // 尾TOF×2 8x8高程 ✅
+  #define TOPIC_ULTRASONIC       ROBOT_NS "/ultrasonic_payload"          // 超声 Range ✅
   // LCM 通道（真狗可走LCM global_to_robot，也可用ROS2 odom_out替代）
   #define LCM_ODOM_CHANNEL    "global_to_robot"
   #define LCM_STATE_ESTIMATOR "state_estimator"

@@ -36,9 +36,23 @@ RaceController::RaceController() : Node("race_controller") {
     sub_d435_infra1_ = create_subscription<sensor_msgs::msg::Image>(
         TOPIC_D435_INFRA1, qos_be,
         [this](sensor_msgs::msg::Image::SharedPtr msg) { on_d435_infra1(msg); });
+    sub_d435_infra2_ = create_subscription<sensor_msgs::msg::Image>(
+        TOPIC_D435_INFRA2, qos_be,
+        [this](sensor_msgs::msg::Image::SharedPtr msg) { on_d435_infra2(msg); });
     sub_d435_depth_ = create_subscription<sensor_msgs::msg::Image>(
         TOPIC_D435_DEPTH, qos_be,
         [this](sensor_msgs::msg::Image::SharedPtr msg) { on_d435_depth(msg); });
+#ifdef REAL_DOG
+    sub_head_tof_ = create_subscription<protocol::msg::HeadTofPayload>(
+        TOPIC_TOF_HEAD, 10,
+        [this](protocol::msg::HeadTofPayload::SharedPtr msg) { on_tof_head(msg); });
+    sub_rear_tof_ = create_subscription<protocol::msg::RearTofPayload>(
+        TOPIC_TOF_REAR, 10,
+        [this](protocol::msg::RearTofPayload::SharedPtr msg) { on_tof_rear(msg); });
+    sub_ultrasonic_ = create_subscription<sensor_msgs::msg::Range>(
+        TOPIC_ULTRASONIC, 10,
+        [this](sensor_msgs::msg::Range::SharedPtr msg) { on_ultrasonic(msg); });
+#endif
 
 #ifdef ENABLE_WEB_STREAMING
     // 鱼眼相机（仅 web 展示用，不做检测）
@@ -257,6 +271,15 @@ void RaceController::apply_stage_params() {
 
 // ── 100Hz 控制循环 ──
 void RaceController::control_loop() {
+#ifdef ENABLE_WEB_STREAMING
+    // 遥测推给 Web（/api/telemetry）：赛道/yaw/odom/身高/TOF/超声
+    {
+        std::lock_guard<std::mutex> lock(sensor_mutex_);
+        web_streamer_.update_telemetry(
+            cur_stage_ + 1, sensor_.yaw, sensor_.odom_x, sensor_.odom_y,
+            sensor_.body_height, sensor_.tof_clearance, sensor_.ultrasonic_range);
+    }
+#endif
     // 行为测试模式：替代正常赛段
 #ifdef DEBUG_TEST_BEHAVIOR
     static bool test_ran = false;
@@ -533,6 +556,57 @@ void RaceController::on_d435_depth(sensor_msgs::msg::Image::SharedPtr msg) {
     }
 #endif
 }
+
+// ── D430i 右目红外回调（mono8 → 灰度 → web展示，2026-08-06 接入） ──
+void RaceController::on_d435_infra2(sensor_msgs::msg::Image::SharedPtr msg) {
+    (void)msg;
+#ifdef ENABLE_WEB_STREAMING
+    try {
+        cv::Mat frame;
+        if (msg->encoding == sensor_msgs::image_encodings::MONO8) {
+            auto cv_img = cv_bridge::toCvShare(msg, "mono8");
+            cv::cvtColor(cv_img->image, frame, cv::COLOR_GRAY2BGR);
+        } else {
+            auto cv_img = cv_bridge::toCvShare(msg, msg->encoding);
+            if (cv_img->image.channels() == 1) cv::cvtColor(cv_img->image, frame, cv::COLOR_GRAY2BGR);
+            else frame = cv_img->image;
+        }
+        web_streamer_.push_infra2_frame(frame);
+    } catch (const cv_bridge::Exception& e) {
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "[D435 infra2] cv_bridge error: %s", e.what());
+    }
+#endif
+}
+
+#ifdef REAL_DOG
+// ── TOF 头×2 高程（8x8=64点, 单位m, 取最低点 → tof_clearance） ──
+void RaceController::on_tof_head(protocol::msg::HeadTofPayload::SharedPtr msg) {
+    float min_h = 0.66f;
+    for (const auto* tof : {&msg->left_head, &msg->right_head}) {
+        if (!tof->data_available) continue;
+        for (float v : tof->data) if (v > 0.001f && v < min_h) min_h = v;
+    }
+    std::lock_guard<std::mutex> lock(sensor_mutex_);
+    sensor_.tof_clearance = min_h;
+}
+
+// ── TOF 尾×2 高程 ──
+void RaceController::on_tof_rear(protocol::msg::RearTofPayload::SharedPtr msg) {
+    float min_h = 0.66f;
+    for (const auto* tof : {&msg->left_rear, &msg->right_rear}) {
+        if (!tof->data_available) continue;
+        for (float v : tof->data) if (v > 0.001f && v < min_h) min_h = v;
+    }
+    std::lock_guard<std::mutex> lock(sensor_mutex_);
+    if (min_h < sensor_.tof_clearance) sensor_.tof_clearance = min_h;
+}
+
+// ── 超声测距 ──
+void RaceController::on_ultrasonic(sensor_msgs::msg::Range::SharedPtr msg) {
+    std::lock_guard<std::mutex> lock(sensor_mutex_);
+    sensor_.ultrasonic_range = msg->range;
+}
+#endif
 
 // ── 左鱼眼相机回调（灰度，仅 web 展示） ──
 void RaceController::on_fish_eye_left(sensor_msgs::msg::Image::SharedPtr msg) {

@@ -15,7 +15,8 @@ echo "============================================"
 
 # ★ 防双开保护：先清理旧进程，避免 8080 被占导致新进程 Web 起不来（2026-08-06）
 #   'race_controlle[r]' 用括号技巧防止误杀本脚本自身
-pkill -f 'race_controlle[r]' 2>/dev/null
+#   ⚠ 必须 || true：无旧进程时 pkill 返回 1，set -e 会误杀整个脚本（2026-08-07 修复）
+pkill -f 'race_controlle[r]' 2>/dev/null || true
 sleep 1
 
 source "$ROS_ENV" 2>/dev/null || { echo "❌ 加载 $ROS_ENV 失败"; exit 1; }

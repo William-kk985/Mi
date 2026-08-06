@@ -53,7 +53,9 @@ cyberdog_race/
 │   └── LLMAsk.srv
 │
 ├── scripts/                              # 上机运行脚本（rsync 到 NX 后执行）
-│   ├── start_web.sh                      # Web 推流（9路 MJPEG + 环境修复）
+│   ├── sync_to_nx.sh                     # ★ 安全同步 VM→NX（防覆盖/删除伙伴改动，见「构建与运行」）
+│   ├── sensor_probe.py                   # 传感器探测：逐个 topic 收帧验证（含 TOF/超声/右红外）
+│   ├── start_web.sh                      # Web 推流（9路 MJPEG + 环境修复 + 防双开）
 │   ├── start_rgb_test.sh                 # RGB imshow 预览 (TEST_BEHAVIOR=10)
 │   ├── start_sensor_check.sh             # 逐传感器检查 (TEST_BEHAVIOR=9)
 │   ├── start_pitch_test.sh               # 俯仰测试 (TEST_BEHAVIOR=7, 走新接口)
@@ -204,6 +206,24 @@ curl -s -o /dev/null -w '%{http_code}\n' 'http://127.0.0.1:8080/stream/debug?t=1
 ls /proc/$(pgrep -f race_controlle[r] | head -1)/task | wc -l
 ```
 
+**Web 遥测（2026-08-07 新增）**：
+- 顶栏实时显示：stage / yaw / odom / 身高 / **TOF** / **超声**（前端每 1s 拉 `/api/telemetry`）
+- 数据源：`control_loop()` 100Hz 调 `web_streamer_.update_telemetry(...)`
+- 新增右红外流 `/stream/infra2`（D430i 右目, stype=10）；下拉框有「D430i左红外/右红外」
+
+**⚠ 真机必须用 `start_web.sh` 启动（RMW 大坑, 2026-08-07 踩过）**：
+- 系统 ROS2 用 `rmw_cyclonedds_cpp` + `ROS_DOMAIN_ID=42` + `/etc/mi/cyclonedds.xml`
+- 若直接跑二进制 / 没 source `/etc/mi/ros2_env.conf` → 回退默认 FastDDS → **发现不了 sensor_manager**：
+  - `ros2 node list` 看不到 race_controller
+  - 所有传感器订阅（TOF/超声/图像）收不到 → Web 显示初始值/黑屏
+- 自检：`ros2 node list | grep -i race` 有输出 = 正常
+
+**⚠ 测试宏会冻结 Web 遥测（2026-08-07 定位）**：
+- `DEBUG_TEST_BEHAVIOR` 定义时，`control_loop()` 首次执行 `timer_->cancel()` + return
+- → 遥测只更新一次（启动快照），之后永远不变（超声卡 0、TOF 卡 0.66）
+- 症状：`/api/telemetry` 多次采样数值**完全一样**
+- 发布/联调前确保 `debug_config.hpp` 中 `DEBUG_TEST_BEHAVIOR`/`TEST_BEHAVIOR` 已注释
+
 ### 7. 运动控制
 
 - **真机（CyberDog 2）必须走 ROS2 接口**，❌ 不要用 LCM `robot_control_cmd` mode=21 等铁蛋一代接口（见下方专章）
@@ -256,8 +276,12 @@ colcon build --cmake-args -DUSE_TEST_ALL=ON
 |---|---|---|---|---|
 | RGB 相机 | `/RGB_camera/image_raw` | `/image`（camera_server 推流） | `on_rgb` | 视觉检测结果 |
 | 左/右鱼眼 | 复用 RGB | 复用 `/image`（真狗无独立鱼眼） | `on_fish_eye_*` | Web 展示 |
-| D430i 红外 | `/D435/infra1/image_raw` | `/camera/infra1/image_rect_raw` | `on_d435_infra1` | Web 展示 |
+| D430i 红外(左目) | `/D435/infra1/image_raw` | `/camera/infra1/image_rect_raw` | `on_d435_infra1` | Web 展示 |
+| D430i 红外(右目) | — | `/camera/infra2/image_rect_raw` | `on_d435_infra2` | Web 展示(/stream/infra2) |
 | D430i 深度 | `/D435/depth/image_raw` | `/camera/depth/image_rect_raw` | `on_d435_depth` | Web 伪彩色展示 |
+| TOF 头部×2 | — | `/head_tof_payload`（protocol 8x8高程） | `on_tof_head` | tof_clearance（4路最低点, 0.15-0.66m） |
+| TOF 尾部×2 | — | `/rear_tof_payload`（protocol 8x8高程） | `on_tof_rear` | tof_clearance |
+| 超声波 | — | `/ultrasonic_payload`（Range, 0.1-1.0m） | `on_ultrasonic` | ultrasonic_range（有遮挡才发布） |
 | IMU | `/imu` | `/camera/imu`（D430i 内置） | `on_imu` | yaw/pitch/roll |
 | LiDAR | `/scan` | `/scan` | `on_lidar` | lidar_front |
 | BMS | — | `/bms_status` | `on_bms` | 低电量保护 |
@@ -331,15 +355,15 @@ cd /home/kaka/Mi/cyberdog_sim
 colcon build --merge-install --packages-select cyberdog_race
 
 # 真机（NX 上构建）
-# 1. VM 编辑后 rsync 到 NX：
-rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" \
-  /home/kaka/Mi/cyberdog_sim/src/cyberdog_simulator/cyberdog_race/ \
-  cyberdog:/SDCARD/race_ws/src/cyberdog_race/
+# 1. VM 编辑后同步到 NX：⚠ 必须用安全脚本，❌ 勿用 rsync --delete
+#    （--delete 会删除/覆盖 NX 上伙伴改了但没 git 同步的文件——历史教训 .github/ 被删）
+bash /home/kaka/Mi/cyberdog_sim/src/cyberdog_simulator/cyberdog_race/scripts/sync_to_nx.sh
 # 2. NX 上构建（真机需 protocol 包——NX 有、仿真无 → CMake 已 QUIET 保护）：
 ssh cyberdog "source /etc/mi/ros2_env.conf && cd /SDCARD/race_ws && \
   colcon build --merge-install --packages-select cyberdog_race"
-# 3. 运行（必须先 source setup.bash，不能加管道，否则环境变量丢失）：
-ssh cyberdog "/SDCARD/race_ws/src/cyberdog_race/scripts/start_pitch_test.sh"
+# 3. 运行：⚠ 必须用 start_web.sh（内部 source /etc/mi/ros2_env.conf 设置 CycloneDDS）
+#    直接跑二进制会因 RMW 不一致导致传感器订阅全断（见「Web 推流」RMW 大坑）
+ssh cyberdog "cd /SDCARD/race_ws/src/cyberdog_race/scripts && ./start_web.sh"
 
 # 笔记本 LLM 桥接（PROXY 模式）
 source install/setup.bash
