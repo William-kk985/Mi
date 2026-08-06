@@ -178,12 +178,31 @@ API 模式需要 `libcurl`，`CMakeLists.txt` 已做 `find_package(CURL QUIET)`�
 - 所有相机展示流定义在 `ENABLE_WEB_STREAMING` 块中
 - 新增流需要：`web_streamer.hpp` 加 push 方法 + 缓冲 → `web_streamer.cpp` 加路由 + stype + switch 分支
 - 鱼眼/深度/D430i 红外 **只做展示，不做检测**，不得在对应的 `on_*` 回调中加入赛段逻辑
-- ⚠ **SIGPIPE 必须忽略**（`main.cpp` 与 `WebStreamer::start()` 已 `signal(SIGPIPE, SIG_IGN)`）：
-  浏览器**切换流**会关闭旧连接 → 旧推流线程 `write()` 触发 SIGPIPE → 默认动作是**终止整个进程**
-  （不是 SIGSEGV，crash_handler 捕不到）——这是"一切换画面就崩"的根因
-- `client_handler` 每客户端一线程；`server_loop` 用 `pthread_tryjoin_np` 回收已结束线程（防 vector 无限增长）
+
+**⚠ 稳定运行四大坑（2026-08-06 全部踩过并修复，改 Web 代码前必读）**：
+
+1. **SIGPIPE 必须忽略**（`main.cpp` + `WebStreamer::start()` 已 `signal(SIGPIPE, SIG_IGN)`）：
+   浏览器切换流关闭旧连接 → 旧线程 `write()` 触发 SIGPIPE → 默认动作**终止整个进程**
+   （不是 SIGSEGV，crash_handler 捕不到）——"一切换就崩"根因
+2. **客户端线程必须 detach**，❌ 不能存 `std::vector<std::thread>` + join：
+   `pthread_tryjoin_np` 回收底层后 std::thread 仍 joinable，`erase` 析构它 → `std::terminate`（SIGABRT）。
+   现方案：spawn 后立即 `detach()`，用 `active_clients_` 原子计数，`stop()` 轮询计数归零
+3. **断连检测**：`client_handler` 推流循环用 `poll()` 检测 socket 断开（POLLHUP/POLLERR/recv=0 即退出），
+   `frame_cv_.wait_for` 用 1s 短超时轮询。否则浏览器断开后线程永不退出 → `active_clients_` 占满上限
+   → 后续请求（含首页）全 **503** → **切换几次后黑屏**
+4. **剥离 query string**：路由匹配前 `path = path.substr(0, path.find('?'))`。
+   浏览器切换流带 `?t=时间戳`（防缓存），不剥离则 `/stream/debug?t=xxx` 匹配失败 → **404 黑屏**
+
 - 连接断开后 `send_all()` 返回 false → 线程正常退出，不崩溃
 - 帧缓冲全部在 `frame_mutex_` 保护下（push 用 swap、读用 copy）；socket 收发超时 1s
+
+**诊断命令**（NX 上）：
+```bash
+# 200=正常  404=query 问题  503=断连线程堆积
+curl -s -o /dev/null -w '%{http_code}\n' 'http://127.0.0.1:8080/stream/debug?t=1'
+# 线程数（正常 ~6，>10 说明 client_handler 堆积）
+ls /proc/$(pgrep -f race_controlle[r] | head -1)/task | wc -l
+```
 
 ### 7. 运动控制
 

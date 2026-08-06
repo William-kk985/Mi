@@ -2,6 +2,7 @@
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -664,11 +665,27 @@ void WebStreamer::client_handler(int client_fd, const std::string& path) {
 
     // 推流循环
     while (running_.load()) {
+        // ★ 检测客户端断开：浏览器关闭连接后线程必须退出，否则线程堆积 +
+        //   active_clients_ 占满上限 → 后续请求全 503 → 画面黑屏（2026-08-06 定位）
+        {
+            struct pollfd pfd;
+            pfd.fd = client_fd;
+            pfd.events = POLLIN;
+            pfd.revents = 0;
+            if (poll(&pfd, 1, 0) > 0) {
+                if (pfd.revents & (POLLHUP | POLLERR)) break;      // 连接断开/异常
+                if (pfd.revents & POLLIN) {                        // 对端有数据或关闭
+                    char c;
+                    if (recv(client_fd, &c, 1, MSG_PEEK | MSG_DONTWAIT) == 0) break;
+                }
+            }
+        }
         std::vector<uint8_t> jpeg_copy;
         uint64_t current_seq;
         {
             std::unique_lock<std::mutex> lock(frame_mutex_);
-            bool got = frame_cv_.wait_for(lock, std::chrono::seconds(5), [&] {
+            // 1s 短超时：快速回到 poll 检测断开（原来 5s 太慢导致断连线程堆积）
+            bool got = frame_cv_.wait_for(lock, std::chrono::seconds(1), [&] {
                 if (!running_.load()) return true;
                 switch (stype) {
                     case 9: return depth_frame_seq_  != last_seq;
