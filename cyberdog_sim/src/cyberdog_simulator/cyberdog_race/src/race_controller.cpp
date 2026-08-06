@@ -726,6 +726,23 @@ void RaceController::render_track_frame() {
                              off_y - (wy - min_y) * scale_y);
         };
 
+        // ── 网格（自适应 0.5/1/2m 步长，估算距离用） ──
+        float grid = 0.5f;
+        int g = static_cast<int>(grid * scale_x);
+        if (g < 12) { grid = 1.0f; g = static_cast<int>(grid * scale_x); }
+        if (g < 12) { grid = 2.0f; g = static_cast<int>(grid * scale_x); }
+        for (float wx = std::floor(min_x / grid) * grid; wx <= max_x; wx += grid) {
+            int px = to_px(wx, 0).x;
+            cv::line(track_img, {px, 10}, {px, SIZE - 10}, {25, 30, 45}, 1);
+        }
+        for (float wy = std::floor(min_y / grid) * grid; wy <= max_y; wy += grid) {
+            int py = to_px(0, wy).y;
+            cv::line(track_img, {10, py}, {SIZE - 10, py}, {25, 30, 45}, 1);
+        }
+        cv::putText(track_img, cv::format("% .1fm格", grid), {SIZE - 46, SIZE - 8},
+                    cv::FONT_HERSHEY_SIMPLEX, 0.3, {80, 90, 110}, 1);
+
+        // ── 轨迹 ──
         for (size_t i = 1; i < odom_history_.size(); i++) {
             float t = static_cast<float>(i) / odom_history_.size();
             cv::line(track_img, to_px(odom_history_[i-1].first, odom_history_[i-1].second),
@@ -733,6 +750,13 @@ void RaceController::render_track_frame() {
                      cv::Scalar(50.0 + 155.0*t, 100.0+155.0*t, 255.0), 2);
         }
 
+        // ── 起点标记 ──
+        auto start = to_px(odom_history_.front().first, odom_history_.front().second);
+        cv::circle(track_img, start, 4, {0, 255, 0}, -1);
+        cv::putText(track_img, "S", {start.x - 4, start.y - 8},
+                    cv::FONT_HERSHEY_SIMPLEX, 0.4, {0, 255, 0}, 1);
+
+        // ── 当前位置 + 朝向箭头 ──
         auto cur = to_px(ox, oy);
         cv::circle(track_img, cur, 6, {0, 200, 255}, -1);
         float arrow_len = 18.0f;
@@ -740,10 +764,17 @@ void RaceController::render_track_frame() {
                       cur.y - arrow_len * std::sin(yw));
         cv::arrowedLine(track_img, cur, tip, {0, 200, 255}, 2);
 
+        // ── 信息：坐标 / 距起点 / 航向 / 点数 ──
+        float dx = ox - odom_history_.front().first;
+        float dy = oy - odom_history_.front().second;
+        float dist_from_start = std::sqrt(dx*dx + dy*dy);
         cv::putText(track_img, cv::format("x:%.2f y:%.2f", ox, oy),
                     {5, 15}, cv::FONT_HERSHEY_SIMPLEX, 0.4, {0, 255, 100}, 1);
-        cv::putText(track_img, cv::format("pts:%zu", odom_history_.size()),
+        cv::putText(track_img, cv::format("距起点:%.1fm 航向:%ddeg", dist_from_start,
+                    static_cast<int>(yw * 180 / M_PI)),
                     {5, 33}, cv::FONT_HERSHEY_SIMPLEX, 0.35, {120, 140, 120}, 1);
+        cv::putText(track_img, cv::format("pts:%zu", odom_history_.size()),
+                    {5, 51}, cv::FONT_HERSHEY_SIMPLEX, 0.35, {100, 120, 100}, 1);
     } else {
         cv::putText(track_img, "waiting for odom...", {30, SIZE/2},
                     cv::FONT_HERSHEY_SIMPLEX, 0.5, {100, 100, 100}, 1);
@@ -754,34 +785,47 @@ void RaceController::render_track_frame() {
 
 void RaceController::render_telemetry_frame() {
     // 快照传感器字段（避免与回调线程数据竞争）
-    float bh, sp, sr, sy, lf;
+    float bh, sp, sr, sy, lf, tof, ultra;
+    bool b_found; float b_dist;
     {
         std::lock_guard<std::mutex> lock(sensor_mutex_);
         bh = sensor_.body_height; sp = sensor_.pitch; sr = sensor_.roll;
         sy = sensor_.yaw; lf = sensor_.lidar_front;
+        tof = sensor_.tof_clearance; ultra = sensor_.ultrasonic_range;
+        b_found = sensor_.ball_found; b_dist = sensor_.ball_dist;
     }
 
-    const int TW = 320, TH = 240;
+    const int TW = 360, TH = 300;
     cv::Mat telem(TH, TW, CV_8UC3, cv::Scalar(10, 15, 30));
 
     int y = 18;
     auto row = [&](const std::string& label, const std::string& val, cv::Scalar vc = {0,255,100}) {
         cv::putText(telem, label, {10, y}, cv::FONT_HERSHEY_SIMPLEX, 0.45, {180,180,200}, 1);
-        cv::putText(telem, val, {140, y}, cv::FONT_HERSHEY_SIMPLEX, 0.45, vc, 1);
+        cv::putText(telem, val, {150, y}, cv::FONT_HERSHEY_SIMPLEX, 0.45, vc, 1);
         y += 22;
     };
     row("赛段", cv::format("%d/6", cur_stage_ + 1), {233, 69, 96});
     row("身高", cv::format("%.2f m", bh));
-    row("步高上限", cv::format("%.2f m", last_sent_step_h_));
-    row("pitch", cv::format("%.3f rad", sp));
-    row("roll",  cv::format("%.3f rad", sr));
-    row("yaw",   cv::format("%.2f (%.0f deg)", sy, sy * 180/M_PI));
-    row("lidar front", cv::format("%.2f m", lf),
+    row("步高", cv::format("%.2f m", last_sent_step_h_));
+    row("pitch/roll", cv::format("%.2f / %.2f rad", sp, sr));
+    row("yaw", cv::format("%.0f deg", sy * 180 / M_PI));
+    // TOF 离地间隙（独木桥关键：<0.15m 红警）
+    row("TOF 离地", cv::format("%.2f m", tof),
+        tof < 0.15f ? cv::Scalar{0,0,255} : cv::Scalar{0,255,100});
+    // 超声（0=无数据，-- 显示）
+    row("超声", ultra > 0.01f ? cv::format("%.2f m", ultra) : "--",
+        (ultra > 0.01f && ultra < 0.5f) ? cv::Scalar{0,255,255} : cv::Scalar{0,255,100});
+    // Lidar 前方最近障碍
+    row("Lidar 前", cv::format("%.2f m", lf),
         lf < 1.0f ? cv::Scalar{0,0,255} : cv::Scalar{0,255,100});
-    y += 6;
+    // 目标球检测
+    row("球", b_found ? cv::format("找到 %.2f m", b_dist) : "未找到",
+        b_found ? cv::Scalar{0,255,0} : cv::Scalar{150,150,150});
+    y += 4;
 
+    // ── 身高条 ──
     cv::putText(telem, "身高", {10, y}, cv::FONT_HERSHEY_SIMPLEX, 0.4, {180,180,200}, 1);
-    int bar_x = 70, bar_w = 180, bar_h = 12, bar_y = y - 10;
+    int bar_x = 80, bar_w = 200, bar_h = 12, bar_y = y - 10;
     cv::rectangle(telem, {bar_x, bar_y}, {bar_x + bar_w, bar_y + bar_h}, {60,60,80}, 1);
     float h_ratio = std::min(bh / 0.5f, 1.0f);
     cv::rectangle(telem, {bar_x, bar_y},
@@ -789,17 +833,44 @@ void RaceController::render_telemetry_frame() {
                   {0, 180, 100}, -1);
     cv::putText(telem, cv::format("%.2f/0.50m", bh),
                 {bar_x + bar_w + 5, y}, cv::FONT_HERSHEY_SIMPLEX, 0.35, {150,150,160}, 1);
-    y += 20;
+    y += 22;
 
+    // ── TOF 离地条（独木桥：<0.15 红警） ──
+    cv::putText(telem, "TOF", {10, y}, cv::FONT_HERSHEY_SIMPLEX, 0.4, {180,180,200}, 1);
+    int tbar_x = 80, tbar_w = 200, tbar_h = 12, tbar_y = y - 10;
+    cv::rectangle(telem, {tbar_x, tbar_y}, {tbar_x + tbar_w, tbar_y + tbar_h}, {60,60,80}, 1);
+    float t_ratio = std::min(tof / 0.66f, 1.0f);
+    cv::rectangle(telem, {tbar_x, tbar_y},
+                  {tbar_x + static_cast<int>(tbar_w * t_ratio), tbar_y + tbar_h},
+                  tof < 0.15f ? cv::Scalar{0,0,255} : cv::Scalar{0,200,180}, -1);
+    cv::putText(telem, cv::format("%.2f/0.66m", tof),
+                {tbar_x + tbar_w + 5, y}, cv::FONT_HERSHEY_SIMPLEX, 0.35, {150,150,160}, 1);
+    y += 24;
+
+    // ── yaw 罗盘（四向刻度） ──
     cv::putText(telem, "yaw罗盘", {10, y}, cv::FONT_HERSHEY_SIMPLEX, 0.4, {180,180,200}, 1);
-    int comp_cx = TW - 55, comp_cy = y + 18, comp_r = 28;
+    int comp_cx = TW - 60, comp_cy = y + 24, comp_r = 32;
     cv::circle(telem, {comp_cx, comp_cy}, comp_r, {60,60,80}, 1);
+    for (int d = 0; d < 4; d++) {
+        double a = d * M_PI / 2;
+        cv::Point p1(comp_cx + static_cast<int>((comp_r - 6) * std::cos(a)),
+                     comp_cy - static_cast<int>((comp_r - 6) * std::sin(a)));
+        cv::Point p2(comp_cx + static_cast<int>((comp_r + 4) * std::cos(a)),
+                     comp_cy - static_cast<int>((comp_r + 4) * std::sin(a)));
+        cv::line(telem, p1, p2, {90, 90, 110}, 1);
+    }
     cv::Point arrow_tip(comp_cx + comp_r * std::cos(sy),
                         comp_cy - comp_r * std::sin(sy));
     cv::arrowedLine(telem, {comp_cx, comp_cy}, arrow_tip, {0, 200, 255}, 2);
-    cv::putText(telem, "N", {comp_cx - 6, comp_cy - comp_r - 4},
+    cv::putText(telem, "N", {comp_cx - 6, comp_cy - comp_r - 5},
                 cv::FONT_HERSHEY_SIMPLEX, 0.35, {120,120,140}, 1);
-    y += 50;
+    cv::putText(telem, "E", {comp_cx + comp_r - 14, comp_cy + 4},
+                cv::FONT_HERSHEY_SIMPLEX, 0.35, {120,120,140}, 1);
+    cv::putText(telem, "S", {comp_cx - 6, comp_cy + comp_r + 15},
+                cv::FONT_HERSHEY_SIMPLEX, 0.35, {120,120,140}, 1);
+    cv::putText(telem, "W", {comp_cx - comp_r + 2, comp_cy + 4},
+                cv::FONT_HERSHEY_SIMPLEX, 0.35, {120,120,140}, 1);
+    y += 62;
 
     row("RC模式", last_rc_mode_ ? "ON" : "OFF", last_rc_mode_ ? cv::Scalar{0,255,0} : cv::Scalar{150,150,150});
 
