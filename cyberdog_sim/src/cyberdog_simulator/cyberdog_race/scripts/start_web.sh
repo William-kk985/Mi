@@ -13,6 +13,11 @@ echo "============================================"
 echo " CyberDog Web 推流"
 echo "============================================"
 
+# ★ 防双开保护：先清理旧进程，避免 8080 被占导致新进程 Web 起不来（2026-08-06）
+#   'race_controlle[r]' 用括号技巧防止误杀本脚本自身
+pkill -f 'race_controlle[r]' 2>/dev/null
+sleep 1
+
 source "$ROS_ENV" 2>/dev/null || { echo "❌ 加载 $ROS_ENV 失败"; exit 1; }
 # 必须直接 source（不要加管道，否则子 shell 环境变量传不回来）
 # libg2o 警告只是 stderr 提示，不影响环境变量设置
