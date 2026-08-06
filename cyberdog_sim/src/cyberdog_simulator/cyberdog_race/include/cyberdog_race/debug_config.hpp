@@ -67,8 +67,6 @@
 // ⚠ D430i 无 RGB 彩色输出，只有红外+深度！
 #ifdef REAL_DOG
   #define TOPIC_RGB_CAMERA       ROBOT_NS "/image"                       // AI相机 RGB（camera_server推流, 编码rgb8）
-  #define TOPIC_FISH_EYE_LEFT    ROBOT_NS "/image"                       // 真狗无独立鱼眼topic，复用RGB
-  #define TOPIC_FISH_EYE_RIGHT   ROBOT_NS "/image"                       // 真狗无独立鱼眼topic，复用RGB
   #define TOPIC_IMU              ROBOT_NS "/camera/imu"                  // D430i 内置IMU（真狗无独立身体IMU topic）
   #define TOPIC_LIDAR            ROBOT_NS "/scan"                        // sensor_msgs/LaserScan ✅
   #define TOPIC_D435_INFRA1      ROBOT_NS "/camera/infra1/image_rect_raw" // D430i左目红外 灰度 ✅
@@ -85,8 +83,6 @@
   #define LCM_CMD_EXEC        "exec_request"
 #else
   #define TOPIC_RGB_CAMERA       "/RGB_camera/image_raw"
-  #define TOPIC_FISH_EYE_LEFT    "/RGB_camera/image_raw"   // 仿真无独立鱼眼，复用RGB
-  #define TOPIC_FISH_EYE_RIGHT   "/RGB_camera/image_raw"
   #define TOPIC_IMU              "/imu"
   #define TOPIC_LIDAR            "/scan"
   #define TOPIC_D435_INFRA1      "/D435/infra1/image_raw"  // 仿真Gazebo D435红外

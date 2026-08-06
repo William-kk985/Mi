@@ -102,8 +102,6 @@ static const char* kHtmlPage = R"raw(
           <option value="d435">🔆 D430i左红外</option>
           <option value="infra2">🔆 D430i右红外</option>
           <option value="depth">🌊 深度图</option>
-          <option value="fisheye_left">🐟 左鱼眼</option>
-          <option value="fisheye_right">🐟 右鱼眼</option>
         </select>
         <button class="btn-exp" onclick="togglePanel('right')" title="放大/还原">⛶</button>
       </span>
@@ -115,7 +113,6 @@ static const char* kHtmlPage = R"raw(
 <script>
 const streams={debug:'/stream/debug',lidar:'/stream/lidar',dark:'/stream/dark',
   track:'/stream/track',telem:'/stream/telemetry',d435:'/stream/d435',
-  fisheye_left:'/stream/fisheye_left',fisheye_right:'/stream/fisheye_right',
   depth:'/stream/depth',infra2:'/stream/infra2'};
   function switchStream(){
   const sel=document.getElementById('stream-sel');
@@ -441,28 +438,6 @@ void WebStreamer::update_telemetry(float stage, float yaw, float ox, float oy, f
     telemetry_.ultra = ultra;
 }
 
-// ── 鱼眼左相机帧 ──
-void WebStreamer::push_fisheye_left_frame(const cv::Mat& frame) {
-    if (!running_.load() || frame.empty()) return;
-    std::vector<uint8_t> jpeg;
-    std::vector<int> params = {cv::IMWRITE_JPEG_QUALITY, 70};
-    cv::imencode(".jpg", frame, jpeg, params);
-    { std::lock_guard<std::mutex> lock(frame_mutex_);
-      jpeg_fisheye_left_buffer_.swap(jpeg); has_fisheye_left_frame_ = true; fisheye_left_frame_seq_++; }
-    frame_cv_.notify_all();
-}
-
-// ── 鱼眼右相机帧 ──
-void WebStreamer::push_fisheye_right_frame(const cv::Mat& frame) {
-    if (!running_.load() || frame.empty()) return;
-    std::vector<uint8_t> jpeg;
-    std::vector<int> params = {cv::IMWRITE_JPEG_QUALITY, 70};
-    cv::imencode(".jpg", frame, jpeg, params);
-    { std::lock_guard<std::mutex> lock(frame_mutex_);
-      jpeg_fisheye_right_buffer_.swap(jpeg); has_fisheye_right_frame_ = true; fisheye_right_frame_seq_++; }
-    frame_cv_.notify_all();
-}
-
 // ── D430i 深度伪彩色帧（mono16→JET colormap 后） ──
 void WebStreamer::push_depth_frame(const cv::Mat& frame) {
     if (!running_.load() || frame.empty()) return;
@@ -570,7 +545,7 @@ void WebStreamer::server_loop(int port) {
             close(client_fd);
         } else if (path == "/stream" || path == "/stream/debug" || path == "/stream/lidar" ||
                    path == "/stream/track" || path == "/stream/telemetry" || path == "/stream/d435" ||
-                   path == "/stream/dark" || path == "/stream/fisheye_left" || path == "/stream/fisheye_right" ||
+                   path == "/stream/dark" ||
                    path == "/stream/depth" || path == "/stream/infra2") {
             active_clients_++;
             // detach：不存 vector（存了析构 joinable std::thread 会 std::terminate）
@@ -638,7 +613,7 @@ void WebStreamer::server_loop(int port) {
 // ═══════════════════════════════════════════════════════════
 
 void WebStreamer::client_handler(int client_fd, const std::string& path) {
-    // 流类型: 0=raw 1=debug 2=lidar 3=track 4=telem 5=d435_infra1 6=dark 7=fisheye_left 8=fisheye_right 9=depth
+    // 流类型: 0=raw 1=debug 2=lidar 3=track 4=telem 5=d435_infra1 6=dark 9=depth 10=infra2
     int stype = 0;
     if      (path == "/stream/debug")         stype = 1;
     else if (path == "/stream/lidar")         stype = 2;
@@ -646,8 +621,6 @@ void WebStreamer::client_handler(int client_fd, const std::string& path) {
     else if (path == "/stream/telemetry")     stype = 4;
     else if (path == "/stream/d435")          stype = 5;
     else if (path == "/stream/dark")          stype = 6;
-    else if (path == "/stream/fisheye_left")  stype = 7;
-    else if (path == "/stream/fisheye_right") stype = 8;
     else if (path == "/stream/depth")         stype = 9;
     else if (path == "/stream/infra2")        stype = 10;
 
@@ -674,8 +647,6 @@ void WebStreamer::client_handler(int client_fd, const std::string& path) {
             switch (stype) {
                 case 10: return has_infra2_frame_;
                 case 9: return has_depth_frame_;
-                case 8: return has_fisheye_right_frame_;
-                case 7: return has_fisheye_left_frame_;
                 case 6: return has_dark_frame_;
                 case 5: return has_d435_frame_;
                 case 4: return has_telem_frame_;
@@ -693,8 +664,6 @@ void WebStreamer::client_handler(int client_fd, const std::string& path) {
         switch (stype) {
             case 10: last_seq = infra2_frame_seq_; break;
             case 9: last_seq = depth_frame_seq_;  break;
-            case 8: last_seq = fisheye_right_frame_seq_; break;
-            case 7: last_seq = fisheye_left_frame_seq_;  break;
             case 6: last_seq = dark_frame_seq_;  break;
             case 5: last_seq = d435_frame_seq_;  break;
             case 4: last_seq = telem_frame_seq_; break;
@@ -732,8 +701,6 @@ void WebStreamer::client_handler(int client_fd, const std::string& path) {
                 switch (stype) {
                     case 10: return infra2_frame_seq_ != last_seq;
                     case 9: return depth_frame_seq_  != last_seq;
-                    case 8: return fisheye_right_frame_seq_ != last_seq;
-                    case 7: return fisheye_left_frame_seq_  != last_seq;
                     case 6: return dark_frame_seq_  != last_seq;
                     case 5: return d435_frame_seq_  != last_seq;
                     case 4: return telem_frame_seq_ != last_seq;
@@ -749,8 +716,6 @@ void WebStreamer::client_handler(int client_fd, const std::string& path) {
             switch (stype) {
                 case 10: jpeg_copy = jpeg_infra2_buffer_; current_seq = infra2_frame_seq_; break;
                 case 9: jpeg_copy = jpeg_depth_buffer_; current_seq = depth_frame_seq_;  break;
-                case 8: jpeg_copy = jpeg_fisheye_right_buffer_; current_seq = fisheye_right_frame_seq_; break;
-                case 7: jpeg_copy = jpeg_fisheye_left_buffer_;  current_seq = fisheye_left_frame_seq_;  break;
                 case 6: jpeg_copy = jpeg_dark_buffer_;  current_seq = dark_frame_seq_;  break;
                 case 5: jpeg_copy = jpeg_d435_buffer_;  current_seq = d435_frame_seq_;  break;
                 case 4: jpeg_copy = jpeg_telem_buffer_; current_seq = telem_frame_seq_; break;

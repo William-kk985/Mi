@@ -54,15 +54,6 @@ RaceController::RaceController() : Node("race_controller") {
         [this](sensor_msgs::msg::Range::SharedPtr msg) { on_ultrasonic(msg); });
 #endif
 
-#ifdef ENABLE_WEB_STREAMING
-    // 鱼眼相机（仅 web 展示用，不做检测）
-    sub_fish_eye_left_ = create_subscription<sensor_msgs::msg::Image>(
-        TOPIC_FISH_EYE_LEFT, qos_be,
-        [this](sensor_msgs::msg::Image::SharedPtr msg) { on_fish_eye_left(msg); });
-    sub_fish_eye_right_ = create_subscription<sensor_msgs::msg::Image>(
-        TOPIC_FISH_EYE_RIGHT, qos_be,
-        [this](sensor_msgs::msg::Image::SharedPtr msg) { on_fish_eye_right(msg); });
-#endif
 
 #ifdef REAL_DOG
     // BMS 电池监控（bms_status → protocol::msg::BmsStatus，暂时用 Float32MultiArray 占位）
@@ -607,46 +598,6 @@ void RaceController::on_ultrasonic(sensor_msgs::msg::Range::SharedPtr msg) {
     sensor_.ultrasonic_range = msg->range;
 }
 #endif
-
-// ── 左鱼眼相机回调（灰度，仅 web 展示） ──
-void RaceController::on_fish_eye_left(sensor_msgs::msg::Image::SharedPtr msg) {
-    (void)msg;
-#ifdef ENABLE_WEB_STREAMING
-    try {
-        cv::Mat frame;
-        if (msg->encoding == sensor_msgs::image_encodings::MONO8) {
-            auto cv_img = cv_bridge::toCvShare(msg, "mono8");
-            cv::cvtColor(cv_img->image, frame, cv::COLOR_GRAY2BGR);
-        } else {
-            auto cv_img = cv_bridge::toCvShare(msg, "bgr8");
-            frame = cv_img->image;
-        }
-        web_streamer_.push_fisheye_left_frame(frame);
-    } catch (const cv_bridge::Exception& e) {
-        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "[FishEyeL] cv_bridge error: %s", e.what());
-    }
-#endif
-}
-
-// ── 右鱼眼相机回调（灰度，仅 web 展示） ──
-void RaceController::on_fish_eye_right(sensor_msgs::msg::Image::SharedPtr msg) {
-    (void)msg;
-#ifdef ENABLE_WEB_STREAMING
-    try {
-        cv::Mat frame;
-        if (msg->encoding == sensor_msgs::image_encodings::MONO8) {
-            auto cv_img = cv_bridge::toCvShare(msg, "mono8");
-            cv::cvtColor(cv_img->image, frame, cv::COLOR_GRAY2BGR);
-        } else {
-            auto cv_img = cv_bridge::toCvShare(msg, "bgr8");
-            frame = cv_img->image;
-        }
-        web_streamer_.push_fisheye_right_frame(frame);
-    } catch (const cv_bridge::Exception& e) {
-        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "[FishEyeR] cv_bridge error: %s", e.what());
-    }
-#endif
-}
 
 void RaceController::on_sim_state(const lcm::ReceiveBuffer*, const std::string&,
                                   const simulator_lcmt* msg) {

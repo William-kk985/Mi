@@ -61,12 +61,6 @@ public:
     /// 推送 D430i 右目红外帧（mono8→灰度，线程安全）→ /stream/infra2
     void push_infra2_frame(const cv::Mat& frame);
 
-    /// 推送左鱼眼相机帧（灰度，线程安全）
-    void push_fisheye_left_frame(const cv::Mat& frame);
-
-    /// 推送右鱼眼相机帧（灰度，线程安全）
-    void push_fisheye_right_frame(const cv::Mat& frame);
-
     /// 推送 D430i 深度图帧（伪彩色映射后，线程安全）
     void push_depth_frame(const cv::Mat& frame);
 
@@ -118,8 +112,6 @@ private:
     std::vector<uint8_t>     jpeg_d435_buffer_;   // 5: d435 infra1
     std::vector<uint8_t>     jpeg_infra2_buffer_; // 10: infra2 右目红外
     std::vector<uint8_t>     jpeg_dark_buffer_;   // 6: dark
-    std::vector<uint8_t>     jpeg_fisheye_left_buffer_;  // 7: fisheye_left
-    std::vector<uint8_t>     jpeg_fisheye_right_buffer_; // 8: fisheye_right
     std::vector<uint8_t>     jpeg_depth_buffer_;         // 9: depth colormap
     uint64_t                 frame_seq_{0};
     uint64_t                 debug_frame_seq_{0};
@@ -129,8 +121,6 @@ private:
     uint64_t                 d435_frame_seq_{0};
     uint64_t                 infra2_frame_seq_{0};
     uint64_t                 dark_frame_seq_{0};
-    uint64_t                 fisheye_left_frame_seq_{0};
-    uint64_t                 fisheye_right_frame_seq_{0};
     uint64_t                 depth_frame_seq_{0};
     bool                     has_frame_{false};
     bool                     has_debug_frame_{false};
@@ -140,8 +130,6 @@ private:
     bool                     has_d435_frame_{false};
     bool                     has_infra2_frame_{false};
     bool                     has_dark_frame_{false};
-    bool                     has_fisheye_left_frame_{false};
-    bool                     has_fisheye_right_frame_{false};
     bool                     has_depth_frame_{false};
 
     // ── 相机设置 ──

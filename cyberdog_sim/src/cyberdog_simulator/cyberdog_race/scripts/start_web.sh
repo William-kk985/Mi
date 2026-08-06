@@ -13,11 +13,29 @@ echo "============================================"
 echo " CyberDog Web 推流"
 echo "============================================"
 
-# ★ 防双开保护：先清理旧进程，避免 8080 被占导致新进程 Web 起不来（2026-08-06）
+# ★ 防双开保护：彻底清理旧进程 + 等待/强制释放 8080（2026-08-07 完善）
 #   'race_controlle[r]' 用括号技巧防止误杀本脚本自身
 #   ⚠ 必须 || true：无旧进程时 pkill 返回 1，set -e 会误杀整个脚本（2026-08-07 修复）
 pkill -f 'race_controlle[r]' 2>/dev/null || true
-sleep 1
+
+# 等待旧进程退出、8080 释放（最多 6 秒）。前次进程被杀/僵死时可能没立即释放端口
+echo "  等待 8080 释放..."
+for _ in $(seq 1 12); do
+    ss -tln 2>/dev/null | grep -q ':8080 ' || break
+    sleep 0.5
+done
+
+# 若 8080 仍被占用 → 强杀占用它的进程（pkill 可能因进程名/状态匹配不到）
+if ss -tln 2>/dev/null | grep -q ':8080 '; then
+    echo "  ⚠ 8080 仍被占用，强制释放..."
+    fuser -k 8080/tcp 2>/dev/null || true
+    sleep 1
+fi
+if ss -tln 2>/dev/null | grep -q ':8080 '; then
+    echo "  ❌ 8080 无法释放，请手动检查: ss -tlnp | grep 8080"
+    exit 1
+fi
+echo "  ✅ 8080 已空闲"
 
 source "$ROS_ENV" 2>/dev/null || { echo "❌ 加载 $ROS_ENV 失败"; exit 1; }
 # 必须直接 source（不要加管道，否则子 shell 环境变量传不回来）

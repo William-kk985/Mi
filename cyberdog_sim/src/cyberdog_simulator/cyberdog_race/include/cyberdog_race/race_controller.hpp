@@ -61,8 +61,6 @@ private:
     void on_tof_rear(protocol::msg::RearTofPayload::SharedPtr msg);
     void on_ultrasonic(sensor_msgs::msg::Range::SharedPtr msg);
 #endif
-    void on_fish_eye_left(sensor_msgs::msg::Image::SharedPtr msg);
-    void on_fish_eye_right(sensor_msgs::msg::Image::SharedPtr msg);
     // TODO: void on_touch(protocol::msg::TouchStatus::SharedPtr msg); // 需bridges包
     void on_bms(std_msgs::msg::Float32MultiArray::SharedPtr msg);
     void on_sim_state(const lcm::ReceiveBuffer*, const std::string&,
@@ -115,8 +113,6 @@ private:
     rclcpp::Subscription<protocol::msg::RearTofPayload>::SharedPtr sub_rear_tof_;
     rclcpp::Subscription<sensor_msgs::msg::Range>::SharedPtr      sub_ultrasonic_;
 #endif
-    rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr     sub_fish_eye_left_;
-    rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr     sub_fish_eye_right_;
     // rclcpp::Subscription<protocol::msg::TouchStatus>::SharedPtr sub_touch_; // TODO: 需bridges包
     rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr sub_bms_;
     // rclcpp::Subscription<protocol::msg::HeadTofPayload>::SharedPtr sub_head_tof_;  // TODO: 需bridges包
