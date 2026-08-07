@@ -1,5 +1,6 @@
 #!/bin/bash
-# start_pitch_test.sh — 低头/抬头测试（需在 debug_config.hpp 定义 TEST_BEHAVIOR=7）
+# start_march_test.sh — 原地踏步测试（需在 debug_config.hpp 定义 TEST_BEHAVIOR=11）
+# 流程: 站起 → WALK_USERTROT(303) vel=0 原地踏步5秒 → 停止
 set -e
 source /etc/mi/ros2_env.conf 2>/dev/null
 source /SDCARD/race_ws/install/setup.bash 2>/dev/null
@@ -20,6 +21,6 @@ if ss -tln 2>/dev/null | grep -q ':8080 '; then
     sleep 1
 fi
 
-echo "🐕 俯仰角测试：低头15°→回正→抬头15°"
-echo "⚠ 请确认 debug_config.hpp 已定义: DEBUG_TEST_BEHAVIOR + TEST_BEHAVIOR=7"
+echo "🐕 原地踏步测试：站起 → 踏步5秒 → 停止"
+echo "⚠ 请确认 debug_config.hpp 已定义: DEBUG_TEST_BEHAVIOR + TEST_BEHAVIOR=11"
 exec /SDCARD/race_ws/install/lib/cyberdog_race/race_controller --ros-args -r __ns:=${NS}

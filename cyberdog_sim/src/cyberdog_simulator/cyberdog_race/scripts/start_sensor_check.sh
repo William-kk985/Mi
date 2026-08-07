@@ -19,10 +19,14 @@ echo "============================================"
 source "$ROS_ENV" 2>/dev/null
 source "$WS_SETUP" 2>/dev/null
 
+# 防双开（清理残留进程）
+pkill -f 'race_controlle[r]' 2>/dev/null || true
+sleep 1
+
 # ── 1. RGB ──
 echo "📷 1/8 RGB 相机..."
-ros2 service call ${NS}/camera_service protocol/srv/CameraService \
-    "{command: 9, args: \"\", width: 640, height: 480, fps: 30}" > /dev/null 2>&1
+timeout 5 ros2 service call ${NS}/camera_service protocol/srv/CameraService \
+    "{command: 9, args: \"\", width: 640, height: 480, fps: 30}" > /dev/null 2>&1 || true
 sleep 1
 PUB=$(ros2 topic info ${NS}/image 2>/dev/null | grep "Publisher count" | awk '{print $3}')
 [ "$PUB" != "0" ] && green "   ✅ RGB (Pub=$PUB)" || red "   ❌ RGB"

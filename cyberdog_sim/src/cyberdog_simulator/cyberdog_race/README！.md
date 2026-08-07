@@ -58,6 +58,7 @@ cyberdog_race/
 │   ├── start_rgb_test.sh                 # RGB imshow 预览 (TEST_BEHAVIOR=10)
 │   ├── start_sensor_check.sh             # 逐传感器检查 (TEST_BEHAVIOR=9)
 │   ├── start_pitch_test.sh               # 俯仰测试 (TEST_BEHAVIOR=7, 走新接口)
+│   ├── start_march_test.sh               # 原地踏步测试 (TEST_BEHAVIOR=11, servo 303 vel=0)
 │   ├── pitch_test_servo.py               # ★ 真机低头独立验证脚本（CyberDog2 官方接口）
 │   └── record_dataset.py                 # 数据集录制（PNG/MP4 → dataset/）
 │
