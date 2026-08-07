@@ -188,8 +188,11 @@ void turn_angle_test(MotionCtrl& motion, SensorData& sensor) {
         rclcpp::sleep_for(std::chrono::milliseconds(20));
     }
     motion.stop();
-    fprintf(stderr, "\033[1;32m[Turn] 实际转 %.1f°\033[0m\n",
-            (sensor.abs_yaw - start_yaw) * 180.0f / M_PI);
+    // ⚠ 跨 ±180° 时相减会错（如 129.8°→219.8° 显示 -140.2°，相减=-272），需环绕归一化
+    float d = (sensor.abs_yaw - start_yaw) * 180.0f / M_PI;
+    while (d > 180.0f)  d -= 360.0f;
+    while (d < -180.0f) d += 360.0f;
+    fprintf(stderr, "\033[1;32m[Turn] 实际转 %.1f°\033[0m\n", d);
 }
 
 // ── 绝对转向：转到地图坐标系固定角度（SLAM 原点, abs_yaw 闭环） ──
