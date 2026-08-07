@@ -253,34 +253,29 @@ void forward_test(MotionCtrl& motion, SensorData& sensor) {
             traveled, TARGET_DIST);
 }
 
-// ── 步高切换测试（真机 303 接口） ──
+// ── 步高切换测试（真机 303 接口，原地踏步不占空间） ──
 // 背景：set_step_height 走旧 LCM robot_control_cmd(7671)，真机不吃 → 步高不变。
 // 真机步高正确接口 = motion_servo_cmd.step_height 字段（官方 303 preset 同款）。
-// 本测试走路时切换步高 0.05→0.25→0.15，肉眼观察抬腿高低变化。
+// 用 303 原地踏步(vel=0)切换步高 0.05→0.25→0.15，肉眼观察抬腿高低。
 void step_height_walk_test(MotionCtrl& motion, SensorData& sensor) {
-    const float SPEED = 0.3f;   // 前进速度 0.3 m/s
+    (void)sensor;
     motion.stand();
     rclcpp::sleep_for(std::chrono::seconds(2));   // 等站稳
 
-    auto walk = [&](const char* tag, float step_h) {
-        float sx = sensor.odom_x, sy = sensor.odom_y;
-        fprintf(stderr, "\033[1;36m[StepH] %s 步高=%.2f 走1.5s\033[0m\n", tag, step_h);
+    auto march = [&](const char* tag, float step_h) {
+        fprintf(stderr, "\033[1;36m[StepH] %s 步高=%.2f 原地踏步1.5s\033[0m\n", tag, step_h);
         for (int i = 0; i < 75; i++) {
-            motion.set_walk_velocity_step(SPEED, 0.0f, 0.0f, step_h);
-            if (i % 25 == 0)
-                fprintf(stderr, "    t=%.1fs odom=(%.2f,%.2f)\n", i * 0.02f, sensor.odom_x, sensor.odom_y);
+            motion.set_walk_velocity_step(0.0f, 0.0f, 0.0f, step_h);   // 原地踏步+自定义步高
             rclcpp::sleep_for(std::chrono::milliseconds(20));
         }
         motion.stop();
-        float d = std::sqrt((sensor.odom_x-sx)*(sensor.odom_x-sx) + (sensor.odom_y-sy)*(sensor.odom_y-sy));
-        fprintf(stderr, "\033[1;32m[StepH] %s 前进 %.3f m\033[0m\n", tag, d);
     };
 
-    walk("A)低抬腿", 0.05f);
+    march("A)低抬腿", 0.05f);
     rclcpp::sleep_for(std::chrono::seconds(1));
-    walk("B)高抬腿", 0.25f);
+    march("B)高抬腿", 0.25f);
     rclcpp::sleep_for(std::chrono::seconds(1));
-    walk("C)默认", 0.15f);
+    march("C)默认", 0.15f);
     fprintf(stderr, "\033[1;32m[StepH] 完成\033[0m\n");
 }
 

@@ -23,7 +23,7 @@ void forward_test(MotionCtrl& motion, SensorData& sensor);         // 12: 前进
 void jump30_test(MotionCtrl& motion, SensorData& sensor);          // 13: 前跳30cm(MotionResultCmd 133)
 void turn_angle_test(MotionCtrl& motion, SensorData& sensor);      // 14: 原地转90°(相对, IMU yaw闭环)
 void abs_turn_test(MotionCtrl& motion, SensorData& sensor);        // 15: 绝对转向(地图坐标系, abs_yaw闭环)
-void step_height_walk_test(MotionCtrl& motion, SensorData& sensor); // 16: 步高切换(303+step_height, 走路观察抬腿高低)
+void step_height_walk_test(MotionCtrl& motion, SensorData& sensor); // 16: 步高切换(303+step_height, 原地踏步观察抬腿高低)
 
 } // namespace behavior
 
