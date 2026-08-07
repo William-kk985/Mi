@@ -21,6 +21,7 @@ void run_test(MotionCtrl& motion, SensorData& sensor, int test_id) {
         case 9:  sensor_check_test(motion, sensor);break;
         case 10: rgb_view_test(motion, sensor);     break;
         case 11: march_in_place_test(motion, sensor); break;
+        case 12: forward_test(motion, sensor);        break;
         default:
             fprintf(stderr, "\033[1;31m[BehaviorTest] Unknown #%d\033[0m\n", test_id);
             break;
@@ -162,6 +163,29 @@ void march_in_place_test(MotionCtrl& motion, SensorData& sensor) {
     }
     motion.stop();
     fprintf(stderr, "\033[1;32m[March] 原地踏步完成\033[0m\n");
+}
+
+// ── 前进 N 米（odom 闭环：走满目标距离才停，比时间控制精确） ──
+void forward_test(MotionCtrl& motion, SensorData& sensor) {
+    const float TARGET_DIST = 1.0f;   // 前进 1 米
+    const float SPEED       = 0.3f;   // 速度 0.3 m/s
+    motion.stand();
+    rclcpp::sleep_for(std::chrono::seconds(1));
+
+    float sx = sensor.odom_x, sy = sensor.odom_y;
+    float traveled = 0.0f;
+    int timeout = 1000;   // 20s 超时保护（防 odom 失效死循环）
+    fprintf(stderr, "\033[1;35m[Fwd] 前进 %.1f m @ %.2f m/s (odom闭环)...\033[0m\n",
+            TARGET_DIST, SPEED);
+    while (traveled < TARGET_DIST && timeout-- > 0) {
+        motion.set_walk_velocity(SPEED, 0.0f, 0.0f);   // 前进
+        rclcpp::sleep_for(std::chrono::milliseconds(20)); // 50Hz
+        float dx = sensor.odom_x - sx, dy = sensor.odom_y - sy;
+        traveled = std::sqrt(dx*dx + dy*dy);
+    }
+    motion.stop();
+    fprintf(stderr, "\033[1;32m[Fwd] 实际前进 %.3f m (目标 %.1f)\033[0m\n",
+            traveled, TARGET_DIST);
 }
 
 // ── RGB 实时预览（DEBUG_VISION 弹窗，按 ESC 退出） ──
