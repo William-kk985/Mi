@@ -253,22 +253,33 @@ void forward_test(MotionCtrl& motion, SensorData& sensor) {
             traveled, TARGET_DIST);
 }
 
-// ── 步高切换测试（真机 303 接口，原地踏步不占空间） ──
-// 背景：set_step_height 走旧 LCM robot_control_cmd(7671)，真机不吃 → 步高不变。
-// 真机步高正确接口 = motion_servo_cmd.step_height 字段（官方 303 preset 同款）。
-// 用 303 原地踏步(vel=0)切换步高 0.05→0.25→0.15，肉眼观察抬腿高低。
+// ── 步高切换测试（真机 303 接口，原地踏步不占空间）+ TOF 量化验证 ──
+// 背景：set_step_height 走旧 LCM 真机不吃；真机步高 = motion_servo_cmd.step_height 官方字段
+//       （官方 303 preset 同款，非自研；之前 0.15 定稿已验证）。
+// 0.05/0.25 肉眼差别不大 → 用头/尾 TOF(向下8x8) 量化：抬腿越高越遮挡 TOF → tof_clearance 越小。
+// 每阶段打印 tof_clearance/body_height 并给 min/avg 汇总。
 void step_height_walk_test(MotionCtrl& motion, SensorData& sensor) {
-    (void)sensor;
     motion.stand();
     rclcpp::sleep_for(std::chrono::seconds(2));   // 等站稳
 
     auto march = [&](const char* tag, float step_h) {
-        fprintf(stderr, "\033[1;36m[StepH] %s 步高=%.2f 原地踏步1.5s\033[0m\n", tag, step_h);
+        float t_min = 99.0f, t_sum = 0.0f;
+        int n = 0;
+        fprintf(stderr, "\033[1;36m[StepH] %s 步高=%.2f 踏步1.5s\033[0m\n", tag, step_h);
         for (int i = 0; i < 75; i++) {
             motion.set_walk_velocity_step(0.0f, 0.0f, 0.0f, step_h);   // 原地踏步+自定义步高
+            if (i % 10 == 0) {
+                float t = sensor.tof_clearance;
+                if (t < t_min) t_min = t;
+                t_sum += t; n++;
+                fprintf(stderr, "    t=%.2fs tof=%.3f body_h=%.3f\n",
+                        i * 0.02f, t, sensor.body_height);
+            }
             rclcpp::sleep_for(std::chrono::milliseconds(20));
         }
         motion.stop();
+        fprintf(stderr, "\033[1;32m[StepH] %s 步高=%.2f: TOF min=%.3f avg=%.3f (n=%d)\033[0m\n",
+                tag, step_h, t_min, t_sum / n, n);
     };
 
     march("A)低抬腿", 0.05f);
