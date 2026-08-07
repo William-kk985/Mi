@@ -253,31 +253,84 @@ void forward_test(MotionCtrl& motion, SensorData& sensor) {
             traveled, TARGET_DIST);
 }
 
-// ── 带yaw偏转前进 0.3m（对齐虚拟第5赛段 MOVE 处理：前进同时纠偏保持目标yaw） ──
-// Stage5 MOVE_NORTH 模式：yaw_err = norm_yaw(目标yaw - 当前yaw)，clamp(0.8*err, ±0.4)，
-// 前进的同时持续纠偏保持朝向。这里用新接口 set_walk_velocity(303) + abs_yaw(地图绝对朝向) + odom 距离闭环。
+// ── 带yaw偏转前进 0.3m（对齐虚拟第5赛段 MOVE）+ 组合接口诊断 ──
+// 背景：11/12 只验证了 (x,0,0) 纯前进；14/15 只验证了 (0,0,±0.6) 纯原地转。
+//       ⚠ 组合 (x≠0, yaw≠0) 是第一次真机测：上机结果结束 yaw=104.6°(目标90°)，
+//       但没打起点 yaw，无法判断是"yaw命令完全没生效"还是"从90°漂过去纠不回来"。
+// 本次三阶段定位：
+//   A) 303 组合(前进+固定大yaw 0.5) → 真机到底支不支持边前进边转？
+//   B) 303 纯原地转(对照)          → yaw 通道本身是否正常？
+//   C) Stage5式闭环(前进0.3m同时P纠偏保持起点朝向, 带逐段日志) → 真实比赛处理
 void yaw_fwd_test(MotionCtrl& motion, SensorData& sensor) {
-    const float TARGET_YAW_DEG = 90.0f;   // 地图绝对目标朝向 90°（北）
-    const float TARGET_DIST    = 0.3f;    // 前进 0.3 米
-    const float SPEED          = 0.3f;    // 前进速度 0.3 m/s
-    const float YAW_K          = 0.8f;    // yaw 纠偏增益（同 Stage5）
-    const float YAW_MAX        = 0.4f;    // yaw 纠偏限幅（同 Stage5）
+    const float SPEED     = 0.3f;    // 前进速度 0.3 m/s
+    const float YAW_FIXED = 0.5f;    // 大 yaw：14/15 验证 0.6 能原地转，0.5 足够看出效果
+    const int   N         = 75;      // 1.5s @20ms
 
     motion.stand();
     rclcpp::sleep_for(std::chrono::seconds(2));   // 等站稳
+    fprintf(stderr, "\033[1;35m[YawFwd] 起点 abs_yaw=%.1f° odom=(%.2f,%.2f)\033[0m\n",
+            sensor.abs_yaw * 180.0f / M_PI, sensor.odom_x, sensor.odom_y);
 
-    float target = TARGET_YAW_DEG * M_PI / 180.0f;
+    auto delta_yaw = [](float a, float b) {   // 跨±180°环绕归一化的角度差
+        float d = (a - b) * 180.0f / M_PI;
+        while (d >  180.0f) d -= 360.0f;
+        while (d < -180.0f) d += 360.0f;
+        return d;
+    };
+
+    // ── A) 303 组合：前进 0.3 m/s + 固定 yaw 0.5 rad/s ──
+    float y0 = sensor.abs_yaw;
     float sx = sensor.odom_x, sy = sensor.odom_y;
+    fprintf(stderr, "\033[1;36m[YawFwd] A) set_walk_velocity(%.1f,0,%.2f) 1.5s — 组合是否生效?\033[0m\n",
+            SPEED, YAW_FIXED);
+    for (int i = 0; i < N; i++) {
+        motion.set_walk_velocity(SPEED, 0.0f, YAW_FIXED);
+        if (i % 25 == 0)
+            fprintf(stderr, "    t=%.1fs abs_yaw=%.1f°\n", i * 0.02f, sensor.abs_yaw * 180.0f / M_PI);
+        rclcpp::sleep_for(std::chrono::milliseconds(20));
+    }
+    motion.stop();
+    {
+        float dy = delta_yaw(sensor.abs_yaw, y0);
+        float dist = std::sqrt((sensor.odom_x-sx)*(sensor.odom_x-sx) + (sensor.odom_y-sy)*(sensor.odom_y-sy));
+        fprintf(stderr, "\033[1;32m[YawFwd] A) 前进 %.3f m, Δyaw=%.1f° → %s\033[0m\n", dist, dy,
+                std::fabs(dy) > 20.0f ? "组合OK(边前进边转)" : "组合未生效!");
+    }
+
+    // ── B) 对照：纯原地转 (0,0,0.5) 1.5s ──
+    y0 = sensor.abs_yaw;
+    fprintf(stderr, "\033[1;36m[YawFwd] B) set_walk_velocity(0,0,%.2f) 1.5s — yaw通道对照\033[0m\n", YAW_FIXED);
+    for (int i = 0; i < N; i++) {
+        motion.set_walk_velocity(0.0f, 0.0f, YAW_FIXED);
+        if (i % 25 == 0)
+            fprintf(stderr, "    t=%.1fs abs_yaw=%.1f°\n", i * 0.02f, sensor.abs_yaw * 180.0f / M_PI);
+        rclcpp::sleep_for(std::chrono::milliseconds(20));
+    }
+    motion.stop();
+    {
+        float dy = delta_yaw(sensor.abs_yaw, y0);
+        fprintf(stderr, "\033[1;32m[YawFwd] B) Δyaw=%.1f° → %s\033[0m\n", dy,
+                std::fabs(dy) > 20.0f ? "yaw通道正常" : "yaw通道异常!");
+    }
+
+    // ── C) Stage5式闭环：前进 0.3m，同时 P 纠偏保持起点朝向（更贴近 Stage5 MOVE 的"保持朝向"） ──
+    float target = sensor.abs_yaw;   // 保持当前朝向，不依赖狗摆放方位
+    sx = sensor.odom_x; sy = sensor.odom_y;
     float traveled = 0.0f;
     int timeout = 1000;   // 20s 超时保护
-    fprintf(stderr, "\033[1;35m[YawFwd] 保持 yaw=%.0f° 前进 %.1f m (类似Stage5 MOVE, 前进同时纠偏)...\033[0m\n",
-            TARGET_YAW_DEG, TARGET_DIST);
-    while (traveled < TARGET_DIST && timeout-- > 0) {
+    int loop = 0;
+    fprintf(stderr, "\033[1;36m[YawFwd] C) Stage5式: 保持 yaw=%.1f° 前进 0.3m (P纠偏 k=1.2 max=0.6)\033[0m\n",
+            target * 180.0f / M_PI);
+    while (traveled < 0.3f && timeout-- > 0) {
         float yaw_err = target - sensor.abs_yaw;
         while (yaw_err >  M_PI) yaw_err -= 2.0f * M_PI;
         while (yaw_err < -M_PI) yaw_err += 2.0f * M_PI;
-        float yaw_cmd = std::max(-YAW_MAX, std::min(YAW_MAX, YAW_K * yaw_err));
-        motion.set_walk_velocity(SPEED, 0.0f, yaw_cmd);   // 前进同时纠偏（Stage5 同款）
+        float yaw_cmd = std::max(-0.6f, std::min(0.6f, 1.2f * yaw_err));
+        motion.set_walk_velocity(SPEED, 0.0f, yaw_cmd);   // 前进同时纠偏
+        if (loop++ % 25 == 0)
+            fprintf(stderr, "    t=%.1fs abs_yaw=%.1f° err=%.1f° cmd=%.2f\n",
+                    loop * 0.02f, sensor.abs_yaw * 180.0f / M_PI,
+                    yaw_err * 180.0f / M_PI, yaw_cmd);
         rclcpp::sleep_for(std::chrono::milliseconds(20)); // 50Hz
         float dx = sensor.odom_x - sx, dy = sensor.odom_y - sy;
         traveled = std::sqrt(dx*dx + dy*dy);
@@ -286,8 +339,8 @@ void yaw_fwd_test(MotionCtrl& motion, SensorData& sensor) {
     float err = target - sensor.abs_yaw;
     while (err >  M_PI) err -= 2.0f * M_PI;
     while (err < -M_PI) err += 2.0f * M_PI;
-    fprintf(stderr, "\033[1;32m[YawFwd] 实际前进 %.3f m | 结束 yaw=%.1f° (目标 %.0f°, 误差 %.1f°)\033[0m\n",
-            traveled, sensor.abs_yaw * 180.0f / M_PI, TARGET_YAW_DEG, err * 180.0f / M_PI);
+    fprintf(stderr, "\033[1;32m[YawFwd] C) 前进 %.3f m | 结束 yaw=%.1f° (目标 %.1f°, 误差 %.1f°)\033[0m\n",
+            traveled, sensor.abs_yaw * 180.0f / M_PI, target * 180.0f / M_PI, err * 180.0f / M_PI);
 }
 
 // ── RGB 实时预览（DEBUG_VISION 弹窗，按 ESC 退出） ──
