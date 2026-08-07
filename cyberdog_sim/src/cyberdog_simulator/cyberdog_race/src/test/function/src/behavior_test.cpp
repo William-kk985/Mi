@@ -167,7 +167,7 @@ void march_in_place_test(MotionCtrl& motion, SensorData& sensor) {
 
 // ── 前进 N 米（odom 闭环：走满目标距离才停，比时间控制精确） ──
 void forward_test(MotionCtrl& motion, SensorData& sensor) {
-    const float TARGET_DIST = 1.0f;   // 前进 1 米
+    const float TARGET_DIST = 0.5f;   // 前进 0.5 米
     const float SPEED       = 0.3f;   // 速度 0.3 m/s
     motion.stand();
     rclcpp::sleep_for(std::chrono::seconds(1));
