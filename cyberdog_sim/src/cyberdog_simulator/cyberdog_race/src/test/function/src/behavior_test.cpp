@@ -23,6 +23,8 @@ void run_test(MotionCtrl& motion, SensorData& sensor, int test_id) {
         case 11: march_in_place_test(motion, sensor); break;
         case 12: forward_test(motion, sensor);        break;
         case 13: jump30_test(motion, sensor);          break;
+        case 14: turn_angle_test(motion, sensor);      break;
+        case 15: abs_turn_test(motion, sensor);        break;
         default:
             fprintf(stderr, "\033[1;31m[BehaviorTest] Unknown #%d\033[0m\n", test_id);
             break;
@@ -164,6 +166,52 @@ void march_in_place_test(MotionCtrl& motion, SensorData& sensor) {
     }
     motion.stop();
     fprintf(stderr, "\033[1;32m[March] 原地踏步完成\033[0m\n");
+}
+
+// ── 相对转向：从当前 IMU yaw 转 90°（先假设 +0.6=左转，方向不对就翻转符号） ──
+void turn_angle_test(MotionCtrl& motion, SensorData& sensor) {
+    const float TARGET_DEG = 90.0f;
+    const float TURN_SPEED = 0.6f;   // rad/s，先假设 + = 左转（D430i 方向待验证）
+    motion.stand();
+    rclcpp::sleep_for(std::chrono::seconds(3));
+    float start_yaw = sensor.yaw;
+    float target    = start_yaw + TARGET_DEG * M_PI / 180.0f;
+    int timeout = 1000;
+    fprintf(stderr, "\033[1;35m[Turn] 左转 %.0f° (起始 %.1f°)...\033[0m\n",
+            TARGET_DEG, start_yaw * 180.0f / M_PI);
+    while (timeout-- > 0) {
+        float err = target - sensor.yaw;
+        while (err >  M_PI) err -= 2 * M_PI;
+        while (err < -M_PI) err += 2 * M_PI;
+        if (std::fabs(err) < 0.05f) break;
+        motion.set_walk_velocity(0.0f, 0.0f, TURN_SPEED);
+        rclcpp::sleep_for(std::chrono::milliseconds(20));
+    }
+    motion.stop();
+    fprintf(stderr, "\033[1;32m[Turn] 实际转 %.1f°\033[0m\n",
+            (sensor.yaw - start_yaw) * 180.0f / M_PI);
+}
+
+// ── 绝对转向：转到地图坐标系固定角度（SLAM 原点, abs_yaw 闭环） ──
+void abs_turn_test(MotionCtrl& motion, SensorData& sensor) {
+    const float TARGET_DEG = 90.0f;   // 地图绝对朝向 90°
+    motion.stand();
+    rclcpp::sleep_for(std::chrono::seconds(3));
+    float target = TARGET_DEG * M_PI / 180.0f;
+    int timeout = 1000;
+    fprintf(stderr, "\033[1;35m[AbsTurn] 转到地图绝对 %.0f° (当前 abs_yaw=%.1f°)...\033[0m\n",
+            TARGET_DEG, sensor.abs_yaw * 180.0f / M_PI);
+    while (timeout-- > 0) {
+        float err = target - sensor.abs_yaw;
+        while (err >  M_PI) err -= 2 * M_PI;
+        while (err < -M_PI) err += 2 * M_PI;
+        if (std::fabs(err) < 0.05f) break;
+        motion.set_walk_velocity(0.0f, 0.0f, err > 0 ? 0.6f : -0.6f);
+        rclcpp::sleep_for(std::chrono::milliseconds(20));
+    }
+    motion.stop();
+    fprintf(stderr, "\033[1;32m[AbsTurn] 结束 abs_yaw=%.1f° (目标 %.0f°)\033[0m\n",
+            sensor.abs_yaw * 180.0f / M_PI, TARGET_DEG);
 }
 
 // ── 前跳 30cm（真机: MotionResultCmd 133；仿真: 旧 LCM JUMP_3D） ──

@@ -31,6 +31,7 @@ struct SensorData {
     float odom_x{0.0f};
     float odom_y{0.0f};
     float body_height{0.25f};  // 身体离地高度（m）
+    float abs_yaw{0.0f};       // 地图坐标系绝对朝向（global_to_robot.rpy[2], SLAM固定坐标系）
 
     // Lidar：前方最近障碍距离
     float lidar_front{10.0f};
