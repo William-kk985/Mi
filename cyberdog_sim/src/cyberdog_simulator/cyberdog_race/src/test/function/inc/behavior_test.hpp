@@ -23,6 +23,7 @@ void forward_test(MotionCtrl& motion, SensorData& sensor);         // 12: 前进
 void jump30_test(MotionCtrl& motion, SensorData& sensor);          // 13: 前跳30cm(MotionResultCmd 133)
 void turn_angle_test(MotionCtrl& motion, SensorData& sensor);      // 14: 原地转90°(相对, IMU yaw闭环)
 void abs_turn_test(MotionCtrl& motion, SensorData& sensor);        // 15: 绝对转向(地图坐标系, abs_yaw闭环)
+void yaw_fwd_test(MotionCtrl& motion, SensorData& sensor);         // 16: 带yaw偏转前进0.3m(类似Stage5 MOVE, 前进同时纠偏)
 
 } // namespace behavior
 
