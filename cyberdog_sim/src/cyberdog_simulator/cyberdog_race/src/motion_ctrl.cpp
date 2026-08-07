@@ -156,6 +156,54 @@ void MotionCtrl::set_walk_velocity(float x, float y, float yaw) {
 #endif
 }
 
+// ── 真机带俯仰姿态行走（303 + rpy_des[1]=pitch） ──
+// ⚠ 官方 motion_teleop 只设 vel_des；此处尝试行走时同时保持机身俯仰（抬头/低头）
+//   需 ~20Hz 持续发布。能否生效上机验证（2026-08-08）
+void MotionCtrl::set_walk_velocity_pitch(float x, float y, float yaw, float pitch) {
+#ifdef REAL_DOG
+    if (!motion_servo_pub_) {
+        fprintf(stderr, "[MotionCtrl] set_walk_velocity_pitch: 发布器未挂载(attach_motion_servo_pub)\n");
+        return;
+    }
+    protocol::msg::MotionServoCmd cmd;
+    cmd.motion_id   = 303;   // MotionID::WALK_USERTROT
+    cmd.cmd_type    = 1;     // SERVO_DATA
+    cmd.cmd_source  = -1;    // DEBUG 最高优先级
+    cmd.value       = 0;
+    cmd.vel_des     = {x, y, yaw};
+    cmd.rpy_des     = {0.0f, pitch, 0.0f};   // 带俯仰
+    cmd.pos_des     = {0.0f, 0.0f, 0.235f};
+    cmd.step_height = {0.15f, 0.15f};
+    motion_servo_pub_->publish(cmd);
+#else
+    set_velocity(x, y, yaw);
+#endif
+}
+
+// ── 真机姿态控制同时带速度（201 + vel_des） ──
+// ⚠ 官方 pose_teleop 只设 rpy_des(vel_des=0)；此处尝试姿态模式直接带速度行走
+//   需 ~20Hz 持续发布。能否生效上机验证（2026-08-08）
+void MotionCtrl::set_body_pitch_velocity(float pitch, float x, float y, float yaw) {
+#ifdef REAL_DOG
+    if (!motion_servo_pub_) {
+        fprintf(stderr, "[MotionCtrl] set_body_pitch_velocity: 发布器未挂载(attach_motion_servo_pub)\n");
+        return;
+    }
+    protocol::msg::MotionServoCmd cmd;
+    cmd.motion_id   = 201;   // MotionID::FORCECONTROL_DEFINITIVELY
+    cmd.cmd_type    = 1;     // SERVO_DATA
+    cmd.cmd_source  = -1;    // DEBUG 最高优先级
+    cmd.value       = 0;
+    cmd.vel_des     = {x, y, yaw};          // 带速度
+    cmd.rpy_des     = {0.0f, pitch, 0.0f};
+    cmd.pos_des     = {0.0f, 0.0f, 0.235f};
+    cmd.step_height = {0.15f, 0.15f};
+    motion_servo_pub_->publish(cmd);
+#else
+    set_velocity(x, y, yaw);
+#endif
+}
+
 // ⚠ 真机站/趴必须走 MotionResultCmd 服务（gamepad 是铁蛋一代接口，真机无效——2026-08-07 踩坑）
 void MotionCtrl::stand() {
 #ifdef REAL_DOG
