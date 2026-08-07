@@ -55,11 +55,11 @@
 // ── 真狗命名空间 ──
 #define ROBOT_NS "/mi_desktop_48_b0_2d_7b_02_c7"
 
-// ── 测试模式：7=俯仰角（低头/抬头） ──
-// ⚠ 已注释：开着会让 control_loop 跑一次就 timer->cancel()，遥测冻结在启动快照
+// ── 测试模式：11=原地踏步（WALK_USERTROT vel=0） ──
+// ⚠ 测试完必须注释回：开着会让 control_loop 跑一次就 timer->cancel()，遥测冻结在启动快照
 //   2026-08-07 真机验证 Web 时发现（超声/TOF 卡初始值就是它导致）
-// #define DEBUG_TEST_BEHAVIOR
-// #define TEST_BEHAVIOR 7  // 7=俯仰角
+#define DEBUG_TEST_BEHAVIOR
+#define TEST_BEHAVIOR 11  // 11=原地踏步
 
 // ── 传感器 topic 名称（真机值经 2026-07-31 上机确认） ──
 // 相机全部已 lifecycle 激活。RGB 需额外通过 camera_service START_IMAGE_PUBLISH 启动推流

@@ -88,7 +88,7 @@ void MotionCtrl::set_walk_velocity(float x, float y, float yaw) {
     cmd.vel_des     = {x, y, yaw};
     cmd.rpy_des     = {0.0f, 0.0f, 0.0f};
     cmd.pos_des     = {0.0f, 0.0f, 0.235f};
-    cmd.step_height = {0.05f, 0.05f};
+    cmd.step_height = {0.15f, 0.15f};   // 步高(2026-08-07 调高测试: 0.05→0.10→0.15)
     motion_servo_pub_->publish(cmd);
 #else
     set_velocity(x, y, yaw);   // 仿真复用旧 gamepad 接口
