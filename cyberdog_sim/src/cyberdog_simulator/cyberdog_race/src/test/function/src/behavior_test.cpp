@@ -25,7 +25,7 @@ void run_test(MotionCtrl& motion, SensorData& sensor, int test_id) {
         case 13: jump30_test(motion, sensor);          break;
         case 14: turn_angle_test(motion, sensor);      break;
         case 15: abs_turn_test(motion, sensor);        break;
-        case 16: pitch_fwd_test(motion, sensor);       break;
+        case 16: body_yaw_test(motion, sensor);        break;
         default:
             fprintf(stderr, "\033[1;31m[BehaviorTest] Unknown #%d\033[0m\n", test_id);
             break;
@@ -253,76 +253,67 @@ void forward_test(MotionCtrl& motion, SensorData& sensor) {
             traveled, TARGET_DIST);
 }
 
-// ── 抬头(俯仰)+前进：身躯姿态变化后前进 ──
-// 用户澄清：不是 yaw 转向，是"抬头那样子身躯变一下然后前进"（对齐仿真 Stage3 init 里
-// set_pitch 后边走 的处理）。真机 201=姿态 / 303=行走 是分开的，官方 teleop 没有组合用法。
-// 本次双方案上机验证哪个能"边保持抬头边前进"：
-//   A) 303 行走 + rpy_des 俯仰（走路同时抬头）
-//   B) 201 姿态 + vel_des 速度（姿态模式直接走）
-// 用 pitch_map(global_to_robot.rpy[1]) 反馈验证抬头是否真的保持住。
-void pitch_fwd_test(MotionCtrl& motion, SensorData& sensor) {
-    const float PITCH = 0.20f;    // 抬头 +0.20 rad（官方限 +0.30）
-    const float SPEED = 0.3f;     // 前进速度 0.3 m/s
-    const int   N     = 75;       // 1.5s @20ms
+// ── 身体 yaw 右偏（不前进，看机身能否偏转朝向） ──
+// 背景：pitch+走 真机 303 不吃 rpy_des（走路时 pitch 复位，上机已确认）。
+// 改用 201 FORCECONTROL 直接控身体 yaw（rpy_des[2]，pose_teleop a/d 键同款）：
+//   正值=左偏(CCW)、负值=右偏(CW)，官方限 ±0.65 rad。用 abs_yaw 反馈看机身是否真的偏转。
+void body_yaw_test(MotionCtrl& motion, SensorData& sensor) {
+    const float YAW_R = -0.20f;   // 右偏（负值）
+    const float YAW_L = +0.20f;   // 左偏（正值）
 
     motion.stand();
     rclcpp::sleep_for(std::chrono::seconds(2));   // 等站稳
-    fprintf(stderr, "\033[1;35m[PitchFwd] 起点 odom=(%.2f,%.2f) pitch_map=%.2f°\033[0m\n",
-            sensor.odom_x, sensor.odom_y, sensor.pitch_map * 180.0f / M_PI);
+    fprintf(stderr, "\033[1;35m[BodyYaw] 起点 abs_yaw=%.1f°\033[0m\n",
+            sensor.abs_yaw * 180.0f / M_PI);
 
-    // ── 0) 先单独抬头 2s，确认 201 姿态本身正常 ──
-    fprintf(stderr, "\033[1;36m[PitchFwd] 0) set_body_pitch(+%.2f) 2s 单独抬头\033[0m\n", PITCH);
+    auto delta_yaw = [](float a, float b) {   // 跨±180°环绕归一化
+        float d = (a - b) * 180.0f / M_PI;
+        while (d >  180.0f) d -= 360.0f;
+        while (d < -180.0f) d += 360.0f;
+        return d;
+    };
+
+    // ── A) 右偏 2s：set_body_yaw(-0.20) ──
+    float y0 = sensor.abs_yaw;
+    fprintf(stderr, "\033[1;36m[BodyYaw] A) set_body_yaw(-0.20) 2s — 机身右偏?\033[0m\n");
     for (int i = 0; i < 100; i++) {
-        motion.set_body_pitch(PITCH);
+        motion.set_body_yaw(YAW_R);
         if (i % 25 == 0)
-            fprintf(stderr, "    t=%.1fs pitch_map=%.2f°\n", i * 0.02f, sensor.pitch_map * 180.0f / M_PI);
-        rclcpp::sleep_for(std::chrono::milliseconds(20));
-    }
-    motion.stop();
-
-    // ── A) 303 + rpy_des：边抬头边前进 ──
-    float sx = sensor.odom_x, sy = sensor.odom_y;
-    fprintf(stderr, "\033[1;36m[PitchFwd] A) 303+rpy: 抬头%.2f + 前进%.1f 1.5s\033[0m\n", PITCH, SPEED);
-    for (int i = 0; i < N; i++) {
-        motion.set_walk_velocity_pitch(SPEED, 0.0f, 0.0f, PITCH);
-        if (i % 25 == 0)
-            fprintf(stderr, "    t=%.1fs odom=(%.2f,%.2f) pitch_map=%.2f°\n",
-                    i * 0.02f, sensor.odom_x, sensor.odom_y, sensor.pitch_map * 180.0f / M_PI);
+            fprintf(stderr, "    t=%.1fs abs_yaw=%.1f°\n", i * 0.02f, sensor.abs_yaw * 180.0f / M_PI);
         rclcpp::sleep_for(std::chrono::milliseconds(20));
     }
     motion.stop();
     {
-        float d = std::sqrt((sensor.odom_x-sx)*(sensor.odom_x-sx) + (sensor.odom_y-sy)*(sensor.odom_y-sy));
-        fprintf(stderr, "\033[1;32m[PitchFwd] A) 前进 %.3f m → %s\033[0m\n", d,
-                d > 0.15f ? "303吃了rpy,边抬头边走" : "只走没抬头(303不吃rpy)");
+        float dy = delta_yaw(sensor.abs_yaw, y0);
+        fprintf(stderr, "\033[1;32m[BodyYaw] A) Δyaw=%.1f° → %s\033[0m\n", dy,
+                std::fabs(dy) > 5.0f ? "机身右偏生效" : "没反应");
     }
 
-    // ── B) 201 + vel_des：姿态模式带速度走 ──
-    sx = sensor.odom_x; sy = sensor.odom_y;
-    fprintf(stderr, "\033[1;36m[PitchFwd] B) 201+vel: 抬头%.2f + vel(%.1f) 1.5s\033[0m\n", PITCH, SPEED);
-    for (int i = 0; i < N; i++) {
-        motion.set_body_pitch_velocity(PITCH, SPEED, 0.0f, 0.0f);
+    // ── B) 左偏回中 2s：set_body_yaw(+0.20) ──
+    y0 = sensor.abs_yaw;
+    fprintf(stderr, "\033[1;36m[BodyYaw] B) set_body_yaw(+0.20) 2s — 左偏\033[0m\n");
+    for (int i = 0; i < 100; i++) {
+        motion.set_body_yaw(YAW_L);
         if (i % 25 == 0)
-            fprintf(stderr, "    t=%.1fs odom=(%.2f,%.2f) pitch_map=%.2f°\n",
-                    i * 0.02f, sensor.odom_x, sensor.odom_y, sensor.pitch_map * 180.0f / M_PI);
+            fprintf(stderr, "    t=%.1fs abs_yaw=%.1f°\n", i * 0.02f, sensor.abs_yaw * 180.0f / M_PI);
         rclcpp::sleep_for(std::chrono::milliseconds(20));
     }
     motion.stop();
     {
-        float d = std::sqrt((sensor.odom_x-sx)*(sensor.odom_x-sx) + (sensor.odom_y-sy)*(sensor.odom_y-sy));
-        fprintf(stderr, "\033[1;32m[PitchFwd] B) 前进 %.3f m → %s\033[0m\n", d,
-                d > 0.15f ? "201带速度走了" : "没动(201不吃vel)");
+        float dy = delta_yaw(sensor.abs_yaw, y0);
+        fprintf(stderr, "\033[1;32m[BodyYaw] B) Δyaw=%.1f° → %s\033[0m\n", dy,
+                std::fabs(dy) > 5.0f ? "机身左偏生效" : "没反应");
     }
 
     // ── C) 回正 + 停 ──
-    fprintf(stderr, "\033[1;36m[PitchFwd] C) 回正 pitch=0 1s\033[0m\n");
+    fprintf(stderr, "\033[1;36m[BodyYaw] C) 回正 yaw=0 1s\033[0m\n");
     for (int i = 0; i < 50; i++) {
-        motion.set_body_pitch(0.0f);
+        motion.set_body_yaw(0.0f);
         rclcpp::sleep_for(std::chrono::milliseconds(20));
     }
     motion.stop();
-    fprintf(stderr, "\033[1;32m[PitchFwd] 完成, pitch_map=%.2f°\033[0m\n",
-            sensor.pitch_map * 180.0f / M_PI);
+    fprintf(stderr, "\033[1;32m[BodyYaw] 完成, abs_yaw=%.1f°\033[0m\n",
+            sensor.abs_yaw * 180.0f / M_PI);
 }
 
 // ── RGB 实时预览（DEBUG_VISION 弹窗，按 ESC 退出） ──
