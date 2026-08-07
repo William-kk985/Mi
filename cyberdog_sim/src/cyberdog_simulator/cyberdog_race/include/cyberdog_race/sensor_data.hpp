@@ -40,7 +40,8 @@ struct SensorData {
 
     // TOF 四腿离地间隙（head/rear 回调写入, 2026-08-06 已接入 protocol 消息）
     // 四个TOF最低点 (m), 有效范围 0.15-0.66, 用于Stage5独木桥检测
-    float tof_clearance{0.66f};
+    float tof_clearance{0.66f};     // 头/尾TOF最低点(0.15~0.66m, 0.66=未更新)
+    bool  tof_available{false};      // TOF 是否有可用数据（诊断用, 2026-08-08）
 
     // 超声测距（ultrasonic_payload, 2026-08-06 接入）
     float ultrasonic_range{0.0f};  // 0 = 无效/未收到
