@@ -20,6 +20,7 @@ void sensor_check_test(MotionCtrl& motion, SensorData& sensor);   // 9: 传感�
 void rgb_view_test(MotionCtrl& motion, SensorData& sensor);       // 10: RGB实时预览(cv::imshow)
 void march_in_place_test(MotionCtrl& motion, SensorData& sensor); // 11: 原地踏步(servo 303 vel=0)
 void forward_test(MotionCtrl& motion, SensorData& sensor);         // 12: 前进N米(odom闭环)
+void jump30_test(MotionCtrl& motion, SensorData& sensor);          // 13: 前跳30cm(MotionResultCmd 133)
 
 } // namespace behavior
 

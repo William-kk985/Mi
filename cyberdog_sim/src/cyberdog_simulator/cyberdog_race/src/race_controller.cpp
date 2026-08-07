@@ -103,6 +103,8 @@ RaceController::RaceController() : Node("race_controller") {
 #ifdef REAL_DOG
     // 挂载 CyberDog2 官方姿态控制发布器（set_body_pitch 走 motion_servo_cmd）
     motion_.attach_motion_servo_pub(this);
+    // 挂载 MotionResultCmd 服务客户端（跳跃/站立/趴下官方动作）
+    motion_.attach_motion_result_client(this);
 #endif
 
 #if defined(DEBUG_TEST_BEHAVIOR) && (TEST_BEHAVIOR == 9 || TEST_BEHAVIOR == 10)

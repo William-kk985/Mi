@@ -70,6 +70,41 @@ void MotionCtrl::attach_motion_servo_pub(rclcpp::Node* node) {
                 ROBOT_NS "/motion_servo_cmd");
 }
 
+void MotionCtrl::attach_motion_result_client(rclcpp::Node* node) {
+    motion_result_client_ = node->create_client<protocol::srv::MotionResultCmd>(
+        ROBOT_NS "/motion_result_cmd");
+    RCLCPP_INFO(node->get_logger(), "[MotionCtrl] motion_result_cmd 客户端已挂载(%s)",
+                ROBOT_NS "/motion_result_cmd");
+}
+#endif
+
+// ── 真机官方跳跃（MotionResultCmd 服务，档位固定） ──
+//   motion_id: 133=前跳30cm, 132=前跳60cm（MotionID 预设轨迹，无法自定义距离）
+void MotionCtrl::jump_forward(float dist) {
+#ifdef REAL_DOG
+    if (!motion_result_client_) {
+        fprintf(stderr, "[MotionCtrl] jump_forward: 客户端未挂载(attach_motion_result_client)\n");
+        return;
+    }
+    if (!motion_result_client_->service_is_ready()) {
+        fprintf(stderr, "[MotionCtrl] jump_forward: motion_result_cmd 服务未就绪\n");
+        return;
+    }
+    auto req = std::make_shared<protocol::srv::MotionResultCmd::Request>();
+    req->motion_id = (dist <= 0.3f) ? 133 : 132;   // 前跳30cm / 60cm
+    req->duration  = 1500;                          // 跳跃执行时间(ms)
+    motion_result_client_->async_send_request(req);
+    fprintf(stderr, "[MotionCtrl] jump_forward: motion_id=%d (%.0fcm)\n",
+            req->motion_id, dist * 100);
+#else
+    // 仿真：旧 LCM JUMP_3D
+    memset(&lcm_cmd_, 0, sizeof(lcm_cmd_));
+    lcm_cmd_.mode       = static_cast<int8_t>(LocoMode::JUMP_3D);
+    lcm_cmd_.gait_id    = 1;
+    lcm_cmd_.vel_des[0] = 0.4f;
+    pub_lcm_cmd();
+#endif
+}
 // ── 真机行走/原地踏步 ──
 // ⚠️ 与 set_body_pitch 同理，走 ROS2 motion_servo_cmd 官方接口（旧 gamepad 是铁蛋一代）
 //    WALK_USERTROT(303) + vel_des=[x,y,yaw]；全 0 = 原地踏步
@@ -94,7 +129,6 @@ void MotionCtrl::set_walk_velocity(float x, float y, float yaw) {
     set_velocity(x, y, yaw);   // 仿真复用旧 gamepad 接口
 #endif
 }
-#endif
 
 void MotionCtrl::stand()      { gpad_.x = 1; pub_gamepad(); gpad_.x = 0; }
 void MotionCtrl::locomotion() { gpad_.y = 1; pub_gamepad(); gpad_.y = 0; }

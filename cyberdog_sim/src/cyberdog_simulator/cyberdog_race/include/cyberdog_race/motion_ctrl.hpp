@@ -6,6 +6,7 @@
 #ifdef REAL_DOG
 #include <rclcpp/rclcpp.hpp>
 #include <protocol/msg/motion_servo_cmd.hpp>
+#include <protocol/srv/motion_result_cmd.hpp>
 #endif
 
 // robot_control_cmd.mode 枚举（官方文档 cyberdog_loco_cn.md §2.1）
@@ -36,10 +37,14 @@ public:
     void set_walk_velocity(float x, float y, float yaw);
     // 分别设置左右侧步高（单位：m），step_height[0]=前/左侧，step_height[1]=后/右侧
     void set_step_height(float left, float right);
+    // 真机官方跳跃（MotionResultCmd 服务，档位固定）：dist<=0.3→30cm(133)，否则 60cm(132)
+    void jump_forward(float dist);
 
 #ifdef REAL_DOG
     // 挂载 CyberDog2 motion_servo_cmd 发布器（RaceController 构造中调用）
     void attach_motion_servo_pub(rclcpp::Node* node);
+    // 挂载 MotionResultCmd 服务客户端（跳跃/站立/趴下官方动作）
+    void attach_motion_result_client(rclcpp::Node* node);
 #endif
 
     // 模式切换
@@ -76,6 +81,8 @@ private:
 #ifdef REAL_DOG
     // CyberDog2 官方姿态控制发布器（motion_servo_cmd, motion_id=201）
     rclcpp::Publisher<protocol::msg::MotionServoCmd>::SharedPtr motion_servo_pub_;
+    // MotionResultCmd 服务客户端（跳跃/站立/趴下官方动作）
+    rclcpp::Client<protocol::srv::MotionResultCmd>::SharedPtr motion_result_client_;
 #endif
 
     // ═══ TODO: 电机温度监控（需 danger_states_lcmt.hpp，lcm-gen -x 生成） ═══

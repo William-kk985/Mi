@@ -22,6 +22,7 @@ void run_test(MotionCtrl& motion, SensorData& sensor, int test_id) {
         case 10: rgb_view_test(motion, sensor);     break;
         case 11: march_in_place_test(motion, sensor); break;
         case 12: forward_test(motion, sensor);        break;
+        case 13: jump30_test(motion, sensor);          break;
         default:
             fprintf(stderr, "\033[1;31m[BehaviorTest] Unknown #%d\033[0m\n", test_id);
             break;
@@ -163,6 +164,18 @@ void march_in_place_test(MotionCtrl& motion, SensorData& sensor) {
     }
     motion.stop();
     fprintf(stderr, "\033[1;32m[March] 原地踏步完成\033[0m\n");
+}
+
+// ── 前跳 30cm（真机: MotionResultCmd 133；仿真: 旧 LCM JUMP_3D） ──
+void jump30_test(MotionCtrl& motion, SensorData& sensor) {
+    (void)sensor;
+    fprintf(stderr, "\033[1;35m[Jump] 前跳 30cm...\033[0m\n");
+    motion.stand();
+    rclcpp::sleep_for(std::chrono::seconds(1));
+    motion.jump_forward(0.3f);
+    rclcpp::sleep_for(std::chrono::seconds(4));   // 等起跳+落地
+    motion.stand();
+    fprintf(stderr, "\033[1;32m[Jump] 完成\033[0m\n");
 }
 
 // ── 前进 N 米（odom 闭环：走满目标距离才停，比时间控制精确） ──

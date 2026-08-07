@@ -59,7 +59,7 @@
 // ⚠ 测试完必须注释回：开着会让 control_loop 跑一次就 timer->cancel()，遥测冻结在启动快照
 //   2026-08-07 真机验证 Web 时发现（超声/TOF 卡初始值就是它导致）
 #define DEBUG_TEST_BEHAVIOR
-#define TEST_BEHAVIOR 12  // 12=前进1米(odom闭环)
+#define TEST_BEHAVIOR 13  // 13=前跳30cm(MotionResultCmd 133)
 
 // ── 传感器 topic 名称（真机值经 2026-07-31 上机确认） ──
 // 相机全部已 lifecycle 激活。RGB 需额外通过 camera_service START_IMAGE_PUBLISH 启动推流
