@@ -16,7 +16,6 @@ race_controller (ROS2 Node, 100Hz timer)
   ├─ on_imu()     ─── sensor_.yaw/pitch/roll
   ├─ on_lidar()   ─── sensor_.lidar_front
   ├─ on_d435_*()  ─── WebStreamer push (只做展示，不做检测)
-  ├─ on_fish_*()  ─── WebStreamer push (只做展示，不做检测)
   │
   ├─ LCM回调 ───── on_sim_state / on_global_to_robot / on_state_estimator
   │
@@ -26,7 +25,7 @@ race_controller (ROS2 Node, 100Hz timer)
   │     ├─ 赛段切换逻辑
   │     └─ render_track_frame / render_telemetry_frame (Web)
   │
-  ├─ WebStreamer (独立线程, MJPEG HTTP, 9路流)
+  ├─ WebStreamer (独立线程, MJPEG HTTP, 8路流)
   └─ LLMHelper (PROXY/API 双模式)
 ```
 
@@ -55,7 +54,7 @@ cyberdog_race/
 ├── scripts/                              # 上机运行脚本（rsync 到 NX 后执行）
 │   ├── sync_to_nx.sh                     # ★ 安全同步 VM→NX（防覆盖/删除伙伴改动，见「构建与运行」）
 │   ├── sensor_probe.py                   # 传感器探测：逐个 topic 收帧验证（含 TOF/超声/右红外）
-│   ├── start_web.sh                      # Web 推流（9路 MJPEG + 环境修复 + 防双开）
+│   ├── start_web.sh                      # Web 推流（8路 MJPEG + 环境修复 + 防双开 + 8080自动释放）
 │   ├── start_rgb_test.sh                 # RGB imshow 预览 (TEST_BEHAVIOR=10)
 │   ├── start_sensor_check.sh             # 逐传感器检查 (TEST_BEHAVIOR=9)
 │   ├── start_pitch_test.sh               # 俯仰测试 (TEST_BEHAVIOR=7, 走新接口)
@@ -179,7 +178,7 @@ API 模式需要 `libcurl`，`CMakeLists.txt` 已做 `find_package(CURL QUIET)`�
 
 - 所有相机展示流定义在 `ENABLE_WEB_STREAMING` 块中
 - 新增流需要：`web_streamer.hpp` 加 push 方法 + 缓冲 → `web_streamer.cpp` 加路由 + stype + switch 分支
-- 鱼眼/深度/D430i 红外 **只做展示，不做检测**，不得在对应的 `on_*` 回调中加入赛段逻辑
+- 深度/D430i 红外 **只做展示，不做检测**，不得在对应的 `on_*` 回调中加入赛段逻辑
 
 **⚠ 稳定运行四大坑（2026-08-06 全部踩过并修复，改 Web 代码前必读）**：
 
@@ -275,7 +274,6 @@ colcon build --cmake-args -DUSE_TEST_ALL=ON
 | 传感器 | Topic (仿真) | Topic (真机, 前缀 `ROBOT_NS`) | 回调 | 数据写入 |
 |---|---|---|---|---|
 | RGB 相机 | `/RGB_camera/image_raw` | `/image`（camera_server 推流） | `on_rgb` | 视觉检测结果 |
-| 左/右鱼眼 | 复用 RGB | 复用 `/image`（真狗无独立鱼眼） | `on_fish_eye_*` | Web 展示 |
 | D430i 红外(左目) | `/D435/infra1/image_raw` | `/camera/infra1/image_rect_raw` | `on_d435_infra1` | Web 展示 |
 | D430i 红外(右目) | — | `/camera/infra2/image_rect_raw` | `on_d435_infra2` | Web 展示(/stream/infra2) |
 | D430i 深度 | `/D435/depth/image_raw` | `/camera/depth/image_rect_raw` | `on_d435_depth` | Web 伪彩色展示 |

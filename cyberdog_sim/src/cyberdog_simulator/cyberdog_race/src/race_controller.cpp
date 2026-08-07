@@ -115,7 +115,8 @@ RaceController::RaceController() : Node("race_controller") {
         rclcpp::sleep_for(std::chrono::seconds(2));
         motion_.locomotion();
         rclcpp::sleep_for(std::chrono::milliseconds(500));
-        motion_.set_pitch(-0.26f);
+        // ⚠ 启动保持水平，不低头（-0.26 是低头测试遗留，真机启动就低头会出事故）
+        motion_.set_pitch(0.0f);
         RCLCPP_INFO(get_logger(), "Motion init OK");
     } catch (const std::exception& e) {
         RCLCPP_ERROR(get_logger(), "Motion init FAILED: %s", e.what());
@@ -370,7 +371,7 @@ void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
         // NOTE: vision_result 由本回调线程写入，由 stage4::run()（timer线程）读取，
         // 无锁访问。Stage4Result 是多字段 struct，理论上存在数据竞争，但 run() 为低频
         // 检查（~5Hz），实际使用中先到先得即可，不影响控制决策正确性。
-        if (cur_stage_ == 3) {
+        if (cur_stage_ == 3 && stages_[3]) {
             auto s4 = static_cast<Stage4*>(stages_[3].get());
             s4->vision_result = s4_result;
         }
@@ -448,7 +449,7 @@ void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
     cv::putText(frame, cv::format("odom x=%.3f y=%.3f yaw=%.3f", dox, doy, dyaw),
             {10, 58}, cv::FONT_HERSHEY_SIMPLEX, 0.65, {0, 255, 255}, 2);
 
-    if (cur_stage_ == 3) {
+    if (cur_stage_ == 3 && stages_[3]) {
         auto s4 = static_cast<Stage4*>(stages_[3].get());
         auto& r = s4->vision_result;
         if (r.football_found) {
