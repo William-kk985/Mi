@@ -576,6 +576,7 @@ void RaceController::on_d435_infra2(sensor_msgs::msg::Image::SharedPtr msg) {
 void RaceController::on_tof_head(protocol::msg::HeadTofPayload::SharedPtr msg) {
     float min_h = 0.66f;
     bool  avail = false;
+    sensor_.tof_msg_received = true;   // 收到消息即记（无论data_available）
     for (const auto* tof : {&msg->left_head, &msg->right_head}) {
         if (!tof->data_available) continue;
         avail = true;
@@ -590,6 +591,7 @@ void RaceController::on_tof_head(protocol::msg::HeadTofPayload::SharedPtr msg) {
 void RaceController::on_tof_rear(protocol::msg::RearTofPayload::SharedPtr msg) {
     float min_h = 0.66f;
     bool  avail = false;
+    sensor_.tof_msg_received = true;   // 收到消息即记（无论data_available）
     for (const auto* tof : {&msg->left_rear, &msg->right_rear}) {
         if (!tof->data_available) continue;
         avail = true;
