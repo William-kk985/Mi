@@ -69,6 +69,31 @@ void MotionCtrl::attach_motion_servo_pub(rclcpp::Node* node) {
     RCLCPP_INFO(node->get_logger(), "[MotionCtrl] motion_servo_cmd 发布器已挂载(%s)",
                 ROBOT_NS "/motion_servo_cmd");
 }
+
+// ── 真机行走/原地踏步 ──
+// ⚠️ 与 set_body_pitch 同理，走 ROS2 motion_servo_cmd 官方接口（旧 gamepad 是铁蛋一代）
+//    WALK_USERTROT(303) + vel_des=[x,y,yaw]；全 0 = 原地踏步
+//    需 ~20Hz 持续发布（停发 4 帧 = Servo data lost 退出）；cmd_source=-1 最高优先级
+void MotionCtrl::set_walk_velocity(float x, float y, float yaw) {
+#ifdef REAL_DOG
+    if (!motion_servo_pub_) {
+        fprintf(stderr, "[MotionCtrl] set_walk_velocity: 发布器未挂载(attach_motion_servo_pub)\n");
+        return;
+    }
+    protocol::msg::MotionServoCmd cmd;
+    cmd.motion_id   = 303;   // MotionID::WALK_USERTROT
+    cmd.cmd_type    = 1;     // SERVO_DATA
+    cmd.cmd_source  = -1;    // DEBUG 最高优先级
+    cmd.value       = 0;
+    cmd.vel_des     = {x, y, yaw};
+    cmd.rpy_des     = {0.0f, 0.0f, 0.0f};
+    cmd.pos_des     = {0.0f, 0.0f, 0.235f};
+    cmd.step_height = {0.05f, 0.05f};
+    motion_servo_pub_->publish(cmd);
+#else
+    set_velocity(x, y, yaw);   // 仿真复用旧 gamepad 接口
+#endif
+}
 #endif
 
 void MotionCtrl::stand()      { gpad_.x = 1; pub_gamepad(); gpad_.x = 0; }

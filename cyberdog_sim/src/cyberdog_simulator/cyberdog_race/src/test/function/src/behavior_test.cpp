@@ -20,6 +20,7 @@ void run_test(MotionCtrl& motion, SensorData& sensor, int test_id) {
         case 8:  step_height_test(motion, sensor); break;
         case 9:  sensor_check_test(motion, sensor);break;
         case 10: rgb_view_test(motion, sensor);     break;
+        case 11: march_in_place_test(motion, sensor); break;
         default:
             fprintf(stderr, "\033[1;31m[BehaviorTest] Unknown #%d\033[0m\n", test_id);
             break;
@@ -146,6 +147,21 @@ void sensor_check_test(MotionCtrl& motion, SensorData& sensor) {
     fprintf(stderr, "\033[1;36m  👁  RGB视觉\033[0m           lane=%d ball=%d\n", lane_v, ball_f);
     fprintf(stderr, "\n\033[1;32m  全部传感器已收集。红外/深度/BMS/TOF 由各自回调处理。\033[0m\n");
     fprintf(stderr, "\033[1;35m========================================\033[0m\n");
+}
+
+// ── 原地踏步（WALK_USERTROT + vel=0 → 原地小跑） ──
+void march_in_place_test(MotionCtrl& motion, SensorData& sensor) {
+    (void)sensor;
+    fprintf(stderr, "\033[1;35m[March] 原地踏步 5 秒...\033[0m\n");
+    motion.stand();
+    rclcpp::sleep_for(std::chrono::seconds(1));
+    // 真机: motion_servo_cmd 303 + vel_des=[0,0,0] @20Hz；仿真: gamepad
+    for (int i = 0; i < 100; i++) {
+        motion.set_walk_velocity(0.0f, 0.0f, 0.0f);
+        rclcpp::sleep_for(std::chrono::milliseconds(50));
+    }
+    motion.stop();
+    fprintf(stderr, "\033[1;32m[March] 原地踏步完成\033[0m\n");
 }
 
 // ── RGB 实时预览（DEBUG_VISION 弹窗，按 ESC 退出） ──

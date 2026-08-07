@@ -30,6 +30,10 @@ public:
     // pitch 负值低头、正值抬头，官方限 -0.25 ~ +0.30 rad
     // 注意：需 attach_motion_servo_pub() 挂载发布器后生效；需以 ~20Hz 持续调用保持
     void set_body_pitch(float pitch);
+    // 真机行走/原地踏步（CyberDog2 官方接口: motion_servo_cmd + WALK_USERTROT=303）
+    // x=前后 y=左右 yaw=转向 (m/s, rad/s)；全 0 = 原地踏步；需 ~20Hz 持续发布保持
+    // 仿真：回退旧 gamepad set_velocity
+    void set_walk_velocity(float x, float y, float yaw);
     // 分别设置左右侧步高（单位：m），step_height[0]=前/左侧，step_height[1]=后/右侧
     void set_step_height(float left, float right);
 

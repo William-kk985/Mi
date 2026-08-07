@@ -18,6 +18,7 @@ void pitch_test(MotionCtrl& motion, SensorData& sensor);         // 7: 俯仰角
 void step_height_test(MotionCtrl& motion, SensorData& sensor);   // 8: 步高
 void sensor_check_test(MotionCtrl& motion, SensorData& sensor);   // 9: 传感器链路检查
 void rgb_view_test(MotionCtrl& motion, SensorData& sensor);       // 10: RGB实时预览(cv::imshow)
+void march_in_place_test(MotionCtrl& motion, SensorData& sensor); // 11: 原地踏步(servo 303 vel=0)
 
 } // namespace behavior
 
