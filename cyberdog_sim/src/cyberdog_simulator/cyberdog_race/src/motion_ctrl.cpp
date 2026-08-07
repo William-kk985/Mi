@@ -4,6 +4,7 @@
 #include "cyberdog_race/debug_config.hpp"
 #include "cyberdog_race/motion_ctrl.hpp"
 #include <cstring>
+#include <thread>
 
 MotionCtrl::MotionCtrl() : ctrl_lcm_("udpm://239.255.76.67:7671?ttl=255") {
     memset(&gpad_, 0, sizeof(gpad_));
@@ -95,24 +96,32 @@ void MotionCtrl::send_result_cmd(int motion_id) {
 }
 #endif
 
-// ── 真机官方跳跃（MotionResultCmd 服务，档位固定） ──
+// ── 真机官方跳跃（motion_servo_cmd 持续发布，档位固定） ──
+//   ⚠ 跳跃不走 MotionResultCmd（Command 133 not valid, 2026-08-07 上机确认）
+//   与姿态201/行走303一样走 ServoCmd，持续发布 ~1.5s 触发跳跃轨迹
 //   motion_id: 133=前跳30cm, 132=前跳60cm（MotionID 预设轨迹，无法自定义距离）
 void MotionCtrl::jump_forward(float dist) {
 #ifdef REAL_DOG
-    if (!motion_result_client_) {
-        fprintf(stderr, "[MotionCtrl] jump_forward: 客户端未挂载(attach_motion_result_client)\n");
+    if (!motion_servo_pub_) {
+        fprintf(stderr, "[MotionCtrl] jump_forward: 发布器未挂载(attach_motion_servo_pub)\n");
         return;
     }
-    if (!motion_result_client_->service_is_ready()) {
-        fprintf(stderr, "[MotionCtrl] jump_forward: motion_result_cmd 服务未就绪\n");
-        return;
+    protocol::msg::MotionServoCmd cmd;
+    cmd.motion_id   = (dist <= 0.3f) ? 133 : 132;   // 前跳30cm / 60cm
+    cmd.cmd_type    = 1;     // SERVO_DATA
+    cmd.cmd_source  = -1;    // DEBUG 最高优先级
+    cmd.value       = 0;
+    cmd.vel_des     = {0.0f, 0.0f, 0.0f};
+    cmd.rpy_des     = {0.0f, 0.0f, 0.0f};
+    cmd.pos_des     = {0.0f, 0.0f, 0.235f};
+    cmd.step_height = {0.05f, 0.05f};
+    // 跳跃是 ServoCmd 方式：持续发布 ~1.5s 让 motion_manager 执行跳跃轨迹
+    for (int i = 0; i < 30; i++) {   // 30帧 @ 50ms = 1.5s
+        motion_servo_pub_->publish(cmd);
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
-    auto req = std::make_shared<protocol::srv::MotionResultCmd::Request>();
-    req->motion_id = (dist <= 0.3f) ? 133 : 132;   // 前跳30cm / 60cm
-    req->duration  = 1500;                          // 跳跃执行时间(ms)
-    motion_result_client_->async_send_request(req);
-    fprintf(stderr, "[MotionCtrl] jump_forward: motion_id=%d (%.0fcm)\n",
-            req->motion_id, dist * 100);
+    fprintf(stderr, "[MotionCtrl] jump_forward(ServoCmd): motion_id=%d (%.0fcm)\n",
+            cmd.motion_id, dist * 100);
 #else
     // 仿真：旧 LCM JUMP_3D
     memset(&lcm_cmd_, 0, sizeof(lcm_cmd_));
