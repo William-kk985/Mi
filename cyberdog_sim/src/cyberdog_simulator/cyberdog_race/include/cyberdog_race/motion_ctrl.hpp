@@ -39,6 +39,8 @@ public:
     void set_step_height(float left, float right);
     // 真机官方跳跃（MotionResultCmd 服务，档位固定）：dist<=0.3→30cm(133)，否则 60cm(132)
     void jump_forward(float dist);
+    // 真机官方动作触发（MotionResultCmd 服务）：111=站立 101=趴下 133=前跳30cm 132=前跳60cm
+    void send_result_cmd(int motion_id);
 
 #ifdef REAL_DOG
     // 挂载 CyberDog2 motion_servo_cmd 发布器（RaceController 构造中调用）

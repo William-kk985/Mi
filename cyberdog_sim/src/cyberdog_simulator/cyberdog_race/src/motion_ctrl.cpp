@@ -76,6 +76,23 @@ void MotionCtrl::attach_motion_result_client(rclcpp::Node* node) {
     RCLCPP_INFO(node->get_logger(), "[MotionCtrl] motion_result_cmd 客户端已挂载(%s)",
                 ROBOT_NS "/motion_result_cmd");
 }
+
+// ── 真机官方动作触发（MotionResultCmd 服务） ──
+//   motion_id: 111=站立 101=趴下 133=前跳30cm 132=前跳60cm ...
+void MotionCtrl::send_result_cmd(int motion_id) {
+    if (!motion_result_client_) {
+        fprintf(stderr, "[MotionCtrl] send_result_cmd(%d): 客户端未挂载\n", motion_id);
+        return;
+    }
+    if (!motion_result_client_->service_is_ready()) {
+        fprintf(stderr, "[MotionCtrl] send_result_cmd(%d): 服务未就绪\n", motion_id);
+        return;
+    }
+    auto req = std::make_shared<protocol::srv::MotionResultCmd::Request>();
+    req->motion_id = motion_id;
+    auto future = motion_result_client_->async_send_request(req);
+    fprintf(stderr, "[MotionCtrl] result_cmd motion_id=%d\n", motion_id);
+}
 #endif
 
 // ── 真机官方跳跃（MotionResultCmd 服务，档位固定） ──
@@ -130,9 +147,22 @@ void MotionCtrl::set_walk_velocity(float x, float y, float yaw) {
 #endif
 }
 
-void MotionCtrl::stand()      { gpad_.x = 1; pub_gamepad(); gpad_.x = 0; }
+// ⚠ 真机站/趴必须走 MotionResultCmd 服务（gamepad 是铁蛋一代接口，真机无效——2026-08-07 踩坑）
+void MotionCtrl::stand() {
+#ifdef REAL_DOG
+    send_result_cmd(111);   // RECOVERYSTAND
+#else
+    gpad_.x = 1; pub_gamepad(); gpad_.x = 0;
+#endif
+}
 void MotionCtrl::locomotion() { gpad_.y = 1; pub_gamepad(); gpad_.y = 0; }
-void MotionCtrl::lie_down()   { gpad_.a = 1; pub_gamepad(); gpad_.a = 0; }
+void MotionCtrl::lie_down() {
+#ifdef REAL_DOG
+    send_result_cmd(101);   // GETDOWN
+#else
+    gpad_.a = 1; pub_gamepad(); gpad_.a = 0;
+#endif
+}
 void MotionCtrl::recovery()   { gpad_.b = 1; pub_gamepad(); gpad_.b = 0; }
 
 void MotionCtrl::stop() {

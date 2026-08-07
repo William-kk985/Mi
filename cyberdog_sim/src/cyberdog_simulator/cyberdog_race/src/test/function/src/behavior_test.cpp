@@ -170,8 +170,8 @@ void march_in_place_test(MotionCtrl& motion, SensorData& sensor) {
 void jump30_test(MotionCtrl& motion, SensorData& sensor) {
     (void)sensor;
     fprintf(stderr, "\033[1;35m[Jump] 前跳 30cm...\033[0m\n");
-    motion.stand();
-    rclcpp::sleep_for(std::chrono::seconds(1));
+    motion.stand();                          // 真机: MotionResultCmd 111 官方站立
+    rclcpp::sleep_for(std::chrono::seconds(3));   // 等真正站起（服务异步）
     motion.jump_forward(0.3f);
     rclcpp::sleep_for(std::chrono::seconds(4));   // 等起跳+落地
     motion.stand();
