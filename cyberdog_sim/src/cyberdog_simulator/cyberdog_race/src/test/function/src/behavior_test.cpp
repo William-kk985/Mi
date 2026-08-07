@@ -25,7 +25,7 @@ void run_test(MotionCtrl& motion, SensorData& sensor, int test_id) {
         case 13: jump30_test(motion, sensor);          break;
         case 14: turn_angle_test(motion, sensor);      break;
         case 15: abs_turn_test(motion, sensor);        break;
-        case 16: body_roll_test(motion, sensor);       break;
+        case 16: step_height_walk_test(motion, sensor); break;
         default:
             fprintf(stderr, "\033[1;31m[BehaviorTest] Unknown #%d\033[0m\n", test_id);
             break;
@@ -253,60 +253,35 @@ void forward_test(MotionCtrl& motion, SensorData& sensor) {
             traveled, TARGET_DIST);
 }
 
-// ── 身躯侧倾（不前进，看机身能否左右倾斜） ──
-// 澄清：yaw 是"朝左朝右转"（14/15/16 已验证），用户要的是"身躯的倾斜"= roll（左右侧倾）。
-// 用 201 FORCECONTROL + rpy_des[0]=roll（pose_teleop j/l 键同款，官方限 ±0.52 rad）。
-// roll_map(global_to_robot.rpy[0]) 反馈验证倾斜是否真的发生。
-void body_roll_test(MotionCtrl& motion, SensorData& sensor) {
-    const float ROLL_A = +0.20f;   // 一侧倾斜
-    const float ROLL_B = -0.20f;   // 另一侧倾斜
-
+// ── 步高切换测试（真机 303 接口） ──
+// 背景：set_step_height 走旧 LCM robot_control_cmd(7671)，真机不吃 → 步高不变。
+// 真机步高正确接口 = motion_servo_cmd.step_height 字段（官方 303 preset 同款）。
+// 本测试走路时切换步高 0.05→0.25→0.15，肉眼观察抬腿高低变化。
+void step_height_walk_test(MotionCtrl& motion, SensorData& sensor) {
+    const float SPEED = 0.3f;   // 前进速度 0.3 m/s
     motion.stand();
     rclcpp::sleep_for(std::chrono::seconds(2));   // 等站稳
-    fprintf(stderr, "\033[1;35m[BodyRoll] 起点 roll_map=%.1f°\033[0m\n",
-            sensor.roll_map * 180.0f / M_PI);
 
-    // ── A) +roll 2s：set_body_roll(+0.20) ──
-    float r0 = sensor.roll_map;
-    fprintf(stderr, "\033[1;36m[BodyRoll] A) set_body_roll(+0.20) 2s — 身躯倾斜?\033[0m\n");
-    for (int i = 0; i < 100; i++) {
-        motion.set_body_roll(ROLL_A);
-        if (i % 25 == 0)
-            fprintf(stderr, "    t=%.1fs roll_map=%.1f°\n", i * 0.02f, sensor.roll_map * 180.0f / M_PI);
-        rclcpp::sleep_for(std::chrono::milliseconds(20));
-    }
-    motion.stop();
-    {
-        float dr = (sensor.roll_map - r0) * 180.0f / M_PI;
-        fprintf(stderr, "\033[1;32m[BodyRoll] A) Δroll=%.1f° → %s\033[0m\n", dr,
-                std::fabs(dr) > 5.0f ? "倾斜生效" : "没反应");
-    }
+    auto walk = [&](const char* tag, float step_h) {
+        float sx = sensor.odom_x, sy = sensor.odom_y;
+        fprintf(stderr, "\033[1;36m[StepH] %s 步高=%.2f 走1.5s\033[0m\n", tag, step_h);
+        for (int i = 0; i < 75; i++) {
+            motion.set_walk_velocity_step(SPEED, 0.0f, 0.0f, step_h);
+            if (i % 25 == 0)
+                fprintf(stderr, "    t=%.1fs odom=(%.2f,%.2f)\n", i * 0.02f, sensor.odom_x, sensor.odom_y);
+            rclcpp::sleep_for(std::chrono::milliseconds(20));
+        }
+        motion.stop();
+        float d = std::sqrt((sensor.odom_x-sx)*(sensor.odom_x-sx) + (sensor.odom_y-sy)*(sensor.odom_y-sy));
+        fprintf(stderr, "\033[1;32m[StepH] %s 前进 %.3f m\033[0m\n", tag, d);
+    };
 
-    // ── B) -roll 2s：set_body_roll(-0.20) ──
-    r0 = sensor.roll_map;
-    fprintf(stderr, "\033[1;36m[BodyRoll] B) set_body_roll(-0.20) 2s — 反向倾斜\033[0m\n");
-    for (int i = 0; i < 100; i++) {
-        motion.set_body_roll(ROLL_B);
-        if (i % 25 == 0)
-            fprintf(stderr, "    t=%.1fs roll_map=%.1f°\n", i * 0.02f, sensor.roll_map * 180.0f / M_PI);
-        rclcpp::sleep_for(std::chrono::milliseconds(20));
-    }
-    motion.stop();
-    {
-        float dr = (sensor.roll_map - r0) * 180.0f / M_PI;
-        fprintf(stderr, "\033[1;32m[BodyRoll] B) Δroll=%.1f° → %s\033[0m\n", dr,
-                std::fabs(dr) > 5.0f ? "倾斜生效" : "没反应");
-    }
-
-    // ── C) 回正 + 停 ──
-    fprintf(stderr, "\033[1;36m[BodyRoll] C) 回正 roll=0 1s\033[0m\n");
-    for (int i = 0; i < 50; i++) {
-        motion.set_body_roll(0.0f);
-        rclcpp::sleep_for(std::chrono::milliseconds(20));
-    }
-    motion.stop();
-    fprintf(stderr, "\033[1;32m[BodyRoll] 完成, roll_map=%.1f°\033[0m\n",
-            sensor.roll_map * 180.0f / M_PI);
+    walk("A)低抬腿", 0.05f);
+    rclcpp::sleep_for(std::chrono::seconds(1));
+    walk("B)高抬腿", 0.25f);
+    rclcpp::sleep_for(std::chrono::seconds(1));
+    walk("C)默认", 0.15f);
+    fprintf(stderr, "\033[1;32m[StepH] 完成\033[0m\n");
 }
 
 // ── RGB 实时预览（DEBUG_VISION 弹窗，按 ESC 退出） ──

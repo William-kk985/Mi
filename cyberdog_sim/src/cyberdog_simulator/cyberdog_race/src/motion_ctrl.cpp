@@ -216,6 +216,32 @@ void MotionCtrl::set_walk_velocity(float x, float y, float yaw) {
 #endif
 }
 
+// ── 真机带自定义步高行走（303 + step_height） ──
+// ⚠ 真机步高正确接口是 motion_servo_cmd.step_height 字段（官方 303 preset 同款），
+//   旧 set_step_height 走 LCM robot_control_cmd(7671) 真机不吃（2026-08-08 确认）。
+//   step_h 建议范围 0.05~0.25m（官方 clamp 0~0.35）；需 ~20Hz 持续发布
+void MotionCtrl::set_walk_velocity_step(float x, float y, float yaw, float step_h) {
+#ifdef REAL_DOG
+    if (!motion_servo_pub_) {
+        fprintf(stderr, "[MotionCtrl] set_walk_velocity_step: 发布器未挂载(attach_motion_servo_pub)\n");
+        return;
+    }
+    float h = step_h < 0.0f ? 0.0f : (step_h > 0.35f ? 0.35f : step_h);
+    protocol::msg::MotionServoCmd cmd;
+    cmd.motion_id   = 303;   // MotionID::WALK_USERTROT
+    cmd.cmd_type    = 1;     // SERVO_DATA
+    cmd.cmd_source  = -1;    // DEBUG 最高优先级
+    cmd.value       = 0;
+    cmd.vel_des     = {x, y, yaw};
+    cmd.rpy_des     = {0.0f, 0.0f, 0.0f};
+    cmd.pos_des     = {0.0f, 0.0f, 0.235f};
+    cmd.step_height = {h, h};   // 自定义步高
+    motion_servo_pub_->publish(cmd);
+#else
+    set_velocity(x, y, yaw);
+#endif
+}
+
 // ── 真机带俯仰姿态行走（303 + rpy_des[1]=pitch） ──
 // ⚠ 官方 motion_teleop 只设 vel_des；此处尝试行走时同时保持机身俯仰（抬头/低头）
 //   需 ~20Hz 持续发布。能否生效上机验证（2026-08-08）

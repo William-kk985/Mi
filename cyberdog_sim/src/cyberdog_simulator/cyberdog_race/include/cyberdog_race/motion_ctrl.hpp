@@ -41,6 +41,9 @@ public:
     // x=前后 y=左右 yaw=转向 (m/s, rad/s)；全 0 = 原地踏步；需 ~20Hz 持续发布保持
     // 仿真：回退旧 gamepad set_velocity
     void set_walk_velocity(float x, float y, float yaw);
+    // 真机带自定义步高行走（303 WALK_USERTROT + step_height={h,h}）：观察抬腿高低变化
+    // ⚠ 真机步高正确接口是 motion_servo_cmd.step_height 字段（旧 set_step_height 走 LCM 真机不吃）
+    void set_walk_velocity_step(float x, float y, float yaw, float step_h);
     // 真机带俯仰姿态行走（303 WALK_USERTROT + rpy_des[1]=pitch）：走路同时保持抬头/低头
     // ⚠ 官方 walk teleop 不设 rpy_des，能否生效需上机验证（2026-08-08 待测）
     void set_walk_velocity_pitch(float x, float y, float yaw, float pitch);
