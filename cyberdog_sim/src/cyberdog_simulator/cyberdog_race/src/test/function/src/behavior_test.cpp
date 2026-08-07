@@ -168,19 +168,19 @@ void march_in_place_test(MotionCtrl& motion, SensorData& sensor) {
     fprintf(stderr, "\033[1;32m[March] 原地踏步完成\033[0m\n");
 }
 
-// ── 相对转向：从当前 IMU yaw 转 90°（先假设 +0.6=左转，方向不对就翻转符号） ──
+// ── 相对转向：从当前 abs_yaw 转 90°（⚠ 反馈用 global_to_robot.rpy[2]，IMU yaw 真机一直 0） ──
 void turn_angle_test(MotionCtrl& motion, SensorData& sensor) {
     const float TARGET_DEG = 90.0f;
-    const float TURN_SPEED = 0.6f;   // rad/s，先假设 + = 左转（D430i 方向待验证）
+    const float TURN_SPEED = 0.6f;   // rad/s，+0.6=左转（2026-08-07 已验证方向）
     motion.stand();
     rclcpp::sleep_for(std::chrono::seconds(3));
-    float start_yaw = sensor.yaw;
+    float start_yaw = sensor.abs_yaw;   // 地图绝对朝向（SLAM 有数据）
     float target    = start_yaw + TARGET_DEG * M_PI / 180.0f;
     int timeout = 1000;
     fprintf(stderr, "\033[1;35m[Turn] 左转 %.0f° (起始 %.1f°)...\033[0m\n",
             TARGET_DEG, start_yaw * 180.0f / M_PI);
     while (timeout-- > 0) {
-        float err = target - sensor.yaw;
+        float err = target - sensor.abs_yaw;
         while (err >  M_PI) err -= 2 * M_PI;
         while (err < -M_PI) err += 2 * M_PI;
         if (std::fabs(err) < 0.05f) break;
@@ -189,7 +189,7 @@ void turn_angle_test(MotionCtrl& motion, SensorData& sensor) {
     }
     motion.stop();
     fprintf(stderr, "\033[1;32m[Turn] 实际转 %.1f°\033[0m\n",
-            (sensor.yaw - start_yaw) * 180.0f / M_PI);
+            (sensor.abs_yaw - start_yaw) * 180.0f / M_PI);
 }
 
 // ── 绝对转向：转到地图坐标系固定角度（SLAM 原点, abs_yaw 闭环） ──
