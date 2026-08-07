@@ -1,4 +1,5 @@
 #include "cyberdog_race/race_controller.hpp"
+#include <thread>
 
 // ============================================================
 // 调试模式说明（修改 debug_config.hpp 后重新 build）：
@@ -283,14 +284,19 @@ void RaceController::control_loop() {
     if (++telem_render_counter_ >= 20) { telem_render_counter_ = 0; render_telemetry_frame(); }
 #endif
     // 行为测试模式：替代正常赛段
+    // ⚠ 2026-08-08 修复：原来同步跑会卡死单线程执行器 → 测试期间 ROS2 订阅回调
+    //   （TOF/超声/LiDAR/相机）全部冻结（tof 恒 0.66 默认值）。改用独立线程跑测试，
+    //   主线程 spin 继续派发回调，测试内可正常读 TOF/超声量化（LCM odom 一直独立）。
 #ifdef DEBUG_TEST_BEHAVIOR
     static bool test_ran = false;
     if (!test_ran) {
         test_ran = true;
-        behavior::run_test(motion_, sensor_, TEST_BEHAVIOR);
-        motion_.stop();
-        timer_->cancel();
-        RCLCPP_WARN(get_logger(), "[Test] Behavior test #%d done", TEST_BEHAVIOR);
+        std::thread([this]() {
+            behavior::run_test(motion_, sensor_, TEST_BEHAVIOR);
+            motion_.stop();
+            timer_->cancel();
+            RCLCPP_WARN(get_logger(), "[Test] Behavior test #%d done", TEST_BEHAVIOR);
+        }).detach();
     }
     return;
 #endif
