@@ -23,7 +23,7 @@ void forward_test(MotionCtrl& motion, SensorData& sensor);         // 12: 前进
 void jump30_test(MotionCtrl& motion, SensorData& sensor);          // 13: 前跳30cm(MotionResultCmd 133)
 void turn_angle_test(MotionCtrl& motion, SensorData& sensor);      // 14: 原地转90°(相对, IMU yaw闭环)
 void abs_turn_test(MotionCtrl& motion, SensorData& sensor);        // 15: 绝对转向(地图坐标系, abs_yaw闭环)
-void body_yaw_test(MotionCtrl& motion, SensorData& sensor);        // 16: 身体yaw右偏(201姿态rpy_des[2], 不前进看机身能否偏转)
+void body_roll_test(MotionCtrl& motion, SensorData& sensor);       // 16: 身躯侧倾(201姿态rpy_des[0]=roll, 不前进看身体能否左右倾斜)
 
 } // namespace behavior
 

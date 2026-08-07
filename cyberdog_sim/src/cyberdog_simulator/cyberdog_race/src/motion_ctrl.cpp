@@ -93,6 +93,36 @@ void MotionCtrl::set_body_yaw(float yaw) {
 #endif
 }
 
+// ── 真机身躯侧倾/倾斜（201 + rpy_des[0]=roll） ──
+// ⚠ 与 set_body_pitch/set_body_yaw 同理，走 201 FORCECONTROL；不移动，身体左右倾斜
+//    roll 正负=左右倾（pose_teleop j/l 键同款，官方限 ±0.52）；需 ~20Hz 持续发布
+void MotionCtrl::set_body_roll(float roll) {
+#ifdef REAL_DOG
+    if (!motion_servo_pub_) {
+        fprintf(stderr, "[MotionCtrl] set_body_roll: 发布器未挂载(attach_motion_servo_pub)\n");
+        return;
+    }
+    protocol::msg::MotionServoCmd cmd;
+    cmd.motion_id   = 201;   // MotionID::FORCECONTROL_DEFINITIVELY
+    cmd.cmd_type    = 1;     // SERVO_DATA
+    cmd.cmd_source  = -1;    // DEBUG 最高优先级
+    cmd.value       = 0;
+    cmd.vel_des     = {0.0f, 0.0f, 0.0f};
+    cmd.rpy_des     = {roll, 0.0f, 0.0f};   // 侧倾（正负=左右）
+    cmd.pos_des     = {0.0f, 0.0f, 0.235f};
+    cmd.step_height = {0.05f, 0.05f};
+    motion_servo_pub_->publish(cmd);
+#else
+    // 仿真：旧 LCM mode=21 POSE_CTRL
+    memset(&lcm_cmd_, 0, sizeof(lcm_cmd_));
+    lcm_cmd_.mode       = static_cast<int8_t>(LocoMode::POSE_CTRL);  // 21
+    lcm_cmd_.gait_id    = 0;
+    lcm_cmd_.rpy_des[0] = roll;   // roll
+    lcm_cmd_.duration   = 500;
+    pub_lcm_cmd();
+#endif
+}
+
 #ifdef REAL_DOG
 void MotionCtrl::attach_motion_servo_pub(rclcpp::Node* node) {
     motion_servo_pub_ = node->create_publisher<protocol::msg::MotionServoCmd>(

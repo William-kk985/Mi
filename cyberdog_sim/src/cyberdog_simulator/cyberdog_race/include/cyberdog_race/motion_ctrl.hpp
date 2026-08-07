@@ -34,6 +34,9 @@ public:
     // 真机机身 yaw 姿态控制（201 FORCECONTROL + rpy_des[2]=yaw）：不移动，机身偏转朝向
     // yaw 正值=左偏(CCW)、负值=右偏(CW)，官方限 ±0.65 rad（pose_teleop a/d 键同款）
     void set_body_yaw(float yaw);
+    // 真机身躯侧倾/倾斜（201 FORCECONTROL + rpy_des[0]=roll）：不移动，身体左右倾斜
+    // roll 正负=左右倾，官方限 ±0.52 rad（pose_teleop j/l 键同款）
+    void set_body_roll(float roll);
     // 真机行走/原地踏步（CyberDog2 官方接口: motion_servo_cmd + WALK_USERTROT=303）
     // x=前后 y=左右 yaw=转向 (m/s, rad/s)；全 0 = 原地踏步；需 ~20Hz 持续发布保持
     // 仿真：回退旧 gamepad set_velocity

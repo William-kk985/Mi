@@ -620,6 +620,7 @@ void RaceController::on_global_to_robot(const lcm::ReceiveBuffer*,
     sensor_.body_height = msg->xyz[2];  // z 轴直接作为身高
     sensor_.abs_yaw = msg->rpy[2];      // 地图坐标系绝对朝向（供绝对转向, 2026-08-07）
     sensor_.pitch_map = msg->rpy[1];    // 地图坐标系俯仰（供抬头/姿态验证, 2026-08-08）
+    sensor_.roll_map = msg->rpy[0];     // 地图坐标系横滚/侧倾（供身躯倾斜验证, 2026-08-08）
 }
 
 // ── 真机 LCM 状态估计回调（state_estimator，备选 body_height 来源） ──

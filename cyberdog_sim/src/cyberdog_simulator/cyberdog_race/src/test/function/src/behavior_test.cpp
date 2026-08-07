@@ -25,7 +25,7 @@ void run_test(MotionCtrl& motion, SensorData& sensor, int test_id) {
         case 13: jump30_test(motion, sensor);          break;
         case 14: turn_angle_test(motion, sensor);      break;
         case 15: abs_turn_test(motion, sensor);        break;
-        case 16: body_yaw_test(motion, sensor);        break;
+        case 16: body_roll_test(motion, sensor);       break;
         default:
             fprintf(stderr, "\033[1;31m[BehaviorTest] Unknown #%d\033[0m\n", test_id);
             break;
@@ -253,67 +253,60 @@ void forward_test(MotionCtrl& motion, SensorData& sensor) {
             traveled, TARGET_DIST);
 }
 
-// ── 身体 yaw 右偏（不前进，看机身能否偏转朝向） ──
-// 背景：pitch+走 真机 303 不吃 rpy_des（走路时 pitch 复位，上机已确认）。
-// 改用 201 FORCECONTROL 直接控身体 yaw（rpy_des[2]，pose_teleop a/d 键同款）：
-//   正值=左偏(CCW)、负值=右偏(CW)，官方限 ±0.65 rad。用 abs_yaw 反馈看机身是否真的偏转。
-void body_yaw_test(MotionCtrl& motion, SensorData& sensor) {
-    const float YAW_R = -0.20f;   // 右偏（负值）
-    const float YAW_L = +0.20f;   // 左偏（正值）
+// ── 身躯侧倾（不前进，看机身能否左右倾斜） ──
+// 澄清：yaw 是"朝左朝右转"（14/15/16 已验证），用户要的是"身躯的倾斜"= roll（左右侧倾）。
+// 用 201 FORCECONTROL + rpy_des[0]=roll（pose_teleop j/l 键同款，官方限 ±0.52 rad）。
+// roll_map(global_to_robot.rpy[0]) 反馈验证倾斜是否真的发生。
+void body_roll_test(MotionCtrl& motion, SensorData& sensor) {
+    const float ROLL_A = +0.20f;   // 一侧倾斜
+    const float ROLL_B = -0.20f;   // 另一侧倾斜
 
     motion.stand();
     rclcpp::sleep_for(std::chrono::seconds(2));   // 等站稳
-    fprintf(stderr, "\033[1;35m[BodyYaw] 起点 abs_yaw=%.1f°\033[0m\n",
-            sensor.abs_yaw * 180.0f / M_PI);
+    fprintf(stderr, "\033[1;35m[BodyRoll] 起点 roll_map=%.1f°\033[0m\n",
+            sensor.roll_map * 180.0f / M_PI);
 
-    auto delta_yaw = [](float a, float b) {   // 跨±180°环绕归一化
-        float d = (a - b) * 180.0f / M_PI;
-        while (d >  180.0f) d -= 360.0f;
-        while (d < -180.0f) d += 360.0f;
-        return d;
-    };
-
-    // ── A) 右偏 2s：set_body_yaw(-0.20) ──
-    float y0 = sensor.abs_yaw;
-    fprintf(stderr, "\033[1;36m[BodyYaw] A) set_body_yaw(-0.20) 2s — 机身右偏?\033[0m\n");
+    // ── A) +roll 2s：set_body_roll(+0.20) ──
+    float r0 = sensor.roll_map;
+    fprintf(stderr, "\033[1;36m[BodyRoll] A) set_body_roll(+0.20) 2s — 身躯倾斜?\033[0m\n");
     for (int i = 0; i < 100; i++) {
-        motion.set_body_yaw(YAW_R);
+        motion.set_body_roll(ROLL_A);
         if (i % 25 == 0)
-            fprintf(stderr, "    t=%.1fs abs_yaw=%.1f°\n", i * 0.02f, sensor.abs_yaw * 180.0f / M_PI);
+            fprintf(stderr, "    t=%.1fs roll_map=%.1f°\n", i * 0.02f, sensor.roll_map * 180.0f / M_PI);
         rclcpp::sleep_for(std::chrono::milliseconds(20));
     }
     motion.stop();
     {
-        float dy = delta_yaw(sensor.abs_yaw, y0);
-        fprintf(stderr, "\033[1;32m[BodyYaw] A) Δyaw=%.1f° → %s\033[0m\n", dy,
-                std::fabs(dy) > 5.0f ? "机身右偏生效" : "没反应");
+        float dr = (sensor.roll_map - r0) * 180.0f / M_PI;
+        fprintf(stderr, "\033[1;32m[BodyRoll] A) Δroll=%.1f° → %s\033[0m\n", dr,
+                std::fabs(dr) > 5.0f ? "倾斜生效" : "没反应");
     }
 
-    // ── B) 左偏回中 2s：set_body_yaw(+0.20) ──
-    y0 = sensor.abs_yaw;
-    fprintf(stderr, "\033[1;36m[BodyYaw] B) set_body_yaw(+0.20) 2s — 左偏\033[0m\n");
+    // ── B) -roll 2s：set_body_roll(-0.20) ──
+    r0 = sensor.roll_map;
+    fprintf(stderr, "\033[1;36m[BodyRoll] B) set_body_roll(-0.20) 2s — 反向倾斜\033[0m\n");
     for (int i = 0; i < 100; i++) {
-        motion.set_body_yaw(YAW_L);
+        motion.set_body_roll(ROLL_B);
         if (i % 25 == 0)
-            fprintf(stderr, "    t=%.1fs abs_yaw=%.1f°\n", i * 0.02f, sensor.abs_yaw * 180.0f / M_PI);
+            fprintf(stderr, "    t=%.1fs roll_map=%.1f°\n", i * 0.02f, sensor.roll_map * 180.0f / M_PI);
         rclcpp::sleep_for(std::chrono::milliseconds(20));
     }
     motion.stop();
     {
-        float dy = delta_yaw(sensor.abs_yaw, y0);
-        fprintf(stderr, "\033[1;32m[BodyYaw] B) Δyaw=%.1f° → %s\033[0m\n", dy,
-                std::fabs(dy) > 5.0f ? "机身左偏生效" : "没反应");
+        float dr = (sensor.roll_map - r0) * 180.0f / M_PI;
+        fprintf(stderr, "\033[1;32m[BodyRoll] B) Δroll=%.1f° → %s\033[0m\n", dr,
+                std::fabs(dr) > 5.0f ? "倾斜生效" : "没反应");
     }
 
     // ── C) 回正 + 停 ──
-    fprintf(stderr, "\033[1;36m[BodyYaw] C) 回正 yaw=0 1s\033[0m\n");
+    fprintf(stderr, "\033[1;36m[BodyRoll] C) 回正 roll=0 1s\033[0m\n");
     for (int i = 0; i < 50; i++) {
-        motion.set_body_yaw(0.0f);
+        motion.set_body_roll(0.0f);
         rclcpp::sleep_for(std::chrono::milliseconds(20));
     }
     motion.stop();
-    fprintf(stderr, "\033[1;32m[BodyYaw] 完成, abs_yaw=%.1f°\033[0m\n",
-            sensor.abs_yaw * 180.0f / M_PI);
+    fprintf(stderr, "\033[1;32m[BodyRoll] 完成, roll_map=%.1f°\033[0m\n",
+            sensor.roll_map * 180.0f / M_PI);
 }
 
 // ── RGB 实时预览（DEBUG_VISION 弹窗，按 ESC 退出） ──

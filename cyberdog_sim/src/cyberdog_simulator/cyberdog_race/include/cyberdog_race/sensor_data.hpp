@@ -33,6 +33,7 @@ struct SensorData {
     float body_height{0.25f};  // 身体离地高度（m）
     float abs_yaw{0.0f};       // 地图坐标系绝对朝向（global_to_robot.rpy[2], SLAM固定坐标系）
     float pitch_map{0.0f};     // 地图坐标系俯仰（global_to_robot.rpy[1], 2026-08-08 抬头验证用）
+    float roll_map{0.0f};      // 地图坐标系横滚/侧倾（global_to_robot.rpy[0], 2026-08-08 身躯倾斜验证用）
 
     // Lidar：前方最近障碍距离
     float lidar_front{10.0f};
