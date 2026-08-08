@@ -321,18 +321,23 @@ ROS2 订阅回调 → 测试期间 TOF/超声/LiDAR 实时可读（以前同步�
   **都无效**（走路时 pitch 被速度控制器冲回 0）。**正确姿势：303 WALK 命令直接带 `rpy_des[1]=pitch`**
   （`set_walk_velocity_pitch`），20Hz 持续。仿真/真机同源 `convex_mpc_loco_gaits.cpp:2305` 走路时
   `rpy_cmd_[1] = ctrl_cmd_->rpy_des[1]`；TROT 默认 pitch 限位 ±0.1rad（±5.7°），速度越大范围越小
-  （x_effect_scale=-0.55 负放大）；实测低头 -0.35 命令 → 被硬夹 **-5.3°** 走满 0.5m
+  （x_effect_scale=-0.55 负放大）；实测低头 +0.30 命令 → 保持 **+5.1°** 走满 0.5m（按真机约定正值=低头）。
+  ⚠ **机体自然姿态就是低头 ~-3°**（pitch_map 零点，命令 pitch=0 时实际 -3.2°），属机体/机械零点原因，
+  反馈与标定时注意偏移。
+  ⚠⚠ **pitch 物理方向实测与命令符号约定相反（舵机原因，2026-08-08 上机确认）**：真机约定
+  **【正值=低头、负值=抬头】**（代码注释"负值=低头"是错的）——上机发 +0.30 时狗呈现【低头】。
+  `pitch_map` 反馈同理（正值=物理低头）。Stage5 过桥要低头就发**正值**
+  ⚠⚠ **pitch 走路 ±5.7° 硬夹无法绕过（2026-08-08 终论）**：`des_roll_pitch_height[1]` 参数在走路时**不被读取**
+  （运控只读 [0]=roll、[2]=height；pitch 只读命令 rpy_des[1] 并被 WrapRange 夹 ±0.1rad）——B2 实测
+  参数 pitch=0.30 + RT ACK 后仍 +5°。**大俯仰只能原地 201（±14.7°）或分段做**；走路姿态靠 roll 参数+步高即可
 - **★ 走路时 roll/身高/大pitch 全可控 — LCM 7668 官方参数通道（2026-08-08 打通）**：
   ⚠ yaml_parameter ROS topic 真机死（无订阅者）；`interface_request` 必须在【端口 7668】发
   （官方 MiRoboticsLab/cyberdog_ros2 cyberdog_app.cpp 同款，发 7671 不响应）。
   `set_body_params_lcm(roll,pitch,height)` 发 control_parameter_request_lcmt（requestKind=3 设 user param
   des_roll_pitch_height）→ RT 板 ACK + 走路时 roll 保持（test18 实测 28°走满0.3m）。
-  Stage5 倾斜桥：上桥 set_body_params_lcm(roll,0,0.25) + 303 慢速，下桥回正
-- **走路时保持 roll（#18, 2026-08-08 真机定论）❌ 做不到**：三条路全死——① `yaml_parameter` topic
-  真机无任何订阅者（逐一查 NX 全部节点）；② 303 带 `rpy_des[0]=roll` 被冲回 0°（固件只开 pitch 通道，
-  `rpy_cmd_scale=[0,1,0]`）；③ 201 力控能保持 25° 但 vel_des 被忽略一步不走。**过桥若需侧倾只能分段**
-  （原地侧倾定住→平走→回正）；若桥面不倾斜则低头+步高足够，不需要 roll
-
+  Stage5 倾斜桥：上桥 set_body_params_lcm(roll,0,0.25) + 303 慢速，下桥回正。
+  ⚠ **pitch 例外**：走路时 pitch 仍被命令通道夹 ±5.7°（参数 [1] 不被读）——低头看线用 303 带正值即可。
+  ⚠ pitch 走路仍被步态夹 ±5.7°（走命令通道，不像 roll 走参数通道无夹持）——要大幅抬头/低头只能原地 201 或分段
 ### 常见坑
 
 - 测试期间传感器实时性靠"独立线程"修复（见上），若 TOF 又卡 0.66 先查测试是否同步跑
@@ -407,7 +412,7 @@ ROS2 订阅回调 → 测试期间 TOF/超声/LiDAR 实时可读（以前同步�
 
 ```cpp
 // C++（已封装，REAL_DOG 下自动生效）
-motion_.set_body_pitch(-0.2f);   // 低头 0.2 rad（负=低头）
+motion_.set_body_pitch(+0.2f);   // 低头 0.2 rad（⚠ 真机约定正值=低头）
 // ⚠ 需在循环中 ~20Hz 持续调用保持，停发即退出
 
 // 步高（2026-08-08 真机验证）：起步前设一次，走 LCM robot_control_cmd(7671)

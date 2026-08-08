@@ -28,10 +28,10 @@ public:
 
     // 速度控制：x前后，y左右，yaw转向（正=左转，负=右转）
     void set_velocity(float x, float y, float yaw);
-    // 俯仰角：负值低头，正值抬头
+    // 俯仰角：⚠ 真机约定【正值=低头、负值=抬头】（舵机方向与直觉相反，2026-08-08 上机确认）
     void set_pitch(float pitch);
     // 真机姿态控制（CyberDog2 官方接口: motion_servo_cmd + FORCECONTROL_DEFINITIVELY=201）
-    // pitch 负值低头、正值抬头，官方限 -0.25 ~ +0.30 rad
+    // ⚠ 真机约定【正值=低头、负值=抬头】（舵机方向相反），官方限 -0.25 ~ +0.30 rad
     // 注意：需 attach_motion_servo_pub() 挂载发布器后生效；需以 ~20Hz 持续调用保持
     void set_body_pitch(float pitch);
     // 真机机身 yaw 姿态控制（201 FORCECONTROL + rpy_des[2]=yaw）：不移动，机身偏转朝向

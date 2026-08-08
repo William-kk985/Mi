@@ -106,9 +106,9 @@ void stand_lie_test(MotionCtrl& motion, SensorData& sensor) {
 
 void pitch_test(MotionCtrl& motion, SensorData& sensor) {
     (void)sensor;
-    fprintf(stderr, "\033[1;35m[Pitch] 低头 15° 3秒...\033[0m\n");
+    fprintf(stderr, "\033[1;35m[Pitch] 抬头 15° 3秒...\033[0m\n");
     for (int i = 0; i < 60; i++) {
-        motion.set_body_pitch(-0.26f);   // mode=21 真机姿态控制
+        motion.set_body_pitch(-0.26f);   // ⚠ 真机约定：负值=抬头（2026-08-08 舵机方向确认）
         rclcpp::sleep_for(std::chrono::milliseconds(50));
     }
     fprintf(stderr, "\033[1;35m[Pitch] 回正 2秒...\033[0m\n");
@@ -116,9 +116,9 @@ void pitch_test(MotionCtrl& motion, SensorData& sensor) {
         motion.set_body_pitch(0.0f);
         rclcpp::sleep_for(std::chrono::milliseconds(50));
     }
-    fprintf(stderr, "\033[1;35m[Pitch] 抬头 15° 3秒...\033[0m\n");
+    fprintf(stderr, "\033[1;35m[Pitch] 低头 15° 3秒...\033[0m\n");
     for (int i = 0; i < 60; i++) {
-        motion.set_body_pitch(0.26f);
+        motion.set_body_pitch(0.26f);   // ⚠ 真机约定：正值=低头（2026-08-08 舵机方向确认）
         rclcpp::sleep_for(std::chrono::milliseconds(50));
     }
     motion.set_body_pitch(0.0f);
@@ -318,18 +318,19 @@ void step_height_walk_test(MotionCtrl& motion, SensorData& sensor) {
 //   rpy_des_(1) = WrapRange(..., scale*min, scale*max)  ← TROT 默认 ±0.1rad(±5.7°)，限位随速度负放大(x_effect_scale=-0.55)
 //   safety_checker: locomotion+大pitch 专门放行（只禁 lift error）
 // → 正确姿势：303 WALK 命令里直接带 rpy_des[1]=pitch（set_walk_velocity_pitch），20Hz 持续。
-// ⚠ 2026-08-08 二测：PITCH=-0.35 大命令 + SPEED=0.15 慢速(限位最宽) + 走 0.5m，看真机能到多大角度
-// 反馈用 pitch_map(global_to_robot.rpy[1])：-0.35rad 会被夹到 ~-5.7° 起（慢速 scale≈1）。
+// ⚠ 2026-08-08 三测：方向按真机约定【正值=低头】PITCH=+0.30（上坡桥面需要低头），0.15慢速 + 走 0.5m
+//   步态夹持 ±5.7°，另加 B2 段试 LCM 7668 参数 des_roll_pitch_height[1] 能否破限
+// 反馈用 pitch_map(global_to_robot.rpy[1])：+0.30 会被步态夹到 ~+5.7° 起。
 void pitch_low_fwd_test(MotionCtrl& motion, SensorData& sensor) {
-    const float PITCH = -0.35f;   // 低头 0.35 rad（大步令，看真机限位实际能到多少）
+    const float PITCH = 0.30f;    // 低头 0.30 rad（真机约定正值=低头，2026-08-08 舵机方向确认）
     const float SPEED = 0.15f;    // 慢速 0.15 m/s（pitch 限位随速度负放大，越慢范围越大）
     motion.stand();
     rclcpp::sleep_for(std::chrono::seconds(2));
     fprintf(stderr, "\033[1;35m[PitchFwd] 起点 pitch_map=%.1f°\033[0m\n",
             sensor.pitch_map * 180.0f / M_PI);
 
-    // ── A) 单独低头 2s：验证 201 低头本身正常 ──
-    fprintf(stderr, "\033[1;36m[PitchFwd] A) set_body_pitch(-0.35) 2s 低头\033[0m\n");
+    // ── A) 单独低头 2s：验证 201 低头本身正常（+0.30=低头） ──
+    fprintf(stderr, "\033[1;36m[PitchFwd] A) set_body_pitch(+0.30) 2s 低头\033[0m\n");
     for (int i = 0; i < 100; i++) {
         motion.set_body_pitch(PITCH);
         if (i % 25 == 0)
@@ -338,30 +339,46 @@ void pitch_low_fwd_test(MotionCtrl& motion, SensorData& sensor) {
     }
     motion.stop();
 
-    // ── B) 303 WALK 直接带 rpy_des[1]=pitch 前进，走满 0.5m（odom闭环） ──
-    // 步态控制器读 ctrl_cmd_->rpy_des[1] 当 pitch 目标（convex_mpc_loco_gaits.cpp:2305）
+    // ── B) 303 WALK 前进走满 0.5m（odom闭环），对比两种 pitch 通道 ──
     const float TARGET_DIST = 0.5f;
-    float sx = sensor.odom_x, sy = sensor.odom_y;
-    float traveled = 0.0f;
-    int timeout = 1500;   // 30s 超时保护（慢速）
-    fprintf(stderr, "\033[1;36m[PitchFwd] B) 303带rpy_des[1]=%.2f + 前进 走满 %.1fm\033[0m\n",
-            PITCH, TARGET_DIST);
-    while (traveled < TARGET_DIST && timeout-- > 0) {
-        motion.set_walk_velocity_pitch(SPEED, 0, 0, PITCH);   // 303 前进 + 带低头（20Hz 持续）
-        if (timeout % 10 == 0)
-            fprintf(stderr, "    pitch_map=%.1f° 走%.3fm\n",
-                    sensor.pitch_map * 180.0f / M_PI, traveled);
-        rclcpp::sleep_for(std::chrono::milliseconds(20));
-        float dx = sensor.odom_x - sx, dy = sensor.odom_y - sy;
-        traveled = std::sqrt(dx*dx + dy*dy);
-    }
-    motion.stop();
-    fprintf(stderr, "\033[1;32m[PitchFwd] B) 走满 %.3fm, pitch_map=%.1f° → %s\033[0m\n",
-            traveled, sensor.pitch_map * 180.0f / M_PI,
-            sensor.pitch_map < -0.05f ? "303带pitch低头保持!" : "走路低头仍无效");
 
-    // ── C) 303 带 pitch=0 回正 + 停 ──
-    fprintf(stderr, "\033[1;36m[PitchFwd] C) 303带pitch=0 回正 1s\033[0m\n");
+    // 公共走段 lambda：按给定发命令回调走满 TARGET_DIST
+    auto walk_phase = [&](const char* tag, const std::function<void()>& send_cmd) {
+        float sx = sensor.odom_x, sy = sensor.odom_y;
+        float traveled = 0.0f;
+        int timeout = 1500;   // 30s 超时保护（慢速）
+        fprintf(stderr, "\033[1;36m[PitchFwd] %s 走满 %.1fm\033[0m\n", tag, TARGET_DIST);
+        while (traveled < TARGET_DIST && timeout-- > 0) {
+            send_cmd();
+            if (timeout % 10 == 0)
+                fprintf(stderr, "    pitch_map=%.1f° 走%.3fm\n",
+                        sensor.pitch_map * 180.0f / M_PI, traveled);
+            rclcpp::sleep_for(std::chrono::milliseconds(20));
+            float dx = sensor.odom_x - sx, dy = sensor.odom_y - sy;
+            traveled = std::sqrt(dx*dx + dy*dy);
+        }
+        motion.stop();
+        fprintf(stderr, "\033[1;32m[PitchFwd] %s 走满 %.3fm, pitch_map=%.1f° → %s\033[0m\n",
+                tag, traveled, sensor.pitch_map * 180.0f / M_PI,
+                sensor.pitch_map > 0.05f ? "低头保持!" : "低头无效");
+        return sensor.pitch_map;
+    };
+
+    // B1) 纯 303 命令低头（现状，预期 +5.7° 夹持）
+    walk_phase("B1) 303带rpy_des[1]=0.30 前进",
+               [&]{ motion.set_walk_velocity_pitch(SPEED, 0, 0, PITCH); });
+
+    // B2) LCM 7668 参数 des_roll_pitch_height[1]=0.30（roll 走参数通道能破限28°，试 pitch [1]）
+    //    仿真源码说走路时 pitch 不读参数，但真机 roll 已证明与仿真不同，值得一试
+    motion.set_body_params_lcm(0.0f, PITCH, 0.25f);   // 参数 pitch=0.30（真机走路时若读则无夹持）
+    float p2 = walk_phase("B2) LCM参数pitch=0.30 + 303前进(命令也带0.30)",
+               [&]{ motion.set_walk_velocity_pitch(SPEED, 0, 0, PITCH); });
+    fprintf(stderr, "\033[1;33m[PitchFwd] B2 pitch_map=%.1f° （>5.7° 说明参数通道破限！）\033[0m\n",
+            p2 * 180.0f / M_PI);
+
+    // ── C) LCM/303 回正 + 停 ──
+    fprintf(stderr, "\033[1;36m[PitchFwd] C) 回正 1s\033[0m\n");
+    motion.set_body_params_lcm(0.0f, 0.0f, 0.25f);   // 参数回正
     for (int i = 0; i < 50; i++) {
         motion.set_walk_velocity_pitch(0.0f, 0, 0, 0.0f);   // 原地踏步回正
         rclcpp::sleep_for(std::chrono::milliseconds(20));

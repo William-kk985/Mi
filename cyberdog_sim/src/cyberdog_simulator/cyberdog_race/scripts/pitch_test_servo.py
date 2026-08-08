@@ -3,7 +3,7 @@
 真机低头测试 — CyberDog 2 官方接口
 ==================================
 使用 ROS2 motion_servo_cmd topic + FORCECONTROL_DEFINITIVELY(201) 控制机身姿态。
-rpy_des = [roll, pitch, yaw]，pitch 负值 = 低头。
+rpy_des = [roll, pitch, yaw]，pitch 正值 = 低头（真机舵机方向，2026-08-08 实测）。
 
 用法:
     python3 pitch_test_servo.py --pitch -0.26 --hold 3.0 [--stand]

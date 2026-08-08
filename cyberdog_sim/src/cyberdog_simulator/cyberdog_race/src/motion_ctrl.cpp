@@ -37,7 +37,8 @@ void MotionCtrl::set_pitch(float pitch) {
 
 // ── 真机姿态控制 ──
 // ⚠️ CyberDog2 正确接口：ROS2 motion_servo_cmd + FORCECONTROL_DEFINITIVELY(201)
-//    rpy_des=[roll,pitch,yaw]，pitch 负值=低头(限-0.25)、正值=抬头(限+0.30)
+// ⚠ 真机 pitch 方向实测：【正值=低头、负值=抬头】（舵机方向与直觉相反，2026-08-08 上机确认）
+//    rpy_des=[roll,pitch,yaw]，pitch 正值=低头、负值=抬头(限 -0.25~+0.30)
 //    pos_des=[0,0,0.235] 机身高度；cmd_source=-1 最高调试优先级
 //    需要 ~20Hz 持续发布（停发 4 帧 motion_manager 会判定 Servo data lost 并退出）
 //    ❌ 旧的 LCM mode=21 (POSE_CTRL) 是铁蛋一代接口，真机被错误映射成 WALK_USERTROT(303)
