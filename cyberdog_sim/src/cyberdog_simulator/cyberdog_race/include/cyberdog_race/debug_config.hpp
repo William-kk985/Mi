@@ -58,7 +58,7 @@
 // ── 真狗命名空间 ──
 #define ROBOT_NS "/mi_desktop_48_b0_2d_7b_02_c7"
 
-// ── 当前测试：18=roll走路保持侧倾（des_roll_pitch_height YamlParam + 303前进，roll_map 验证侧倾是否保持） ──
+// ── 当前测试：18=roll走路侧倾（LCM interface_request @7668 设 des_roll_pitch_height[0]，官方通道！） ──
 // ⚠ 测试完必须注释回 DEBUG_TEST_BEHAVIOR：开着会让 control_loop 只跑测试一次后
 //   timer->cancel()，遥测冻结在启动快照（超声卡0/TOF卡0.66）
 //   （2026-08-08 已改独立线程跑测试，期间传感器实时，但跑完仍会 cancel）

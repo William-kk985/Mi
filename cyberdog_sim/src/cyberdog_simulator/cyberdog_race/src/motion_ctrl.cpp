@@ -3,11 +3,16 @@
 //   若后包含则 REAL_DOG 未定义，声明/实现被跳过 → 链接错误 undefined reference
 #include "cyberdog_race/debug_config.hpp"
 #include "cyberdog_race/motion_ctrl.hpp"
+#include "cyberdog_race/control_parameter_request_lcmt.hpp"
+#include "cyberdog_race/control_parameter_respones_lcmt.hpp"
 #include <cstring>
 #include <thread>
 
-MotionCtrl::MotionCtrl() : ctrl_lcm_("udpm://239.255.76.67:7671?ttl=255") {
+MotionCtrl::MotionCtrl() : ctrl_lcm_("udpm://239.255.76.67:7671?ttl=255"),
+                          param_lcm_("udpm://239.255.76.67:7668?ttl=255") {
     memset(&gpad_, 0, sizeof(gpad_));
+    // 订阅参数设置响应（官方 cyberdog_app 同款：7668 上 interface_response）
+    param_lcm_.subscribe("interface_response", &MotionCtrl::on_param_response, this);
 }
 
 // NOTE: publish-then-reset 模式依赖 LCM 的同步发布语义（lcm_.publish 返回时数据已序列化完毕）。
@@ -158,6 +163,44 @@ void MotionCtrl::set_body_params_yaml(float roll, float pitch, float height) {
     p.vecxd_value[2] = height;
     yaml_pub_->publish(p);
     fprintf(stderr, "[MotionCtrl] set_body_params_yaml roll=%.2f pitch=%.2f h=%.2f\n", roll, pitch, height);
+}
+
+// ── 下发身躯参数走 LCM interface_request 通道 ──
+// ⚠ 2026-08-08 研究确认：真机参数通道在【端口 7668】（不是 7671！）
+//   - 官方 MiRoboticsLab/cyberdog_ros2 cyberdog_app.cpp getLcmUrl(): "udpm://239.255.76.67:7668"
+//     → offset_request->publish("interface_request", &request_)（control_parameter_request_lcmt）
+//   - RT 板运控 hardware_bridge.cpp:64 interface_lcm_r_(7668).subscribe("interface_request", ...)
+//     requestKind=3(kSET_USER_PARAM_BY_NAME) → user_control_parameters_->collection_.LookUp(name).Set()
+//   - des_roll_pitch_height 正是 user param → 改它 = 走路时 roll/pitch/身高 全部可调！
+// 消息: name[64] + requestNumber(单调递增) + value[96](3个double LE) + parameterKind=3 + requestKind=3
+void MotionCtrl::set_body_params_lcm(float roll, float pitch, float height) {
+    control_parameter_request_lcmt msg;
+    memset(&msg, 0, sizeof(msg));
+    strncpy((char*)msg.name, "des_roll_pitch_height", 63);
+    msg.requestNumber = ++param_seq_;           // 单调递增（每次 +1）
+    msg.parameterKind = 3;                      // ControlParameterValueKind::kVEC_X_DOUBLE
+    msg.requestKind   = 3;                      // ControlParameterRequestKind::kSET_USER_PARAM_BY_NAME
+    double v[3] = { (double)roll, (double)pitch, (double)height };
+    memcpy(msg.value, v, sizeof(v));
+    param_lcm_.publish("interface_request", &msg);   // ★ 7668 端口（之前发 7671 是错的）
+    // 收一下响应确认（非阻塞）
+    for (int i = 0; i < 50; i++) {
+        param_lcm_.handleTimeout(1);
+        if (param_resp_received_) break;
+    }
+    fprintf(stderr, "[MotionCtrl] set_body_params_lcm(7668 interface_request) %s roll=%.2f pitch=%.2f h=%.2f seq=%lld → %s\n",
+            msg.name, roll, pitch, height, (long long)msg.requestNumber,
+            param_resp_received_ ? "RT板ACK" : "无响应");
+    param_resp_received_ = false;
+}
+
+// ── interface_response 响应回调：确认 RT 板已设置参数 ──
+void MotionCtrl::on_param_response(const lcm::ReceiveBuffer*, const std::string&,
+                                   const control_parameter_respones_lcmt* msg) {
+    param_resp_received_ = true;
+    fprintf(stderr, "[MotionCtrl] interface_response ACK: name=%s seq=%lld kind=%d reqkind=%d\n",
+            (const char*)msg->name, (long long)msg->requestNumber,
+            (int)msg->parameterKind, (int)msg->requestKind);
 }
 
 // ── 真机官方动作触发（MotionResultCmd 服务） ──

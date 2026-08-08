@@ -315,20 +315,21 @@ void step_height_walk_test(MotionCtrl& motion, SensorData& sensor) {
 // 交替(201+303)与 des_roll_pitch_height 参数均失败：走路时 pitch 被速度控制器冲回 0。
 // 【2026-08-08 源码确认】仿真/真机同源 convex_mpc_loco_gaits.cpp:2305：
 //   rpy_cmd_[1] = ctrl_cmd_->rpy_des[1];   ← 走路时 pitch 目标直接读 303 命令的 rpy_des[1]!
-//   rpy_des_(1) = WrapRange(..., scale*min, scale*max)  ← TROT 默认 ±0.1rad(±5.7°)，速度越大范围越大
+//   rpy_des_(1) = WrapRange(..., scale*min, scale*max)  ← TROT 默认 ±0.1rad(±5.7°)，限位随速度负放大(x_effect_scale=-0.55)
 //   safety_checker: locomotion+大pitch 专门放行（只禁 lift error）
 // → 正确姿势：303 WALK 命令里直接带 rpy_des[1]=pitch（set_walk_velocity_pitch），20Hz 持续。
-// 反馈用 pitch_map(global_to_robot.rpy[1])：-0.20rad 会被夹到 ~-5.7° 起。
+// ⚠ 2026-08-08 二测：PITCH=-0.35 大命令 + SPEED=0.15 慢速(限位最宽) + 走 0.5m，看真机能到多大角度
+// 反馈用 pitch_map(global_to_robot.rpy[1])：-0.35rad 会被夹到 ~-5.7° 起（慢速 scale≈1）。
 void pitch_low_fwd_test(MotionCtrl& motion, SensorData& sensor) {
-    const float PITCH = -0.20f;   // 低头 0.20 rad（步态限位 ±0.1，会夹到 -5.7° 起）
-    const float SPEED = 0.2f;     // 前进 0.2 m/s
+    const float PITCH = -0.35f;   // 低头 0.35 rad（大步令，看真机限位实际能到多少）
+    const float SPEED = 0.15f;    // 慢速 0.15 m/s（pitch 限位随速度负放大，越慢范围越大）
     motion.stand();
     rclcpp::sleep_for(std::chrono::seconds(2));
     fprintf(stderr, "\033[1;35m[PitchFwd] 起点 pitch_map=%.1f°\033[0m\n",
             sensor.pitch_map * 180.0f / M_PI);
 
     // ── A) 单独低头 2s：验证 201 低头本身正常 ──
-    fprintf(stderr, "\033[1;36m[PitchFwd] A) set_body_pitch(-0.20) 2s 低头\033[0m\n");
+    fprintf(stderr, "\033[1;36m[PitchFwd] A) set_body_pitch(-0.35) 2s 低头\033[0m\n");
     for (int i = 0; i < 100; i++) {
         motion.set_body_pitch(PITCH);
         if (i % 25 == 0)
@@ -337,12 +338,12 @@ void pitch_low_fwd_test(MotionCtrl& motion, SensorData& sensor) {
     }
     motion.stop();
 
-    // ── B) 303 WALK 直接带 rpy_des[1]=pitch 前进，走满 0.3m（odom闭环） ──
+    // ── B) 303 WALK 直接带 rpy_des[1]=pitch 前进，走满 0.5m（odom闭环） ──
     // 步态控制器读 ctrl_cmd_->rpy_des[1] 当 pitch 目标（convex_mpc_loco_gaits.cpp:2305）
-    const float TARGET_DIST = 0.3f;
+    const float TARGET_DIST = 0.5f;
     float sx = sensor.odom_x, sy = sensor.odom_y;
     float traveled = 0.0f;
-    int timeout = 1000;   // 20s 超时保护
+    int timeout = 1500;   // 30s 超时保护（慢速）
     fprintf(stderr, "\033[1;36m[PitchFwd] B) 303带rpy_des[1]=%.2f + 前进 走满 %.1fm\033[0m\n",
             PITCH, TARGET_DIST);
     while (traveled < TARGET_DIST && timeout-- > 0) {
@@ -371,16 +372,16 @@ void pitch_low_fwd_test(MotionCtrl& motion, SensorData& sensor) {
 }
 
 // ── roll 走路保持侧倾（身躯姿态变化 + 前进组合，test18） ──
-// 【2026-08-08 上机 + 源码排查结论】
-// - ❌ des_roll_pitch_height YamlParam：真机没有任何节点订阅 yaml_parameter（已逐一验证），死通道
-// - ⚠ 官方 locomotion 设计：roll 不走命令（rpy_cmd_scale=[0,1,0] 只有 pitch 启用，
-//   command_interface.cpp:526 走路时 rpy_des[0] 强制归零），roll 走路只能靠用户参数（真机不可改）
-// → 本测试一次跑两条未验证路径：
-//   B1) 303 WALK 带 rpy_des[0]=roll（真机实现可能不同于仿真，试试）
-//   B2) 201 力控带 rpy_des[0]=roll + vel_des 前进（姿态模式直接带速度）
+// 【2026-08-08 排查 → LCM 参数通道打通方案】
+// - ❌ des_roll_pitch_height YamlParam(ROS topic)：真机无节点订阅 yaml_parameter，死通道
+// - ❌ 303+rpy_des[0]：走路时 roll 命令通道关闭（运控只启用 pitch），冲回0
+// - ❌ 201+rpy_des[0]+vel_des：201 忽略 vel_des，姿态能保持但不走
+// - ✅ 【本方案】LCM interface_request 通道（control_parameter_request_lcmt, kSET_USER_PARAM_BY_NAME）
+//   直接改 RT 板运控 user_params des_roll_pitch_height[0] → 走路时 roll 保持（convex_mpc_loco_gaits.cpp:2304
+//   走路时 rpy_des_(0)=user_params_->des_roll_pitch_height[0]，正是这个参数！）
 // 反馈用 roll_map(global_to_robot.rpy[0])。
 void roll_walk_test(MotionCtrl& motion, SensorData& sensor) {
-    const float ROLL = 0.52f;    // 侧倾 0.52 rad ≈ 30°（用户要求看 30°）
+    const float ROLL = 0.52f;    // 侧倾 0.52 rad ≈ 30°
     const float SPEED = 0.2f;    // 前进 0.2 m/s
     const float TARGET_DIST = 0.3f;
     motion.stand();
@@ -398,38 +399,30 @@ void roll_walk_test(MotionCtrl& motion, SensorData& sensor) {
     }
     motion.stop();
 
-    // 走一段的公共 lambda：按给定发命令回调跑满 TARGET_DIST，返回实际距离
-    auto walk_phase = [&](const char* tag, const std::function<void()>& send_cmd) {
-        float sx = sensor.odom_x, sy = sensor.odom_y;
-        float traveled = 0.0f;
-        int timeout = 1000;   // 20s 超时保护
-        fprintf(stderr, "\033[1;36m[RollWalk] %s 走满 %.1fm\033[0m\n", tag, TARGET_DIST);
-        while (traveled < TARGET_DIST && timeout-- > 0) {
-            send_cmd();
-            if (timeout % 10 == 0)
-                fprintf(stderr, "    roll_map=%.1f° 走%.3fm\n",
-                        sensor.roll_map * 180.0f / M_PI, traveled);
-            rclcpp::sleep_for(std::chrono::milliseconds(20));
-            float dx = sensor.odom_x - sx, dy = sensor.odom_y - sy;
-            traveled = std::sqrt(dx*dx + dy*dy);
-        }
-        motion.stop();
-        fprintf(stderr, "\033[1;32m[RollWalk] %s 走满 %.3fm, roll_map=%.1f° → %s\033[0m\n",
-                tag, traveled, sensor.roll_map * 180.0f / M_PI,
-                sensor.roll_map > 0.10f ? "侧倾保持!" : "未保持");
-        return traveled;
-    };
+    // ── B) LCM interface_request 设 des_roll_pitch_height=[roll,0,0.25] + 303 前进 ──
+    // RT 板运控 user_params 被直接改写 → 走路时 roll 目标 = 0.52（convex_mpc 直读该参数）
+    float sx = sensor.odom_x, sy = sensor.odom_y;
+    float traveled = 0.0f;
+    int timeout = 1000;   // 20s 超时保护
+    fprintf(stderr, "\033[1;36m[RollWalk] B) LCM参数 roll=0.52 + 303前进 走满 %.1fm\033[0m\n", TARGET_DIST);
+    motion.set_body_params_lcm(ROLL, 0.0f, 0.25f);   // LCM 直改 RT 板用户参数（走路时保持）
+    while (traveled < TARGET_DIST && timeout-- > 0) {
+        motion.set_walk_velocity(SPEED, 0, 0);   // 303 前进（roll 靠 LCM 参数保持）
+        if (timeout % 10 == 0)
+            fprintf(stderr, "    roll_map=%.1f° 走%.3fm\n",
+                    sensor.roll_map * 180.0f / M_PI, traveled);
+        rclcpp::sleep_for(std::chrono::milliseconds(20));
+        float dx = sensor.odom_x - sx, dy = sensor.odom_y - sy;
+        traveled = std::sqrt(dx*dx + dy*dy);
+    }
+    motion.stop();
+    fprintf(stderr, "\033[1;32m[RollWalk] B) 走满 %.3fm, roll_map=%.1f° → %s\033[0m\n",
+            traveled, sensor.roll_map * 180.0f / M_PI,
+            sensor.roll_map > 0.10f ? "LCM参数侧倾保持!" : "LCM参数未生效");
 
-    // ── B1) 303 WALK 带 rpy_des[0]=roll 前进（像 pitch 那样直接塞命令） ──
-    walk_phase("B1) 303带rpy_des[0]=roll + 前进",
-               [&]{ motion.set_walk_velocity_rpy(SPEED, 0, 0, ROLL, 0.0f); });
-
-    // ── B2) 201 力控带 rpy_des[0]=roll + vel_des 前进 ──
-    walk_phase("B2) 201带rpy_des[0]=roll+vel_des 前进",
-               [&]{ motion.set_body_rpy_velocity(ROLL, 0.0f, SPEED, 0, 0); });
-
-    // ── C) 回正 + 停 ──
-    fprintf(stderr, "\033[1;36m[RollWalk] C) 回正 1s\033[0m\n");
+    // ── C) LCM 参数回正 + 停 ──
+    fprintf(stderr, "\033[1;36m[RollWalk] C) LCM参数回正 roll=0 pitch=0 h=0.25 1s\033[0m\n");
+    motion.set_body_params_lcm(0.0f, 0.0f, 0.25f);
     for (int i = 0; i < 50; i++) {
         motion.set_body_roll(0.0f);
         rclcpp::sleep_for(std::chrono::milliseconds(20));

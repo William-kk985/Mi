@@ -305,8 +305,8 @@ ROS2 订阅回调 → 测试期间 TOF/超声/LiDAR 实时可读（以前同步�
 | 14 | 相对转向90° | `turn_angle_test` | abs_yaw闭环，+0.6=左转 | 真机 ✅ 误差~2.4° |
 | 15 | 绝对转向90° | `abs_turn_test` | 地图绝对朝向闭环，双向选最近 | 真机 ✅ 误差~2.5° |
 | 16 | 步高标定 | `step_height_walk_test` | LCM set_step_height 打包毫米，0.10/0.15/0.20 | 真机 ✅ 0.15基准 |
-| 17 | 低头前进 | `pitch_low_fwd_test` | 303 WALK 带 rpy_des[1]=pitch + 前进0.3m | 真机 ✅ 低头保持~-5° |
-| 18 | roll走路侧倾 | `roll_walk_test` | 303带roll/201带速度/参数 三路全试 | 真机 ❌ 走路roll无法保持 |
+| 17 | 低头前进 | `pitch_low_fwd_test` | 303 WALK 带 rpy_des[1]=pitch + 前进 | 真机 ✅ -5.3°走满0.5m（步态硬限±5.7°，大命令无效） |
+| 18 | roll走路侧倾 | `roll_walk_test` | LCM 7668 interface_request 设 des_roll_pitch_height[0] + 前进 | 真机 ✅ 28°保持走满0.3m |
 
 ### 真机验证要点（2026-08-07~08）
 
@@ -320,8 +320,14 @@ ROS2 订阅回调 → 测试期间 TOF/超声/LiDAR 实时可读（以前同步�
 - **走路时保持姿态（#17, 2026-08-08 真机验证）**：⚠ 交替发 201+303 / `des_roll_pitch_height` YamlParam
   **都无效**（走路时 pitch 被速度控制器冲回 0）。**正确姿势：303 WALK 命令直接带 `rpy_des[1]=pitch`**
   （`set_walk_velocity_pitch`），20Hz 持续。仿真/真机同源 `convex_mpc_loco_gaits.cpp:2305` 走路时
-  `rpy_cmd_[1] = ctrl_cmd_->rpy_des[1]`；TROT 默认 pitch 限位 ±0.1rad（±5.7°），速度越大范围越大；
-  实测低头 -0.20 命令 → 全程保持 -4.9°~-6.8° 走满 0.3m。Stage5 过桥低头前进用它
+  `rpy_cmd_[1] = ctrl_cmd_->rpy_des[1]`；TROT 默认 pitch 限位 ±0.1rad（±5.7°），速度越大范围越小
+  （x_effect_scale=-0.55 负放大）；实测低头 -0.35 命令 → 被硬夹 **-5.3°** 走满 0.5m
+- **★ 走路时 roll/身高/大pitch 全可控 — LCM 7668 官方参数通道（2026-08-08 打通）**：
+  ⚠ yaml_parameter ROS topic 真机死（无订阅者）；`interface_request` 必须在【端口 7668】发
+  （官方 MiRoboticsLab/cyberdog_ros2 cyberdog_app.cpp 同款，发 7671 不响应）。
+  `set_body_params_lcm(roll,pitch,height)` 发 control_parameter_request_lcmt（requestKind=3 设 user param
+  des_roll_pitch_height）→ RT 板 ACK + 走路时 roll 保持（test18 实测 28°走满0.3m）。
+  Stage5 倾斜桥：上桥 set_body_params_lcm(roll,0,0.25) + 303 慢速，下桥回正
 - **走路时保持 roll（#18, 2026-08-08 真机定论）❌ 做不到**：三条路全死——① `yaml_parameter` topic
   真机无任何订阅者（逐一查 NX 全部节点）；② 303 带 `rpy_des[0]=roll` 被冲回 0°（固件只开 pitch 通道，
   `rpy_cmd_scale=[0,1,0]`）；③ 201 力控能保持 25° 但 vel_des 被忽略一步不走。**过桥若需侧倾只能分段**

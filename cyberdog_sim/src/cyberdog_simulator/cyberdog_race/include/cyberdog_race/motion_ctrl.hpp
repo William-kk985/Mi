@@ -2,6 +2,8 @@
 #include <lcm/lcm-cpp.hpp>
 #include "cyberdog_race/gamepad_lcmt.hpp"
 #include "robot_control_cmd_lcmt.hpp"
+#include "cyberdog_race/control_parameter_request_lcmt.hpp"
+#include "cyberdog_race/control_parameter_respones_lcmt.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 #include <cyberdog_msg/msg/yaml_param.hpp>
@@ -69,6 +71,12 @@ public:
     void attach_yaml_pub(rclcpp::Publisher<cyberdog_msg::msg::YamlParam>::SharedPtr pub);
     // 下发身躯参数：roll/pitch/身高（des_roll_pitch_height, 真机走路时姿态可能靠它保持）
     void set_body_params_yaml(float roll, float pitch, float height);
+    // 下发身躯参数走【LCM interface_request 通道】（control_parameter_request_lcmt, kSET_USER_PARAM_BY_NAME）
+    // ⚠ 2026-08-08 发现：真机 yaml_parameter ROS topic 无订阅者（死通道），但运控有 LCM 参数通道
+    //   （hardware_bridge.cpp:64 interface_lcm_r_.subscribe("interface_request", ...)
+    //     → kSET_USER_PARAM_BY_NAME 分支 LookUp(name).Set()，des_roll_pitch_height 正是 user param）
+    //   绕开死 ROS topic，直接改 RT 板运控 user params → 走路时 roll 保持！
+    void set_body_params_lcm(float roll, float pitch, float height);
 
 #ifdef REAL_DOG
     // 挂载 CyberDog2 motion_servo_cmd 发布器（RaceController 构造中调用）
@@ -106,11 +114,17 @@ public:
 private:
     lcm::LCM              lcm_;           // 7667端口，gamepad
     lcm::LCM              ctrl_lcm_;      // 7671端口，robot_control_cmd (也用于7670订阅响应)
+    lcm::LCM              param_lcm_;     // 7668端口，interface_request 控制参数通道（官方 cyberdog_app 同款）
     gamepad_lcmt          gpad_;
     robot_control_cmd_lcmt lcm_cmd_;
     int                   lcm_life_{0};
+    int64_t               param_seq_{0};  // interface_request 参数请求序号（单调递增）
+    bool                  param_resp_received_{false};  // interface_response 已收到
     void pub_gamepad();
     void pub_lcm_cmd();
+    // interface_response 响应回调（确认 RT 板收到参数设置）
+    void on_param_response(const lcm::ReceiveBuffer*, const std::string&,
+                           const control_parameter_respones_lcmt* msg);
 
 #ifdef REAL_DOG
     // CyberDog2 官方姿态控制发布器（motion_servo_cmd, motion_id=201）
