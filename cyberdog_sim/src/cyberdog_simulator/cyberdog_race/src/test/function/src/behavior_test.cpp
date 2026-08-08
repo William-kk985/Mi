@@ -26,6 +26,7 @@ void run_test(MotionCtrl& motion, SensorData& sensor, int test_id) {
         case 14: turn_angle_test(motion, sensor);      break;
         case 15: abs_turn_test(motion, sensor);        break;
         case 16: step_height_walk_test(motion, sensor); break;
+        case 17: pitch_low_fwd_test(motion, sensor);   break;
         default:
             fprintf(stderr, "\033[1;31m[BehaviorTest] Unknown #%d\033[0m\n", test_id);
             break;
@@ -306,6 +307,55 @@ void step_height_walk_test(MotionCtrl& motion, SensorData& sensor) {
     walk("C)0.15m(基准)", 0.15f);
     walk("D)0.20m", 0.20f);
     fprintf(stderr, "\033[1;32m[StepH] 完成\033[0m\n");
+}
+
+// ── 低头前进（身躯姿态变化 + 前进组合，test17） ──
+// 之前测过单命令方案都不行：303+rpy(走路pitch复位)、201+vel(201不吃速度)。
+// 本测试试【交替发 201(低头) + 303(前进)】：20ms 轮流，看低头在走路时能否保持。
+// 反馈用 pitch_map(global_to_robot.rpy[1])：低头应 ~-11.5°(-0.20rad)，若走路时归 0 则没保持。
+void pitch_low_fwd_test(MotionCtrl& motion, SensorData& sensor) {
+    const float PITCH = -0.20f;   // 低头 0.20 rad
+    const float SPEED = 0.2f;     // 前进 0.2 m/s
+    motion.stand();
+    rclcpp::sleep_for(std::chrono::seconds(2));
+    fprintf(stderr, "\033[1;35m[PitchFwd] 起点 pitch_map=%.1f°\033[0m\n",
+            sensor.pitch_map * 180.0f / M_PI);
+
+    // ── A) 单独低头 2s：验证 201 低头本身正常 ──
+    fprintf(stderr, "\033[1;36m[PitchFwd] A) set_body_pitch(-0.20) 2s 低头\033[0m\n");
+    for (int i = 0; i < 100; i++) {
+        motion.set_body_pitch(PITCH);
+        if (i % 25 == 0)
+            fprintf(stderr, "    t=%.1fs pitch_map=%.1f°\n", i * 0.02f, sensor.pitch_map * 180.0f / M_PI);
+        rclcpp::sleep_for(std::chrono::milliseconds(20));
+    }
+    motion.stop();
+
+    // ── B) 交替 201低头 + 303前进 1.5s：低头能否边前进边保持 ──
+    float sx = sensor.odom_x, sy = sensor.odom_y;
+    fprintf(stderr, "\033[1;36m[PitchFwd] B) 交替 201低头 + 303前进 1.5s\033[0m\n");
+    for (int i = 0; i < 150; i++) {
+        if (i % 2 == 0) motion.set_body_pitch(PITCH);            // 201 低头
+        else            motion.set_walk_velocity(SPEED, 0, 0);   // 303 前进
+        if (i % 15 == 0)
+            fprintf(stderr, "    t=%.2fs pitch_map=%.1f°\n", i * 0.01f, sensor.pitch_map * 180.0f / M_PI);
+        rclcpp::sleep_for(std::chrono::milliseconds(10));
+    }
+    motion.stop();
+    float d = std::sqrt((sensor.odom_x-sx)*(sensor.odom_x-sx) + (sensor.odom_y-sy)*(sensor.odom_y-sy));
+    fprintf(stderr, "\033[1;32m[PitchFwd] B) 走了 %.3fm, pitch_map=%.1f° → %s\033[0m\n",
+            d, sensor.pitch_map * 180.0f / M_PI,
+            sensor.pitch_map < -0.05f ? "低头保持!" : "低头掉了(没保持)");
+
+    // ── C) 回正 + 停 ──
+    fprintf(stderr, "\033[1;36m[PitchFwd] C) 回正 pitch=0 1s\033[0m\n");
+    for (int i = 0; i < 50; i++) {
+        motion.set_body_pitch(0.0f);
+        rclcpp::sleep_for(std::chrono::milliseconds(20));
+    }
+    motion.stop();
+    fprintf(stderr, "\033[1;32m[PitchFwd] 完成, pitch_map=%.1f°\033[0m\n",
+            sensor.pitch_map * 180.0f / M_PI);
 }
 
 // ── RGB 实时预览（DEBUG_VISION 弹窗，按 ESC 退出） ──
