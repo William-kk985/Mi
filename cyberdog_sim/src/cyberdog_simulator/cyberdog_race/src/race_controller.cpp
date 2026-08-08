@@ -106,6 +106,8 @@ RaceController::RaceController() : Node("race_controller") {
     motion_.attach_motion_servo_pub(this);
     // 挂载 MotionResultCmd 服务客户端（跳跃/站立/趴下官方动作）
     motion_.attach_motion_result_client(this);
+    // 挂载 yaml_parameter 发布器（des_roll_pitch_height 赛段姿态参数）
+    motion_.attach_yaml_pub(yaml_pub_);
 #endif
 
 #if defined(DEBUG_TEST_BEHAVIOR) && (TEST_BEHAVIOR == 9 || TEST_BEHAVIOR == 10)

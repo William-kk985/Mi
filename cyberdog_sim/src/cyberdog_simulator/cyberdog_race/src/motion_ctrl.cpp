@@ -138,6 +138,28 @@ void MotionCtrl::attach_motion_result_client(rclcpp::Node* node) {
                 ROBOT_NS "/motion_result_cmd");
 }
 
+void MotionCtrl::attach_yaml_pub(rclcpp::Publisher<cyberdog_msg::msg::YamlParam>::SharedPtr pub) {
+    yaml_pub_ = pub;
+}
+
+// ── 下发身躯参数（des_roll_pitch_height） ──
+// ⚠ 赛段机制：真机走路时 roll/pitch/身高 靠 yaml_parameter 参数保持（非伺服命令，不会被 303 冲掉）
+//   与 race_controller apply_stage_params 同款：kind=3, vecxd_value=[roll, pitch, height]
+void MotionCtrl::set_body_params_yaml(float roll, float pitch, float height) {
+    if (!yaml_pub_) {
+        fprintf(stderr, "[MotionCtrl] set_body_params_yaml: yaml_pub_ 未挂载(attach_yaml_pub)\n");
+        return;
+    }
+    cyberdog_msg::msg::YamlParam p;
+    p.name = "des_roll_pitch_height";
+    p.kind = 3; p.is_user = 1;
+    p.vecxd_value[0] = roll;
+    p.vecxd_value[1] = pitch;
+    p.vecxd_value[2] = height;
+    yaml_pub_->publish(p);
+    fprintf(stderr, "[MotionCtrl] set_body_params_yaml roll=%.2f pitch=%.2f h=%.2f\n", roll, pitch, height);
+}
+
 // ── 真机官方动作触发（MotionResultCmd 服务） ──
 //   motion_id: 111=站立 101=趴下 133=前跳30cm 132=前跳60cm ...
 void MotionCtrl::send_result_cmd(int motion_id) {

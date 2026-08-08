@@ -3,8 +3,9 @@
 #include "cyberdog_race/gamepad_lcmt.hpp"
 #include "robot_control_cmd_lcmt.hpp"
 
-#ifdef REAL_DOG
 #include <rclcpp/rclcpp.hpp>
+#include <cyberdog_msg/msg/yaml_param.hpp>
+#ifdef REAL_DOG
 #include <protocol/msg/motion_servo_cmd.hpp>
 #include <protocol/srv/motion_result_cmd.hpp>
 #endif
@@ -59,6 +60,10 @@ public:
     void jump_forward(float dist);
     // 真机官方动作触发（MotionResultCmd 服务）：111=站立 101=趴下 133=前跳30cm 132=前跳60cm
     void send_result_cmd(int motion_id);
+    // 挂载 yaml_parameter 发布器（赛段姿态参数 des_roll_pitch_height，走路时保持姿态用）
+    void attach_yaml_pub(rclcpp::Publisher<cyberdog_msg::msg::YamlParam>::SharedPtr pub);
+    // 下发身躯参数：roll/pitch/身高（des_roll_pitch_height, 真机走路时姿态可能靠它保持）
+    void set_body_params_yaml(float roll, float pitch, float height);
 
 #ifdef REAL_DOG
     // 挂载 CyberDog2 motion_servo_cmd 发布器（RaceController 构造中调用）
@@ -107,6 +112,8 @@ private:
     rclcpp::Publisher<protocol::msg::MotionServoCmd>::SharedPtr motion_servo_pub_;
     // MotionResultCmd 服务客户端（跳跃/站立/趴下官方动作）
     rclcpp::Client<protocol::srv::MotionResultCmd>::SharedPtr motion_result_client_;
+    // yaml_parameter 发布器（赛段姿态参数）
+    rclcpp::Publisher<cyberdog_msg::msg::YamlParam>::SharedPtr yaml_pub_;
 #endif
 
     // ═══ TODO: 电机温度监控（需 danger_states_lcmt.hpp，lcm-gen -x 生成） ═══
