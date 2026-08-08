@@ -266,6 +266,63 @@ colcon build --cmake-args -DUSE_TEST_ALL=ON
 
 ---
 
+## 🧪 行为测试（TEST_BEHAVIOR 1~16）
+
+> 独立测试单个动作/算法，定义后替代正常状态机（`control_loop` 只跑测试）。
+> 入口：`src/test/function/src/behavior_test.cpp` 的 `run_test()`。
+
+### 启用方式（`debug_config.hpp`）
+
+```cpp
+#define DEBUG_TEST_BEHAVIOR      // 开启测试模式
+#define TEST_BEHAVIOR 11         // 选择测试编号
+```
+
+⚠ **测试完必须注释回**（`// #define DEBUG_TEST_BEHAVIOR`），否则：
+- 遥测冻结在启动快照（TOF 卡 0.66、超声卡 0）
+- 正式赛段状态机不跑
+
+⚠ **2026-08-08 修复**：测试在**独立线程**运行（`std::thread`），主线程 `spin` 继续派发
+ROS2 订阅回调 → 测试期间 TOF/超声/LiDAR 实时可读（以前同步跑会卡死单线程执行器，传感器全冻）。
+
+### 测试清单
+
+| # | 名称 | 函数 | 动作 | 状态 |
+|---|---|---|---|---|
+| 1 | 跳跃 | `jump_test` | 旧 LCM JUMP_3D ×3 | 仿真 |
+| 2 | 扫描找球 | `scan_ball_test` | 左右转找球（旧 set_velocity） | 仿真 |
+| 3 | 蹲下 | `crouch_test` | 占位（看 apply_stage_params） | — |
+| 4 | 路径点导航 | `navigate_test` | 走到 (2,3)（旧 set_velocity） | 仿真 |
+| 5 | 原地转向 | `turn_test` | 旧 set_velocity yaw 2s | 仿真 |
+| 6 | 起立趴下 | `stand_lie_test` | stand/locomotion/lie_down | 真机 ✅ |
+| 7 | 俯仰角 | `pitch_test` | 低头-0.26→回正→抬头+0.26（201） | 真机 ✅ |
+| 8 | 步高(旧) | `step_height_test` | 旧 `set_step_height`（米，真机无效） | ⚠ 弃用 |
+| 9 | 传感器检查 | `sensor_check_test` | 5s 后快照打印各传感器 | 真机 ✅ |
+| 10 | RGB预览 | `rgb_view_test` | cv::imshow 弹窗（DEBUG_VISION） | — |
+| 11 | 原地踏步 | `march_in_place_test` | 303 vel=0 踏步5s | 真机 ✅ |
+| 12 | 前进 | `forward_test` | odom闭环前进0.5m @0.3m/s | 真机 ✅ |
+| 13 | 前跳30cm | `jump30_test` | ServoCmd 133（30帧@50ms） | 真机 ✅ |
+| 14 | 相对转向90° | `turn_angle_test` | abs_yaw闭环，+0.6=左转 | 真机 ✅ 误差~2.4° |
+| 15 | 绝对转向90° | `abs_turn_test` | 地图绝对朝向闭环，双向选最近 | 真机 ✅ 误差~2.5° |
+| 16 | 步高标定 | `step_height_walk_test` | LCM set_step_height 打包毫米，0.10/0.15/0.20 | 真机 ✅ 0.15基准 |
+
+### 真机验证要点（2026-08-07~08）
+
+- **转向反馈用 `abs_yaw`（global_to_robot.rpy[2]）**，⚠ 真机 IMU yaw 恒 0（realsense 融合死），别用 `sensor_.yaw`
+- **跳跃走 ServoCmd（133/132）**，❌ MotionResultCmd 会报 `Command 133 not valid`
+- **站立/趴下走 MotionResultCmd（111/101）**，❌ 旧 gamepad LCM 真机无效
+- **步高（#16）**：真机只认 LCM `robot_control_cmd`(7671) + **打包毫米**编码（`0.15→150150`），
+  ⚠ 303 的 `motion_servo_cmd.step_height` 真机忽略（详见「步高控制」节）；0.15 为稳定基准，0.25 会不稳
+- **4腿TOF测抬升**：`sensor.tof_elev_max` = 抬腿峰值（TOF 在四条腿上测 elevation，protocol 注释确认），
+  用于量化步高/步态；`sensor.tof_clearance` = 脚着地基线
+
+### 常见坑
+
+- 测试期间传感器实时性靠"独立线程"修复（见上），若 TOF 又卡 0.66 先查测试是否同步跑
+- `debug_config.hpp` 里 TEST_BEHAVIOR 的注释只列到 11，实际已有 1~16（以 `run_test()` 的 switch 为准）
+
+---
+
 ## 如何添加一个新赛段
 
 1. `stages/virtual/stageN.hpp` 继承 `StageBase`，实现 `init/run/is_done`
