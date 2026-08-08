@@ -280,11 +280,11 @@ void step_height_walk_test(MotionCtrl& motion, SensorData& sensor) {
                 t_min, n_avail, (int)sensor.tof_msg_received);
     }
 
-    auto march = [&](const char* tag, float step_h) {
+    auto march = [&](const char* tag, float step_h_raw) {
         sensor.tof_elev_max = 0.0f;   // 清零抬腿峰值追踪（本段）
-        fprintf(stderr, "\033[1;36m[StepH] %s 步高=%.2f 原地踏步1.5s(全新起步)\033[0m\n", tag, step_h);
+        fprintf(stderr, "\033[1;36m[StepH] %s step_height=%.0f 原地踏步1.5s(全新起步)\033[0m\n", tag, step_h_raw);
         for (int i = 0; i < 75; i++) {
-            motion.set_walk_velocity_step(0.0f, 0.0f, 0.0f, step_h);   // 原地踏步+步高(起步即用)
+            motion.set_walk_velocity_step_raw(0.0f, 0.0f, 0.0f, step_h_raw);   // 步高原始值直通
             if (i % 10 == 0)
                 fprintf(stderr, "    t=%.2fs tof=%.3f elev_max=%.3f body_h=%.3f\n",
                         i * 0.02f, sensor.tof_clearance, sensor.tof_elev_max, sensor.body_height);
@@ -292,13 +292,16 @@ void step_height_walk_test(MotionCtrl& motion, SensorData& sensor) {
         }
         motion.stop();                 // 完全停 → 下一段重新起步
         rclcpp::sleep_for(std::chrono::milliseconds(300));
-        fprintf(stderr, "\033[1;32m[StepH] %s 步高=%.2f: elev_max=%.3f (msg=%d)\033[0m\n",
-                tag, step_h, sensor.tof_elev_max, (int)sensor.tof_msg_received);
+        fprintf(stderr, "\033[1;32m[StepH] %s: elev_max=%.3f (msg=%d)\033[0m\n",
+                tag, sensor.tof_elev_max, (int)sensor.tof_msg_received);
     };
 
-    march("A)低抬腿", 0.05f);
-    march("B)高抬腿", 0.25f);
-    march("C)默认", 0.15f);
+    // 三种编码（都意图 0.05m / 0.25m）：米 / 毫米 / 打包毫米(前后腿各250mm)
+    march("A)米0.05", 0.05f);
+    march("B)米0.25", 0.25f);
+    march("C)mm50",   50.0f);
+    march("D)mm250",  250.0f);
+    march("E)打包250250", 250250.0f);
     fprintf(stderr, "\033[1;32m[StepH] 完成\033[0m\n");
 }
 

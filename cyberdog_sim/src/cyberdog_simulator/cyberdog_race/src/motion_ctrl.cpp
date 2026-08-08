@@ -242,6 +242,30 @@ void MotionCtrl::set_walk_velocity_step(float x, float y, float yaw, float step_
 #endif
 }
 
+// ── 步高原始值直通（不clamp，排查编码） ──
+// 仿真控制器解码：step_height_cmd = (int)step_height % 1000 * 1e-3
+//   → 若真机透传该字段，米(0.25)会被 (int) 截成 0，毫米(250)才能得到 0.25m
+void MotionCtrl::set_walk_velocity_step_raw(float x, float y, float yaw, float step_h_raw) {
+#ifdef REAL_DOG
+    if (!motion_servo_pub_) {
+        fprintf(stderr, "[MotionCtrl] set_walk_velocity_step_raw: 发布器未挂载(attach_motion_servo_pub)\n");
+        return;
+    }
+    protocol::msg::MotionServoCmd cmd;
+    cmd.motion_id   = 303;   // MotionID::WALK_USERTROT
+    cmd.cmd_type    = 1;     // SERVO_DATA
+    cmd.cmd_source  = -1;    // DEBUG 最高优先级
+    cmd.value       = 0;
+    cmd.vel_des     = {x, y, yaw};
+    cmd.rpy_des     = {0.0f, 0.0f, 0.0f};
+    cmd.pos_des     = {0.0f, 0.0f, 0.235f};
+    cmd.step_height = {step_h_raw, step_h_raw};   // 原始值直通
+    motion_servo_pub_->publish(cmd);
+#else
+    set_velocity(x, y, yaw);
+#endif
+}
+
 // ── 真机带俯仰姿态行走（303 + rpy_des[1]=pitch） ──
 // ⚠ 官方 motion_teleop 只设 vel_des；此处尝试行走时同时保持机身俯仰（抬头/低头）
 //   需 ~20Hz 持续发布。能否生效上机验证（2026-08-08）
