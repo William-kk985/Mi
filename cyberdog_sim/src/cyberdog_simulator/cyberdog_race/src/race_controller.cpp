@@ -284,13 +284,23 @@ void RaceController::control_loop() {
     if (++telem_render_counter_ >= 20) { telem_render_counter_ = 0; render_telemetry_frame(); }
 #endif
     // 行为测试模式：替代正常赛段
-    // ⚠ 2026-08-08 修复：原来同步跑会卡死单线程执行器 → 测试期间 ROS2 订阅回调
+    // ⚠ 2026-08-08 修复①：原来同步跑会卡死单线程执行器 → 测试期间 ROS2 订阅回调
     //   （TOF/超声/LiDAR/相机）全部冻结（tof 恒 0.66 默认值）。改用独立线程跑测试，
     //   主线程 spin 继续派发回调，测试内可正常读 TOF/超声量化（LCM odom 一直独立）。
+    // ⚠ 2026-08-08 修复②：真机把步高截到 step_height_max（默认~0.08，仿真 convex_mpc
+    //   同款），不发 user 参数时 0.25 步高被截 → 0.05/0.25 无差别。测试前先拉高上限。
 #ifdef DEBUG_TEST_BEHAVIOR
     static bool test_ran = false;
     if (!test_ran) {
         test_ran = true;
+        if (yaml_pub_) {
+            cyberdog_msg::msg::YamlParam p;
+            p.name = "step_height_max";
+            p.kind = 1; p.is_user = 1;
+            p.double_value = 0.30f;   // 步高上限拉到 0.30，测试步高 0.25 不被截
+            yaml_pub_->publish(p);
+            RCLCPP_WARN(get_logger(), "[Test] step_height_max 已拉高到 0.30");
+        }
         std::thread([this]() {
             behavior::run_test(motion_, sensor_, TEST_BEHAVIOR);
             motion_.stop();
