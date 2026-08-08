@@ -67,6 +67,10 @@ public:
     void attach_motion_result_client(rclcpp::Node* node);
 #endif
 
+    // 步高原始值直通（无 clamp，走 LCM robot_control_cmd 7671）——test8 方式：起步前设一次
+    // 仿真控制器解码 (int)%1000*1e-3，疑似期望毫米/打包格式；0.20米会被 (int) 截成 0
+    void set_step_height_raw(float left, float right);
+
     // 模式切换
     void stand();        // QP站立
     void locomotion();   // 行走模式

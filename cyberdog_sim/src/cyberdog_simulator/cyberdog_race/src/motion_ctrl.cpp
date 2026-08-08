@@ -381,3 +381,14 @@ void MotionCtrl::set_step_height(float left, float right) {
     lcm_cmd_.step_height[1] = right_clamped;
     ctrl_lcm_.publish("robot_control_cmd", &lcm_cmd_);  // P2 fix: 与其他 robot_control_cmd 统一用 7671 端口
 }
+
+// ── 步高原始值直通（无clamp，test8 方式：起步前设一次） ──
+// ⚠ 走 LCM robot_control_cmd(7671)，README 确认真机 motion_manager 会收此通道（mode=21→303 映射）
+//   仿真控制器解码 (int)%1000*1e-3 → 疑似期望毫米(200=0.2m)/打包(200200)而非米(0.2→0)
+void MotionCtrl::set_step_height_raw(float left, float right) {
+    memset(&lcm_cmd_, 0, sizeof(lcm_cmd_));
+    lcm_cmd_.step_height[0] = left;
+    lcm_cmd_.step_height[1] = right;
+    ctrl_lcm_.publish("robot_control_cmd", &lcm_cmd_);
+    fprintf(stderr, "[MotionCtrl] set_step_height_raw(%.0f, %.0f) → LCM robot_control_cmd\n", left, right);
+}
