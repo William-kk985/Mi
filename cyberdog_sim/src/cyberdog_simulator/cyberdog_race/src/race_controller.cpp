@@ -590,32 +590,42 @@ void RaceController::on_d435_infra2(sensor_msgs::msg::Image::SharedPtr msg) {
 #ifdef REAL_DOG
 // ── TOF 头×2 高程（8x8=64点, 单位m, 取最低点 → tof_clearance） ──
 void RaceController::on_tof_head(protocol::msg::HeadTofPayload::SharedPtr msg) {
-    float min_h = 0.66f;
+    float min_h = 0.66f, max_h = 0.0f;
     bool  avail = false;
     sensor_.tof_msg_received = true;   // 收到消息即记（无论data_available）
     for (const auto* tof : {&msg->left_head, &msg->right_head}) {
         if (!tof->data_available) continue;
         avail = true;
-        for (float v : tof->data) if (v > 0.001f && v < min_h) min_h = v;
+        for (float v : tof->data) {
+            if (v <= 0.001f) continue;
+            if (v < min_h) min_h = v;   // 最低点=脚着地基线
+            if (v > max_h) max_h = v;   // 最高点=抬腿峰值
+        }
     }
     std::lock_guard<std::mutex> lock(sensor_mutex_);
     sensor_.tof_clearance = min_h;
     sensor_.tof_available = avail;
+    if (max_h > sensor_.tof_elev_max) sensor_.tof_elev_max = max_h;   // 追踪抬腿峰值
 }
 
 // ── TOF 尾×2 高程 ──
 void RaceController::on_tof_rear(protocol::msg::RearTofPayload::SharedPtr msg) {
-    float min_h = 0.66f;
+    float min_h = 0.66f, max_h = 0.0f;
     bool  avail = false;
     sensor_.tof_msg_received = true;   // 收到消息即记（无论data_available）
     for (const auto* tof : {&msg->left_rear, &msg->right_rear}) {
         if (!tof->data_available) continue;
         avail = true;
-        for (float v : tof->data) if (v > 0.001f && v < min_h) min_h = v;
+        for (float v : tof->data) {
+            if (v <= 0.001f) continue;
+            if (v < min_h) min_h = v;
+            if (v > max_h) max_h = v;
+        }
     }
     std::lock_guard<std::mutex> lock(sensor_mutex_);
     if (min_h < sensor_.tof_clearance) sensor_.tof_clearance = min_h;
     sensor_.tof_available = sensor_.tof_available || avail;
+    if (max_h > sensor_.tof_elev_max) sensor_.tof_elev_max = max_h;   // 追踪抬腿峰值
 }
 
 // ── 超声测距 ──

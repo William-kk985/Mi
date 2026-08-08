@@ -285,6 +285,7 @@ void step_height_walk_test(MotionCtrl& motion, SensorData& sensor) {
         float t_min = 99.0f, t_sum = 0.0f;
         float sx = sensor.odom_x, sy = sensor.odom_y;
         int n = 0, n_avail = 0;
+        sensor.tof_elev_max = 0.0f;   // 清零抬腿峰值追踪（本段）
         fprintf(stderr, "\033[1;36m[StepH] %s 步高=%.2f 慢走1.5s\033[0m\n", tag, step_h);
         for (int i = 0; i < 75; i++) {
             motion.set_walk_velocity_step(SPEED, 0.0f, 0.0f, step_h);   // 慢走+自定义步高
@@ -293,15 +294,16 @@ void step_height_walk_test(MotionCtrl& motion, SensorData& sensor) {
                 bool  a = sensor.tof_available;
                 if (a) { n_avail++; if (t < t_min) t_min = t; }
                 t_sum += t; n++;
-                fprintf(stderr, "    t=%.2fs tof=%.3f%s body_h=%.3f\n",
-                        i * 0.02f, t, a ? "" : "(无数据)", sensor.body_height);
+                fprintf(stderr, "    t=%.2fs tof=%.3f%s elev_max=%.3f body_h=%.3f\n",
+                        i * 0.02f, t, a ? "" : "(无数据)", sensor.tof_elev_max, sensor.body_height);
             }
             rclcpp::sleep_for(std::chrono::milliseconds(20));
         }
         motion.stop();
         float d = std::sqrt((sensor.odom_x-sx)*(sensor.odom_x-sx) + (sensor.odom_y-sy)*(sensor.odom_y-sy));
-        fprintf(stderr, "\033[1;32m[StepH] %s 步高=%.2f: 走%.3fm TOF min=%.3f avg=%.3f (可用%d/%d, msg=%d)\033[0m\n",
-                tag, step_h, d, t_min, t_sum / n, n_avail, n, (int)sensor.tof_msg_received);
+        fprintf(stderr, "\033[1;32m[StepH] %s 步高=%.2f: 走%.3fm TOF min=%.3f avg=%.3f elev_max=%.3f (可用%d/%d, msg=%d)\033[0m\n",
+                tag, step_h, d, t_min, t_sum / n, sensor.tof_elev_max,
+                n_avail, n, (int)sensor.tof_msg_received);
     };
 
     walk("A)低抬腿", 0.05f);
