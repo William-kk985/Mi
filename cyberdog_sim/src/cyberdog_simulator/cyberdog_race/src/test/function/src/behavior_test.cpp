@@ -331,20 +331,27 @@ void pitch_low_fwd_test(MotionCtrl& motion, SensorData& sensor) {
     }
     motion.stop();
 
-    // ── B) 交替 201低头 + 303前进 1.5s：低头能否边前进边保持 ──
+    // ── B) 交替 201低头 + 303前进，走满 0.3m（odom闭环）：低头能否边前进边保持 ──
+    const float TARGET_DIST = 0.3f;
     float sx = sensor.odom_x, sy = sensor.odom_y;
-    fprintf(stderr, "\033[1;36m[PitchFwd] B) 交替 201低头 + 303前进 1.5s\033[0m\n");
-    for (int i = 0; i < 150; i++) {
+    float traveled = 0.0f;
+    int timeout = 1000;   // 20s 超时保护
+    int i = 0;
+    fprintf(stderr, "\033[1;36m[PitchFwd] B) 交替 201低头 + 303前进 走满 %.1fm\033[0m\n", TARGET_DIST);
+    while (traveled < TARGET_DIST && timeout-- > 0) {
         if (i % 2 == 0) motion.set_body_pitch(PITCH);            // 201 低头
         else            motion.set_walk_velocity(SPEED, 0, 0);   // 303 前进
         if (i % 15 == 0)
-            fprintf(stderr, "    t=%.2fs pitch_map=%.1f°\n", i * 0.01f, sensor.pitch_map * 180.0f / M_PI);
+            fprintf(stderr, "    t=%.2fs pitch_map=%.1f° 走%.3fm\n",
+                    i * 0.01f, sensor.pitch_map * 180.0f / M_PI, traveled);
         rclcpp::sleep_for(std::chrono::milliseconds(10));
+        i++;
+        float dx = sensor.odom_x - sx, dy = sensor.odom_y - sy;
+        traveled = std::sqrt(dx*dx + dy*dy);
     }
     motion.stop();
-    float d = std::sqrt((sensor.odom_x-sx)*(sensor.odom_x-sx) + (sensor.odom_y-sy)*(sensor.odom_y-sy));
-    fprintf(stderr, "\033[1;32m[PitchFwd] B) 走了 %.3fm, pitch_map=%.1f° → %s\033[0m\n",
-            d, sensor.pitch_map * 180.0f / M_PI,
+    fprintf(stderr, "\033[1;32m[PitchFwd] B) 走满 %.3fm, pitch_map=%.1f° → %s\033[0m\n",
+            traveled, sensor.pitch_map * 180.0f / M_PI,
             sensor.pitch_map < -0.05f ? "低头保持!" : "低头掉了(没保持)");
 
     // ── C) 回正 + 停 ──
