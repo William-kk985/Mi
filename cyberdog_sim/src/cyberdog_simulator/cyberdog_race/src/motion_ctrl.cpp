@@ -372,14 +372,20 @@ void MotionCtrl::send_lcm_mode(int mode, int gait_id) {
     pub_lcm_cmd();
 }
 
+// ⚠ 2026-08-08 修复：真机步高经 LCM robot_control_cmd(7671) 生效，但控制器解码是打包毫米：
+//    step_height_cmd = (int)%1000*1e-3（低3位=脚A）+ /1000*1e-3（高3位=脚B）
+//    所以 0.15m → 150mm → 打包 150*1000+150 = 150150（同一元素内两只脚同高）
+//    直接发米(0.15) 会被 (int) 截成 0（之前一直这样，真机没反应——2026-08-08 上机确认）
 void MotionCtrl::set_step_height(float left, float right) {
-    float left_clamped  = left  < 0.0f ? 0.0f : (left  > 0.35f ? 0.35f : left);
-    float right_clamped = right < 0.0f ? 0.0f : (right > 0.35f ? 0.35f : right);
-    
+    int lmm = (int)(left  * 1000.0f);  lmm = lmm < 0 ? 0 : (lmm > 300 ? 300 : lmm);
+    int rmm = (int)(right * 1000.0f);  rmm = rmm < 0 ? 0 : (rmm > 300 ? 300 : rmm);
+    float lpack = (float)(lmm * 1000 + lmm);   // [0]: 低3位+高3位 = left 高度（脚0,1）
+    float rpack = (float)(rmm * 1000 + rmm);   // [1]: 低3位+高3位 = right 高度（脚2,3）
     memset(&lcm_cmd_, 0, sizeof(lcm_cmd_));
-    lcm_cmd_.step_height[0] = left_clamped;
-    lcm_cmd_.step_height[1] = right_clamped;
-    ctrl_lcm_.publish("robot_control_cmd", &lcm_cmd_);  // P2 fix: 与其他 robot_control_cmd 统一用 7671 端口
+    lcm_cmd_.step_height[0] = lpack;
+    lcm_cmd_.step_height[1] = rpack;
+    ctrl_lcm_.publish("robot_control_cmd", &lcm_cmd_);  // LCM robot_control_cmd 7671
+    fprintf(stderr, "[MotionCtrl] set_step_height(%.2fm → 打包%.0f,%.0f)\n", left, lpack, rpack);
 }
 
 // ── 步高原始值直通（无clamp，test8 方式：起步前设一次） ──

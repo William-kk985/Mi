@@ -280,14 +280,13 @@ void step_height_walk_test(MotionCtrl& motion, SensorData& sensor) {
                 t_min, n_avail, (int)sensor.tof_msg_received);
     }
 
-    auto march = [&](const char* tag, float sh_l, float sh_r) {
+    auto march = [&](const char* tag, float h) {
         sensor.tof_elev_max = 0.0f;   // 清零抬腿峰值追踪（本段）
-        fprintf(stderr, "\033[1;36m[StepH] %s step_height=(%.0f,%.0f) 原地踏步1.5s\033[0m\n",
-                tag, sh_l, sh_r);
-        if (sh_l >= 0.0f)
-            motion.set_step_height_raw(sh_l, sh_r);   // test8方式：起步前设一次，中途不改
+        fprintf(stderr, "\033[1;36m[StepH] %s 步高=%.2fm 原地踏步1.5s\033[0m\n", tag, h);
+        if (h >= 0.0f)
+            motion.set_step_height(h, h);   // 正式接口(打包毫米)：起步前设一次，中途不改
         for (int i = 0; i < 75; i++) {
-            motion.set_walk_velocity(0.0f, 0.0f, 0.0f);   // 原地踏步（不改步高字段）
+            motion.set_walk_velocity(0.0f, 0.0f, 0.0f);   // 原地踏步
             if (i % 10 == 0)
                 fprintf(stderr, "    t=%.2fs tof=%.3f elev_max=%.3f body_h=%.3f\n",
                         i * 0.02f, sensor.tof_clearance, sensor.tof_elev_max, sensor.body_height);
@@ -299,11 +298,11 @@ void step_height_walk_test(MotionCtrl& motion, SensorData& sensor) {
                 tag, sensor.tof_elev_max, (int)sensor.tof_msg_received);
     };
 
-    // 参考基线 + test8方式(LCM set_step_height) 起步前设一次：米/毫米/打包 都意图 0.20m
-    march("A)参考(不设)", -1.0f, -1.0f);
-    march("B)米0.20", 0.20f, 0.20f);
-    march("C)mm200", 200.0f, 200.0f);
-    march("D)打包200200", 200200.0f, 200200.0f);
+    // 基准 0.15 + 附近标定：正式 set_step_height(打包毫米) 起步前设一次
+    march("A)参考(不设)", -1.0f);
+    march("B)0.10m", 0.10f);
+    march("C)0.15m(基准)", 0.15f);
+    march("D)0.20m", 0.20f);
     fprintf(stderr, "\033[1;32m[StepH] 完成\033[0m\n");
 }
 
