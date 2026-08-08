@@ -266,7 +266,7 @@ colcon build --cmake-args -DUSE_TEST_ALL=ON
 
 ---
 
-## 🧪 行为测试（TEST_BEHAVIOR 1~18）
+## 🧪 行为测试（TEST_BEHAVIOR 1~20）
 
 > 独立测试单个动作/算法，定义后替代正常状态机（`control_loop` 只跑测试）。
 > 入口：`src/test/function/src/behavior_test.cpp` 的 `run_test()`。
@@ -307,6 +307,8 @@ ROS2 订阅回调 → 测试期间 TOF/超声/LiDAR 实时可读（以前同步�
 | 16 | 步高标定 | `step_height_walk_test` | LCM set_step_height 打包毫米，0.10/0.15/0.20 | 真机 ✅ 0.15基准 |
 | 17 | 低头前进 | `pitch_low_fwd_test` | 303 WALK 带 rpy_des[1]=pitch + 前进 | 真机 ✅ -5.3°走满0.5m（步态硬限±5.7°，大命令无效） |
 | 18 | roll走路侧倾 | `roll_walk_test` | LCM 7668 interface_request 设 des_roll_pitch_height[0] + 前进 | 真机 ✅ 28°保持走满0.3m |
+| 19 | pitch破限 | `pitch_unlock_test` | LCM 设 x_effect_scale_pos=+30 放大走路pitch限位 + 前进 | 真机 ✅ 14°保持走满0.5m |
+| 20 | 分段低头前进 | `segmented_pitch_walk_test` | 201大姿态↔303前进交替 | 真机 ✅ 兜底方案 |
 
 ### 真机验证要点（2026-08-07~08）
 

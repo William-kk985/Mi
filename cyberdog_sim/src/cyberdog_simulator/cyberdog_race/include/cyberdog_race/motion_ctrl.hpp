@@ -77,6 +77,10 @@ public:
     //     → kSET_USER_PARAM_BY_NAME 分支 LookUp(name).Set()，des_roll_pitch_height 正是 user param）
     //   绕开死 ROS topic，直接改 RT 板运控 user params → 走路时 roll 保持！
     void set_body_params_lcm(float roll, float pitch, float height);
+    // 通用 user param 设置（LCM 7668 interface_request）：kind=1(kDOUBLE)/3(kVEC_X_DOUBLE)，vals 传 n 个
+    void set_user_param_lcm(const char* name, int8_t kind, const double* vals, int n);
+    // 便捷：设置单个 double user param（如 x_effect_scale_pos 破 pitch 限位）
+    void set_user_param_double_lcm(const char* name, double val);
 
 #ifdef REAL_DOG
     // 挂载 CyberDog2 motion_servo_cmd 发布器（RaceController 构造中调用）

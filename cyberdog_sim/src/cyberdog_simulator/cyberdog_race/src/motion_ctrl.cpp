@@ -175,24 +175,34 @@ void MotionCtrl::set_body_params_yaml(float roll, float pitch, float height) {
 //   - des_roll_pitch_height 正是 user param → 改它 = 走路时 roll/pitch/身高 全部可调！
 // 消息: name[64] + requestNumber(单调递增) + value[96](3个double LE) + parameterKind=3 + requestKind=3
 void MotionCtrl::set_body_params_lcm(float roll, float pitch, float height) {
+    double v[3] = { (double)roll, (double)pitch, (double)height };
+    set_user_param_lcm("des_roll_pitch_height", 3, v, 3);   // kVEC_X_DOUBLE
+}
+
+// ── 通用 user param 设置（LCM 7668 interface_request） ──
+// kind: 1=kDOUBLE(value 前8字节一个double), 3=kVEC_X_DOUBLE(前24字节 n 个double)
+void MotionCtrl::set_user_param_lcm(const char* name, int8_t kind, const double* vals, int n) {
     control_parameter_request_lcmt msg;
     memset(&msg, 0, sizeof(msg));
-    strncpy((char*)msg.name, "des_roll_pitch_height", 63);
+    strncpy((char*)msg.name, name, 63);
     msg.requestNumber = ++param_seq_;           // 单调递增（每次 +1）
-    msg.parameterKind = 3;                      // ControlParameterValueKind::kVEC_X_DOUBLE
-    msg.requestKind   = 3;                      // ControlParameterRequestKind::kSET_USER_PARAM_BY_NAME
-    double v[3] = { (double)roll, (double)pitch, (double)height };
-    memcpy(msg.value, v, sizeof(v));
-    param_lcm_.publish("interface_request", &msg);   // ★ 7668 端口（之前发 7671 是错的）
+    msg.parameterKind = kind;                   // 1=kDOUBLE 3=kVEC_X_DOUBLE
+    msg.requestKind   = 3;                      // kSET_USER_PARAM_BY_NAME
+    memcpy(msg.value, vals, n * sizeof(double));
+    param_lcm_.publish("interface_request", &msg);   // ★ 7668 端口（官方 cyberdog_app 同款）
     // 收一下响应确认（非阻塞）
     for (int i = 0; i < 50; i++) {
         param_lcm_.handleTimeout(1);
         if (param_resp_received_) break;
     }
-    fprintf(stderr, "[MotionCtrl] set_body_params_lcm(7668 interface_request) %s roll=%.2f pitch=%.2f h=%.2f seq=%lld → %s\n",
-            msg.name, roll, pitch, height, (long long)msg.requestNumber,
-            param_resp_received_ ? "RT板ACK" : "无响应");
+    fprintf(stderr, "[MotionCtrl] set_user_param_lcm(7668) %s kind=%d n=%d → %s\n",
+            msg.name, (int)kind, n, param_resp_received_ ? "RT板ACK" : "无响应");
     param_resp_received_ = false;
+}
+
+void MotionCtrl::set_user_param_double_lcm(const char* name, double val) {
+    double v[1] = { val };
+    set_user_param_lcm(name, 1, v, 1);   // kDOUBLE
 }
 
 // ── interface_response 响应回调：确认 RT 板已设置参数 ──

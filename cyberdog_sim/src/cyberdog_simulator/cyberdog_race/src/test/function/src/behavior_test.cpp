@@ -29,6 +29,8 @@ void run_test(MotionCtrl& motion, SensorData& sensor, int test_id) {
         case 16: step_height_walk_test(motion, sensor); break;
         case 17: pitch_low_fwd_test(motion, sensor);   break;
         case 18: roll_walk_test(motion, sensor);        break;
+        case 19: pitch_unlock_test(motion, sensor);     break;
+        case 20: segmented_pitch_walk_test(motion, sensor); break;
         default:
             fprintf(stderr, "\033[1;31m[BehaviorTest] Unknown #%d\033[0m\n", test_id);
             break;
@@ -388,6 +390,57 @@ void pitch_low_fwd_test(MotionCtrl& motion, SensorData& sensor) {
             sensor.pitch_map * 180.0f / M_PI);
 }
 
+// ── 分段低头前进（大 pitch + 移动的"自己研制"方案，test19） ──
+// 【固件现实，2026-08-08 研究定论】走路 pitch 全通道硬夹 ±5.7°（官方 App 也突破不了）；
+//   原地 201 姿态能到 ±14.7°。→ 分段状态机交替两个模式：
+//   ① 201 姿态保持（低头 0.25 → ~14°）0.6s：大角度姿态
+//   ② 303 前进（低头 0.10 → ~5.7° + 速度 0.3）0.5s：移动 + 保持极限角度
+//   循环 → 每轮前进一段 + 周期性恢复大角度。⚠ 之前 10ms 快速交替失败（模式打架），
+//   慢速分段（0.5s 级）每个模式有时间建立，是正确做法。
+// 反馈用 pitch_map：期望看到"摆动"（每次 ① 升到 ~14°，② 回落到 ~5.7°）但距离持续增长。
+void segmented_pitch_walk_test(MotionCtrl& motion, SensorData& sensor) {
+    const float POSE_PITCH  = 0.25f;   // 低头 0.25 rad（201 姿态，正值=低头 → ~14°）
+    const float WALK_PITCH  = 0.10f;   // 低头 0.10 rad（303 走路，步态夹持上限 → ~5.7°）
+    const float SPEED       = 0.3f;    // 前进速度
+    const float TARGET_DIST = 1.0f;    // 目标 1m
+    const int   POSE_MS     = 600;     // 姿态保持时长
+    const int   WALK_MS     = 500;     // 前进时长
+    motion.stand();
+    rclcpp::sleep_for(std::chrono::seconds(2));
+    fprintf(stderr, "\033[1;35m[SegPitch] 起点 pitch_map=%.1f°\033[0m\n",
+            sensor.pitch_map * 180.0f / M_PI);
+
+    float sx = sensor.odom_x, sy = sensor.odom_y;
+    float traveled = 0.0f;
+    int   cycles   = 0;
+    float peak_pitch = 0.0f;
+    int timeout = 2000;   // 40s 超时保护
+    while (traveled < TARGET_DIST && timeout-- > 0) {
+        // ① 201 姿态保持（大角度低头）
+        for (int i = 0; i < POSE_MS / 20; i++) {
+            motion.set_body_pitch(POSE_PITCH);
+            rclcpp::sleep_for(std::chrono::milliseconds(20));
+        }
+        float pk = sensor.pitch_map * 180.0f / M_PI;
+        if (pk > peak_pitch) peak_pitch = pk;
+        // ② 303 前进（保持极限低头 + 速度）
+        for (int i = 0; i < WALK_MS / 20; i++) {
+            motion.set_walk_velocity_pitch(SPEED, 0, 0, WALK_PITCH);
+            rclcpp::sleep_for(std::chrono::milliseconds(20));
+        }
+        cycles++;
+        float dx = sensor.odom_x - sx, dy = sensor.odom_y - sy;
+        traveled = std::sqrt(dx*dx + dy*dy);
+        if (cycles % 2 == 0)
+            fprintf(stderr, "    cycle=%d 走%.3fm pitch=%.1f°(峰值%.1f°)\n",
+                    cycles, traveled, sensor.pitch_map * 180.0f / M_PI, peak_pitch);
+    }
+    motion.stop();
+    fprintf(stderr, "\033[1;32m[SegPitch] 走满 %.3fm, %d轮, 峰值低头 %.1f° → %s\033[0m\n",
+            traveled, cycles, peak_pitch,
+            traveled > 0.3f ? "分段保持可行!" : "分段仍走不动");
+}
+
 // ── roll 走路保持侧倾（身躯姿态变化 + 前进组合，test18） ──
 // 【2026-08-08 排查 → LCM 参数通道打通方案】
 // - ❌ des_roll_pitch_height YamlParam(ROS topic)：真机无节点订阅 yaml_parameter，死通道
@@ -447,6 +500,66 @@ void roll_walk_test(MotionCtrl& motion, SensorData& sensor) {
     motion.stop();
     fprintf(stderr, "\033[1;32m[RollWalk] 完成, roll_map=%.1f°\033[0m\n",
             sensor.roll_map * 180.0f / M_PI);
+}
+
+// ── pitch 破限（走路大角度低头，test19，自己研制方案） ──
+// 【原理】走路 pitch 被 gait WrapRange(±0.1rad) 夹死，但夹持系数 rpy_cmd_scale_(1) 每周期乘
+//   (fabs(vx) * user_params_->x_effect_scale_pos + 1.0)（convex_mpc_loco_gaits.cpp:2420）。
+//   x_effect_scale_pos 是用户参数（默认 -0.55，负=走路时缩小 pitch 范围）。
+//   → 通过 LCM 7668 interface_request（已打通）把它改成大正数（+30）→ 走路时 pitch 限位被放大
+//     7~11 倍 → ±0.25 命令穿透 WrapRange，像 roll 参数通道一样无夹持！
+// 注意：该参数同时放大 vel_cmd_scale_(1)/(2)（y/yaw 速度限），前进直行无影响，测完必须复原。
+void pitch_unlock_test(MotionCtrl& motion, SensorData& sensor) {
+    const float PITCH = 0.25f;    // 低头 0.25 rad（真机约定正值=低头）
+    const float SPEED = 0.2f;     // 前进 0.2 m/s（触发 x_effect_scale_pos 放大）
+    const float TARGET_DIST = 0.5f;
+    const double SCALE_HACK = 30.0;   // x_effect_scale_pos 放大值
+    const double SCALE_RESTORE = -0.55;  // 默认值（cyberdog2-ctrl-user-parameters.yaml）
+    motion.stand();
+    rclcpp::sleep_for(std::chrono::seconds(2));
+    fprintf(stderr, "\033[1;35m[PitchUnlock] 起点 pitch_map=%.1f°\033[0m\n",
+            sensor.pitch_map * 180.0f / M_PI);
+
+    // ── A) 201 低头 +0.25 2s：参考（原地无夹持，预期 ~+14°） ──
+    fprintf(stderr, "\033[1;36m[PitchUnlock] A) set_body_pitch(+0.25) 2s 低头(参考)\033[0m\n");
+    for (int i = 0; i < 100; i++) {
+        motion.set_body_pitch(PITCH);
+        if (i % 25 == 0)
+            fprintf(stderr, "    t=%.1fs pitch_map=%.1f°\n", i * 0.02f, sensor.pitch_map * 180.0f / M_PI);
+        rclcpp::sleep_for(std::chrono::milliseconds(20));
+    }
+    motion.stop();
+
+    // ── B) LCM 设 x_effect_scale_pos=+30 + 303 前进带低头，走满 0.5m ──
+    motion.set_user_param_double_lcm("x_effect_scale_pos", SCALE_HACK);   // 破限开关
+    float sx = sensor.odom_x, sy = sensor.odom_y;
+    float traveled = 0.0f;
+    int timeout = 1500;   // 30s 超时保护
+    fprintf(stderr, "\033[1;36m[PitchUnlock] B) x_effect_scale_pos=+30 + 303低头0.25 走满 %.1fm\033[0m\n", TARGET_DIST);
+    while (traveled < TARGET_DIST && timeout-- > 0) {
+        motion.set_walk_velocity_pitch(SPEED, 0, 0, PITCH);   // 303 前进 + 带低头
+        if (timeout % 10 == 0)
+            fprintf(stderr, "    pitch_map=%.1f° 走%.3fm\n",
+                    sensor.pitch_map * 180.0f / M_PI, traveled);
+        rclcpp::sleep_for(std::chrono::milliseconds(20));
+        float dx = sensor.odom_x - sx, dy = sensor.odom_y - sy;
+        traveled = std::sqrt(dx*dx + dy*dy);
+    }
+    motion.stop();
+    fprintf(stderr, "\033[1;32m[PitchUnlock] B) 走满 %.3fm, pitch_map=%.1f° → %s\033[0m\n",
+            traveled, sensor.pitch_map * 180.0f / M_PI,
+            sensor.pitch_map > 0.12f ? "破限成功!大角度低头保持" : "仍未破限(±5.7°)");
+
+    // ── C) 复原 x_effect_scale_pos + 回正 ──
+    fprintf(stderr, "\033[1;36m[PitchUnlock] C) 复原 x_effect_scale_pos=-0.55 回正\033[0m\n");
+    motion.set_user_param_double_lcm("x_effect_scale_pos", SCALE_RESTORE);
+    for (int i = 0; i < 50; i++) {
+        motion.set_walk_velocity_pitch(0.0f, 0, 0, 0.0f);
+        rclcpp::sleep_for(std::chrono::milliseconds(20));
+    }
+    motion.stop();
+    fprintf(stderr, "\033[1;32m[PitchUnlock] 完成, pitch_map=%.1f°\033[0m\n",
+            sensor.pitch_map * 180.0f / M_PI);
 }
 
 // ── RGB 实时预览（DEBUG_VISION 弹窗，按 ESC 退出） ──
