@@ -253,13 +253,12 @@ void forward_test(MotionCtrl& motion, SensorData& sensor) {
             traveled, TARGET_DIST);
 }
 
-// ── 步高切换测试（真机 303 接口，短距离走路）+ TOF 量化验证 ──
-// 背景：set_step_height 走旧 LCM 真机不吃；真机步高 = motion_servo_cmd.step_height 官方字段。
-// 踏步态(vel=0) 0.05/0.25 TOF 无差别（2026-08-08 上机确认）→ 步高是走路用的（比赛 Stage5 桥上走），
-// 改短距离慢走测：0.2m/s × 1.5s ≈ 0.3m/段，三段共 ~0.9m，占地方小。
-// TOF 现在测试期间实时（执行器修复后），每段打 tof/body_h/odom 并给 min/avg 汇总。
+// ── 步高切换测试（真机 303 接口，原地踏步，每段全新起步）+ 4腿TOF抬腿峰值 ──
+// 背景：走路态步高 0.05/0.25 elev_max 无差别（2026-08-08 上机）。用户假设：步高可能只在
+//       步态启动时被读取 → 本测试原地踏步，每段先停稳再用新步高起步（启动时刻生效验证）。
+// 指标：4腿TOF测抬升高度（protocol 注释：tof on each of the four legs, elevation info），
+//       tof_elev_max = 抬腿峰值。step_height_max 已在 control_loop 测试前拉高到 0.30。
 void step_height_walk_test(MotionCtrl& motion, SensorData& sensor) {
-    const float SPEED = 0.2f;   // 慢走 0.2 m/s（1.5s ≈ 0.3m）
     motion.stand();
     rclcpp::sleep_for(std::chrono::seconds(2));   // 等站稳
 
@@ -281,36 +280,25 @@ void step_height_walk_test(MotionCtrl& motion, SensorData& sensor) {
                 t_min, n_avail, (int)sensor.tof_msg_received);
     }
 
-    auto walk = [&](const char* tag, float step_h) {
-        float t_min = 99.0f, t_sum = 0.0f;
-        float sx = sensor.odom_x, sy = sensor.odom_y;
-        int n = 0, n_avail = 0;
+    auto march = [&](const char* tag, float step_h) {
         sensor.tof_elev_max = 0.0f;   // 清零抬腿峰值追踪（本段）
-        fprintf(stderr, "\033[1;36m[StepH] %s 步高=%.2f 慢走1.5s\033[0m\n", tag, step_h);
+        fprintf(stderr, "\033[1;36m[StepH] %s 步高=%.2f 原地踏步1.5s(全新起步)\033[0m\n", tag, step_h);
         for (int i = 0; i < 75; i++) {
-            motion.set_walk_velocity_step(SPEED, 0.0f, 0.0f, step_h);   // 慢走+自定义步高
-            if (i % 10 == 0) {
-                float t = sensor.tof_clearance;
-                bool  a = sensor.tof_available;
-                if (a) { n_avail++; if (t < t_min) t_min = t; }
-                t_sum += t; n++;
-                fprintf(stderr, "    t=%.2fs tof=%.3f%s elev_max=%.3f body_h=%.3f\n",
-                        i * 0.02f, t, a ? "" : "(无数据)", sensor.tof_elev_max, sensor.body_height);
-            }
+            motion.set_walk_velocity_step(0.0f, 0.0f, 0.0f, step_h);   // 原地踏步+步高(起步即用)
+            if (i % 10 == 0)
+                fprintf(stderr, "    t=%.2fs tof=%.3f elev_max=%.3f body_h=%.3f\n",
+                        i * 0.02f, sensor.tof_clearance, sensor.tof_elev_max, sensor.body_height);
             rclcpp::sleep_for(std::chrono::milliseconds(20));
         }
-        motion.stop();
-        float d = std::sqrt((sensor.odom_x-sx)*(sensor.odom_x-sx) + (sensor.odom_y-sy)*(sensor.odom_y-sy));
-        fprintf(stderr, "\033[1;32m[StepH] %s 步高=%.2f: 走%.3fm TOF min=%.3f avg=%.3f elev_max=%.3f (可用%d/%d, msg=%d)\033[0m\n",
-                tag, step_h, d, t_min, t_sum / n, sensor.tof_elev_max,
-                n_avail, n, (int)sensor.tof_msg_received);
+        motion.stop();                 // 完全停 → 下一段重新起步
+        rclcpp::sleep_for(std::chrono::milliseconds(300));
+        fprintf(stderr, "\033[1;32m[StepH] %s 步高=%.2f: elev_max=%.3f (msg=%d)\033[0m\n",
+                tag, step_h, sensor.tof_elev_max, (int)sensor.tof_msg_received);
     };
 
-    walk("A)低抬腿", 0.05f);
-    rclcpp::sleep_for(std::chrono::seconds(1));
-    walk("B)高抬腿", 0.25f);
-    rclcpp::sleep_for(std::chrono::seconds(1));
-    walk("C)默认", 0.15f);
+    march("A)低抬腿", 0.05f);
+    march("B)高抬腿", 0.25f);
+    march("C)默认", 0.15f);
     fprintf(stderr, "\033[1;32m[StepH] 完成\033[0m\n");
 }
 
