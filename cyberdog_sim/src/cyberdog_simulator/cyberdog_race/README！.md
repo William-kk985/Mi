@@ -232,7 +232,14 @@ ls /proc/$(pgrep -f race_controlle[r] | head -1)/task | wc -l
 - `motion_servo_cmd` 需 **~20Hz 持续发布**（停发 4 帧 = Servo data lost，运动中止）
 - ⚠ `motion_ctrl.cpp` 必须先包含 `debug_config.hpp` 再包含 `motion_ctrl.hpp`（`#ifdef REAL_DOG` 依赖宏顺序）
 - 仿真：LCM `robot_control_cmd` 的 `life_count` 必须每帧递增（`++lcm_life_`）
-- 步高 clamp 在 [0, 0.35]m
+- ⚠ **真机步高（2026-08-08 定位，重要）**：
+  - ❌ `motion_servo_cmd.step_height` 字段真机**忽略**（303 不读它，5 种编码上机验证全无差别）
+  - ✅ 正确路径：**LCM `robot_control_cmd`(7671) 的 `step_height`**（`set_step_height()` 已封装，直接传米即可）
+  - ⚠ 编码是**打包毫米**：`step_height[n] = 高3位毫米 + 低3位毫米`（控制器解码 `(int)%1000*1e-3`）
+    - `0.15m → 150mm → 打包 150*1000+150 = 150150`；直接发米 `0.15` 会被 `(int)` 截成 0（旧代码的坑！）
+  - ✅ 用法：**起步前设一次**（走/踏步前调 `set_step_height(0.15, 0.15)`），中途不用改
+  - ⚠ 0.20m 偏高（真机默认抬腿已 ~0.30m，加 0.20 接近上限、狗不稳），**比赛建议 0.10~0.15**
+  - 步高范围：0 ~ 0.35m（打包毫米上限 350）
 - `LocoMode` 枚举替代魔法数字
 
 ### 8. 新增 .cpp 文件
@@ -329,9 +336,23 @@ colcon build --cmake-args -DUSE_TEST_ALL=ON
 motion_.set_body_pitch(-0.2f);   // 低头 0.2 rad（负=低头）
 // ⚠ 需在循环中 ~20Hz 持续调用保持，停发即退出
 
+// 步高（2026-08-08 真机验证）：起步前设一次，走 LCM robot_control_cmd(7671)
+motion_.set_step_height(0.15f, 0.15f);   // 内部转打包毫米 150150，真机生效
+
 // 独立验证脚本（不依赖 C++ 工程，直接在 NX 上跑）
 python3 scripts/pitch_test_servo.py --stand --pitch -0.2 --hold 3
 ```
+
+### 步高控制（2026-08-08 真机验证，别走错通道）
+
+| 通道 | 是否生效 | 说明 |
+|---|---|---|
+| `motion_servo_cmd.step_height`（303） | ❌ 忽略 | 5 种编码（米/毫米/打包）上机验证全无差别，固件不读 |
+| LCM `robot_control_cmd`(7671) `step_height` | ✅ 生效 | `set_step_height()` 已封装；编码=打包毫米（`0.15→150150`） |
+| 旧 gamepad（7667） | ❌ 无效 | 铁蛋一代接口 |
+
+- 调用时机：**步态起步前设一次**即可，中途改无效
+- 幅度：0.20m 会接近真机上限（默认抬腿已 ~0.30m，狗不稳），建议 0.10~0.15
 
 ### 诊断
 
