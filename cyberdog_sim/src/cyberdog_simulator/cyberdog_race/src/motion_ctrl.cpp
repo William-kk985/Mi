@@ -289,8 +289,8 @@ void MotionCtrl::set_walk_velocity_step_raw(float x, float y, float yaw, float s
 }
 
 // ── 真机带俯仰姿态行走（303 + rpy_des[1]=pitch） ──
-// ⚠ 官方 motion_teleop 只设 vel_des；此处尝试行走时同时保持机身俯仰（抬头/低头）
-//   需 ~20Hz 持续发布。能否生效上机验证（2026-08-08）
+// ✅ 2026-08-08 上机验证：test17 低头保持 ~-5° 走满 0.3m
+//   （步态控制器 convex_mpc_loco_gaits.cpp:2305 走路时 rpy_cmd_[1]=ctrl_cmd_->rpy_des[1]）
 void MotionCtrl::set_walk_velocity_pitch(float x, float y, float yaw, float pitch) {
 #ifdef REAL_DOG
     if (!motion_servo_pub_) {
@@ -304,6 +304,29 @@ void MotionCtrl::set_walk_velocity_pitch(float x, float y, float yaw, float pitc
     cmd.value       = 0;
     cmd.vel_des     = {x, y, yaw};
     cmd.rpy_des     = {0.0f, pitch, 0.0f};   // 带俯仰
+    cmd.pos_des     = {0.0f, 0.0f, 0.235f};
+    cmd.step_height = {0.15f, 0.15f};
+    motion_servo_pub_->publish(cmd);
+#else
+    set_velocity(x, y, yaw);
+#endif
+}
+
+// ── 真机带 roll+pitch 姿态行走（303 + rpy_des=[roll,pitch,0]） ──
+// ⚠ 官方 locomotion rpy_cmd_scale=[0,1,0]（只有 pitch 启用），roll 走命令是否生效待验证（test18）
+void MotionCtrl::set_walk_velocity_rpy(float x, float y, float yaw, float roll, float pitch) {
+#ifdef REAL_DOG
+    if (!motion_servo_pub_) {
+        fprintf(stderr, "[MotionCtrl] set_walk_velocity_rpy: 发布器未挂载(attach_motion_servo_pub)\n");
+        return;
+    }
+    protocol::msg::MotionServoCmd cmd;
+    cmd.motion_id   = 303;   // MotionID::WALK_USERTROT
+    cmd.cmd_type    = 1;     // SERVO_DATA
+    cmd.cmd_source  = -1;    // DEBUG 最高优先级
+    cmd.value       = 0;
+    cmd.vel_des     = {x, y, yaw};
+    cmd.rpy_des     = {roll, pitch, 0.0f};   // 带 roll+pitch
     cmd.pos_des     = {0.0f, 0.0f, 0.235f};
     cmd.step_height = {0.15f, 0.15f};
     motion_servo_pub_->publish(cmd);
@@ -328,6 +351,29 @@ void MotionCtrl::set_body_pitch_velocity(float pitch, float x, float y, float ya
     cmd.value       = 0;
     cmd.vel_des     = {x, y, yaw};          // 带速度
     cmd.rpy_des     = {0.0f, pitch, 0.0f};
+    cmd.pos_des     = {0.0f, 0.0f, 0.235f};
+    cmd.step_height = {0.15f, 0.15f};
+    motion_servo_pub_->publish(cmd);
+#else
+    set_velocity(x, y, yaw);
+#endif
+}
+
+// ── 真机姿态控制带速度（201 + rpy_des=[roll,pitch,0] + vel_des） ──
+// 力控模式直接带 roll 姿态 + 前进速度（test18 验证 roll 走路）
+void MotionCtrl::set_body_rpy_velocity(float roll, float pitch, float x, float y, float yaw) {
+#ifdef REAL_DOG
+    if (!motion_servo_pub_) {
+        fprintf(stderr, "[MotionCtrl] set_body_rpy_velocity: 发布器未挂载(attach_motion_servo_pub)\n");
+        return;
+    }
+    protocol::msg::MotionServoCmd cmd;
+    cmd.motion_id   = 201;   // MotionID::FORCECONTROL_DEFINITIVELY
+    cmd.cmd_type    = 1;     // SERVO_DATA
+    cmd.cmd_source  = -1;    // DEBUG 最高优先级
+    cmd.value       = 0;
+    cmd.vel_des     = {x, y, yaw};          // 带速度
+    cmd.rpy_des     = {roll, pitch, 0.0f};  // 带 roll+pitch
     cmd.pos_des     = {0.0f, 0.0f, 0.235f};
     cmd.step_height = {0.15f, 0.15f};
     motion_servo_pub_->publish(cmd);

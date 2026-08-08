@@ -2,6 +2,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <cstdio>
 #include <cmath>
+#include <functional>
 
 namespace behavior {
 
@@ -27,6 +28,7 @@ void run_test(MotionCtrl& motion, SensorData& sensor, int test_id) {
         case 15: abs_turn_test(motion, sensor);        break;
         case 16: step_height_walk_test(motion, sensor); break;
         case 17: pitch_low_fwd_test(motion, sensor);   break;
+        case 18: roll_walk_test(motion, sensor);        break;
         default:
             fprintf(stderr, "\033[1;31m[BehaviorTest] Unknown #%d\033[0m\n", test_id);
             break;
@@ -366,6 +368,75 @@ void pitch_low_fwd_test(MotionCtrl& motion, SensorData& sensor) {
     motion.stop();
     fprintf(stderr, "\033[1;32m[PitchFwd] 完成, pitch_map=%.1f°\033[0m\n",
             sensor.pitch_map * 180.0f / M_PI);
+}
+
+// ── roll 走路保持侧倾（身躯姿态变化 + 前进组合，test18） ──
+// 【2026-08-08 上机 + 源码排查结论】
+// - ❌ des_roll_pitch_height YamlParam：真机没有任何节点订阅 yaml_parameter（已逐一验证），死通道
+// - ⚠ 官方 locomotion 设计：roll 不走命令（rpy_cmd_scale=[0,1,0] 只有 pitch 启用，
+//   command_interface.cpp:526 走路时 rpy_des[0] 强制归零），roll 走路只能靠用户参数（真机不可改）
+// → 本测试一次跑两条未验证路径：
+//   B1) 303 WALK 带 rpy_des[0]=roll（真机实现可能不同于仿真，试试）
+//   B2) 201 力控带 rpy_des[0]=roll + vel_des 前进（姿态模式直接带速度）
+// 反馈用 roll_map(global_to_robot.rpy[0])。
+void roll_walk_test(MotionCtrl& motion, SensorData& sensor) {
+    const float ROLL = 0.52f;    // 侧倾 0.52 rad ≈ 30°（用户要求看 30°）
+    const float SPEED = 0.2f;    // 前进 0.2 m/s
+    const float TARGET_DIST = 0.3f;
+    motion.stand();
+    rclcpp::sleep_for(std::chrono::seconds(2));
+    fprintf(stderr, "\033[1;35m[RollWalk] 起点 roll_map=%.1f°\033[0m\n",
+            sensor.roll_map * 180.0f / M_PI);
+
+    // ── A) 单独 201 roll 2s：验证 roll 本身正常（30°） ──
+    fprintf(stderr, "\033[1;36m[RollWalk] A) set_body_roll(+0.52) 2s 侧倾30°\033[0m\n");
+    for (int i = 0; i < 100; i++) {
+        motion.set_body_roll(ROLL);
+        if (i % 25 == 0)
+            fprintf(stderr, "    t=%.1fs roll_map=%.1f°\n", i * 0.02f, sensor.roll_map * 180.0f / M_PI);
+        rclcpp::sleep_for(std::chrono::milliseconds(20));
+    }
+    motion.stop();
+
+    // 走一段的公共 lambda：按给定发命令回调跑满 TARGET_DIST，返回实际距离
+    auto walk_phase = [&](const char* tag, const std::function<void()>& send_cmd) {
+        float sx = sensor.odom_x, sy = sensor.odom_y;
+        float traveled = 0.0f;
+        int timeout = 1000;   // 20s 超时保护
+        fprintf(stderr, "\033[1;36m[RollWalk] %s 走满 %.1fm\033[0m\n", tag, TARGET_DIST);
+        while (traveled < TARGET_DIST && timeout-- > 0) {
+            send_cmd();
+            if (timeout % 10 == 0)
+                fprintf(stderr, "    roll_map=%.1f° 走%.3fm\n",
+                        sensor.roll_map * 180.0f / M_PI, traveled);
+            rclcpp::sleep_for(std::chrono::milliseconds(20));
+            float dx = sensor.odom_x - sx, dy = sensor.odom_y - sy;
+            traveled = std::sqrt(dx*dx + dy*dy);
+        }
+        motion.stop();
+        fprintf(stderr, "\033[1;32m[RollWalk] %s 走满 %.3fm, roll_map=%.1f° → %s\033[0m\n",
+                tag, traveled, sensor.roll_map * 180.0f / M_PI,
+                sensor.roll_map > 0.10f ? "侧倾保持!" : "未保持");
+        return traveled;
+    };
+
+    // ── B1) 303 WALK 带 rpy_des[0]=roll 前进（像 pitch 那样直接塞命令） ──
+    walk_phase("B1) 303带rpy_des[0]=roll + 前进",
+               [&]{ motion.set_walk_velocity_rpy(SPEED, 0, 0, ROLL, 0.0f); });
+
+    // ── B2) 201 力控带 rpy_des[0]=roll + vel_des 前进 ──
+    walk_phase("B2) 201带rpy_des[0]=roll+vel_des 前进",
+               [&]{ motion.set_body_rpy_velocity(ROLL, 0.0f, SPEED, 0, 0); });
+
+    // ── C) 回正 + 停 ──
+    fprintf(stderr, "\033[1;36m[RollWalk] C) 回正 1s\033[0m\n");
+    for (int i = 0; i < 50; i++) {
+        motion.set_body_roll(0.0f);
+        rclcpp::sleep_for(std::chrono::milliseconds(20));
+    }
+    motion.stop();
+    fprintf(stderr, "\033[1;32m[RollWalk] 完成, roll_map=%.1f°\033[0m\n",
+            sensor.roll_map * 180.0f / M_PI);
 }
 
 // ── RGB 实时预览（DEBUG_VISION 弹窗，按 ESC 退出） ──

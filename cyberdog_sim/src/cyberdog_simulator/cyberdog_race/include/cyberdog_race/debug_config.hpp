@@ -37,7 +37,8 @@
 // 1=跳跃 2=扫描找球 3=蹲下 4=路径点导航 5=原地转向 6=起立趴下 7=俯仰角
 // 8=步高(旧接口,已弃用) 9=传感器检查 10=RGB预览 11=原地踏步
 // 12=前进0.5m 13=前跳30cm 14=相对转向90° 15=绝对转向90° 16=步高标定(打包毫米,0.15基准)
-// 17=低头前进(303带rpy_des[1]=pitch+前进,步态读rpy_des保持低头) 完整清单/要点/坑 见 README！.md「行为测试」
+// 17=低头前进(303带rpy_des[1]=pitch+前进,步态读rpy_des保持低头) 18=roll走路侧倾(YamlParam des_roll_pitch_height[0])
+// 完整清单/要点/坑 见 README！.md「行为测试」
 
 // ============================================================
 // Web 推流 — 全传感器 MJPEG 实时画面
@@ -57,12 +58,12 @@
 // ── 真狗命名空间 ──
 #define ROBOT_NS "/mi_desktop_48_b0_2d_7b_02_c7"
 
-// ── 当前测试：17=低头前进（303 WALK 直接带 rpy_des[1]=pitch，pitch_map 验证低头是否保持） ──
+// ── 当前测试：18=roll走路保持侧倾（des_roll_pitch_height YamlParam + 303前进，roll_map 验证侧倾是否保持） ──
 // ⚠ 测试完必须注释回 DEBUG_TEST_BEHAVIOR：开着会让 control_loop 只跑测试一次后
 //   timer->cancel()，遥测冻结在启动快照（超声卡0/TOF卡0.66）
 //   （2026-08-08 已改独立线程跑测试，期间传感器实时，但跑完仍会 cancel）
 #define DEBUG_TEST_BEHAVIOR
-#define TEST_BEHAVIOR 17
+#define TEST_BEHAVIOR 18
 
 // ── 传感器 topic 名称（真机值经 2026-07-31 上机确认） ──
 // 相机全部已 lifecycle 激活。RGB 需额外通过 camera_service START_IMAGE_PUBLISH 启动推流

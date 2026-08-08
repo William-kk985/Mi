@@ -266,7 +266,7 @@ colcon build --cmake-args -DUSE_TEST_ALL=ON
 
 ---
 
-## 🧪 行为测试（TEST_BEHAVIOR 1~17）
+## 🧪 行为测试（TEST_BEHAVIOR 1~18）
 
 > 独立测试单个动作/算法，定义后替代正常状态机（`control_loop` 只跑测试）。
 > 入口：`src/test/function/src/behavior_test.cpp` 的 `run_test()`。
@@ -306,6 +306,7 @@ ROS2 订阅回调 → 测试期间 TOF/超声/LiDAR 实时可读（以前同步�
 | 15 | 绝对转向90° | `abs_turn_test` | 地图绝对朝向闭环，双向选最近 | 真机 ✅ 误差~2.5° |
 | 16 | 步高标定 | `step_height_walk_test` | LCM set_step_height 打包毫米，0.10/0.15/0.20 | 真机 ✅ 0.15基准 |
 | 17 | 低头前进 | `pitch_low_fwd_test` | 303 WALK 带 rpy_des[1]=pitch + 前进0.3m | 真机 ✅ 低头保持~-5° |
+| 18 | roll走路侧倾 | `roll_walk_test` | 303带roll/201带速度/参数 三路全试 | 真机 ❌ 走路roll无法保持 |
 
 ### 真机验证要点（2026-08-07~08）
 
@@ -321,6 +322,10 @@ ROS2 订阅回调 → 测试期间 TOF/超声/LiDAR 实时可读（以前同步�
   （`set_walk_velocity_pitch`），20Hz 持续。仿真/真机同源 `convex_mpc_loco_gaits.cpp:2305` 走路时
   `rpy_cmd_[1] = ctrl_cmd_->rpy_des[1]`；TROT 默认 pitch 限位 ±0.1rad（±5.7°），速度越大范围越大；
   实测低头 -0.20 命令 → 全程保持 -4.9°~-6.8° 走满 0.3m。Stage5 过桥低头前进用它
+- **走路时保持 roll（#18, 2026-08-08 真机定论）❌ 做不到**：三条路全死——① `yaml_parameter` topic
+  真机无任何订阅者（逐一查 NX 全部节点）；② 303 带 `rpy_des[0]=roll` 被冲回 0°（固件只开 pitch 通道，
+  `rpy_cmd_scale=[0,1,0]`）；③ 201 力控能保持 25° 但 vel_des 被忽略一步不走。**过桥若需侧倾只能分段**
+  （原地侧倾定住→平走→回正）；若桥面不倾斜则低头+步高足够，不需要 roll
 
 ### 常见坑
 

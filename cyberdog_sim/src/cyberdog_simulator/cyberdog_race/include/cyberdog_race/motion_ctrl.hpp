@@ -49,11 +49,16 @@ public:
     // 疑似期望毫米(250→0.25m)/打包(250250)而非米(0.25→(int)=0)。2026-08-08 待上机验证
     void set_walk_velocity_step_raw(float x, float y, float yaw, float step_h_raw);
     // 真机带俯仰姿态行走（303 WALK_USERTROT + rpy_des[1]=pitch）：走路同时保持抬头/低头
-    // ⚠ 官方 walk teleop 不设 rpy_des，能否生效需上机验证（2026-08-08 待测）
+    // ✅ 2026-08-08 上机验证：test17 低头保持 ~-5° 走满 0.3m（步态读 rpy_des[1]）
     void set_walk_velocity_pitch(float x, float y, float yaw, float pitch);
+    // 真机带 roll+pitch 姿态行走（303 WALK_USERTROT + rpy_des=[roll,pitch,0]）
+    // ⚠ 官方 locomotion 只启用 pitch（rpy_cmd_scale=[0,1,0]），roll 走命令是否生效待验证（test18）
+    void set_walk_velocity_rpy(float x, float y, float yaw, float roll, float pitch);
     // 真机姿态控制同时带速度（201 FORCECONTROL + vel_des）：姿态模式下直接行走
     // ⚠ 官方 pose teleop vel_des=0，能否带速度需上机验证（2026-08-08 待测）
     void set_body_pitch_velocity(float pitch, float x, float y, float yaw);
+    // 真机姿态控制带速度（201 FORCECONTROL + rpy_des=[roll,pitch,0] + vel_des）：力控模式直接带姿态行走
+    void set_body_rpy_velocity(float roll, float pitch, float x, float y, float yaw);
     // 分别设置左右侧步高（单位：m），step_height[0]=前/左侧，step_height[1]=后/右侧
     void set_step_height(float left, float right);
     // 真机官方跳跃（MotionResultCmd 服务，档位固定）：dist<=0.3→30cm(133)，否则 60cm(132)

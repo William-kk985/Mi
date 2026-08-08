@@ -24,7 +24,8 @@ void jump30_test(MotionCtrl& motion, SensorData& sensor);          // 13: 前跳
 void turn_angle_test(MotionCtrl& motion, SensorData& sensor);      // 14: 原地转90°(相对, IMU yaw闭环)
 void abs_turn_test(MotionCtrl& motion, SensorData& sensor);        // 15: 绝对转向(地图坐标系, abs_yaw闭环)
 void step_height_walk_test(MotionCtrl& motion, SensorData& sensor); // 16: 步高切换(303+step_height, 原地踏步观察抬腿高低)
-void pitch_low_fwd_test(MotionCtrl& motion, SensorData& sensor);    // 17: 低头前进(201低头 + 303前进交替, pitch_map验证)
+void pitch_low_fwd_test(MotionCtrl& motion, SensorData& sensor);    // 17: 低头前进(303带rpy_des[1]=pitch, pitch_map验证)
+void roll_walk_test(MotionCtrl& motion, SensorData& sensor);        // 18: roll走路侧倾(des_roll_pitch_height[0] YamlParam, roll_map验证)
 
 } // namespace behavior
 
