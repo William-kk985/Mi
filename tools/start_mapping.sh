@@ -45,9 +45,14 @@ esac
 
 # ── 4. 开始建图 ──
 echo "④ 调用 start_mapping..."
-timeout 6 ros2 service call ${NS}/start_mapping std_srvs/srv/SetBool "{data: true}" 2>&1 \
-    | grep -oE "success=[A-Za-z]+" | head -1 && echo "   ✅ 建图已开始" \
-    || echo "   ⚠ start_mapping 调用失败"
+RESULT=$(timeout 6 ros2 service call ${NS}/start_mapping std_srvs/srv/SetBool "{data: true}" 2>&1 \
+    | grep -oE "success=[A-Za-z]+" | head -1)
+echo "   $RESULT"
+case "$RESULT" in
+    "success=True")  echo "   ✅ 建图已开始" ;;
+    "success=False") echo "   ⚠ start_mapping 返回 False (可能已在建图, 看⑥ /map 确认)" ;;
+    *)               echo "   ⚠ start_mapping 无响应" ;;
+esac
 
 # ── 5. 验证输入数据 (python, 避开 ros2 topic hz 的 QoS 坑) ──
 echo "⑤ 验证输入数据 (odom/imu/scan)..."
