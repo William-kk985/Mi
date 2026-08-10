@@ -921,7 +921,7 @@ void RaceController::render_telemetry_frame() {
 void RaceController::render_lidar_frame(const std::vector<float>& ranges,
                                          float angle_min, float angle_inc,
                                          float front_min) {
-    const int SIZE = 240;
+    const int SIZE = 480;
     const float MAX_RANGE = 8.0f;
     const float SCALE = (SIZE / 2) / MAX_RANGE;
     cv::Mat lidar_img(SIZE, SIZE, CV_8UC3, cv::Scalar(10, 15, 30));

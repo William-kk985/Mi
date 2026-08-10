@@ -45,6 +45,23 @@ export LD_LIBRARY_PATH="/SDCARD/race_ws/install/lib:$LD_LIBRARY_PATH"
 export AMENT_PREFIX_PATH="/opt/ros2/cyberdog:/opt/ros2/galactic"
 export PYTHONPATH="/opt/ros2/cyberdog/lib/python3.6/site-packages:/opt/ros2/galactic/lib/python3.6/site-packages"
 
+# ── D430i 红外+深度：lifecycle 激活（2026-08-10）──
+# ⚠ D430i 是 lifecycle 节点，未 activate 时 infra1/infra2/depth 无 Publisher！
+#   相机节点重启/狗重启后回到 unconfigured，必须重新激活
+echo "🔴 激活 D430i（红外+深度）..."
+for node in camera/camera camera/camera_align; do
+    STATE=$(ros2 lifecycle get ${NS}/${node} 2>/dev/null)
+    case "$STATE" in
+        *active*)            echo "  ✅ ${node} 已激活" ;;
+        *unconfigured*|*inactive*)
+            ros2 lifecycle set ${NS}/${node} configure > /dev/null 2>&1
+            ros2 lifecycle set ${NS}/${node} activate > /dev/null 2>&1 \
+                && echo "  ✅ ${node} 激活成功" || echo "  ⚠ ${node} 激活失败" ;;
+        *) echo "  ⚠ ${node} lifecycle 查询失败（$STATE），跳过" ;;
+    esac
+done
+sleep 1
+
 echo "📷 启动 RGB..."
 # ⚠ camera_service 不可用时（充电/未激活）ros2 service call 会无限等待 → 加 timeout 防阻塞
 timeout 5 ros2 service call ${NS}/camera_service protocol/srv/CameraService \

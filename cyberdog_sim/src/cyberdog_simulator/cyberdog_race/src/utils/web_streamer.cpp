@@ -551,6 +551,14 @@ void WebStreamer::server_loop(int port) {
             // detach：不存 vector（存了析构 joinable std::thread 会 std::terminate）
             // 退出靠 active_clients_ 计数归零 + stop() 轮询等待
             std::thread(&WebStreamer::client_handler, this, client_fd, path).detach();
+        } else if (path == "/lidar") {
+            static const char kLidarPage[] = R"(<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>LiDAR 点云</title><style>*{margin:0;padding:0;background:#000}
+img{width:100vw;height:100vh;object-fit:contain;image-rendering:crisp-edges}</style></head>
+<body><img id="lidar" src="/stream/lidar"><script>setInterval(()=>{document.getElementById('lidar').src='/stream/lidar?'+Date.now()},200)</script></body></html>)";
+            send_header(client_fd, 200, "OK", "text/html; charset=utf-8", sizeof(kLidarPage)-1);
+            send_all(client_fd, kLidarPage, sizeof(kLidarPage)-1);
+            close(client_fd);
         } else if (path == "/settings") {
             std::string page(kSettingsPage);
             send_header(client_fd, 200, "OK", "text/html; charset=utf-8", page.size());

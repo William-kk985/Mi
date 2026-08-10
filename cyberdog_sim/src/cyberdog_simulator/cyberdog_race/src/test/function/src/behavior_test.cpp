@@ -30,7 +30,8 @@ void run_test(MotionCtrl& motion, SensorData& sensor, int test_id) {
         case 17: pitch_low_fwd_test(motion, sensor);   break;
         case 18: roll_walk_test(motion, sensor);        break;
         case 19: pitch_unlock_test(motion, sensor);     break;
-        case 20: segmented_pitch_walk_test(motion, sensor); break;
+        case 20: height_low_walk_test(motion, sensor);  break;
+        case 21: walk_jump_test(motion, sensor);        break;
         default:
             fprintf(stderr, "\033[1;31m[BehaviorTest] Unknown #%d\033[0m\n", test_id);
             break;
@@ -390,57 +391,6 @@ void pitch_low_fwd_test(MotionCtrl& motion, SensorData& sensor) {
             sensor.pitch_map * 180.0f / M_PI);
 }
 
-// ── 分段低头前进（大 pitch + 移动的"自己研制"方案，test19） ──
-// 【固件现实，2026-08-08 研究定论】走路 pitch 全通道硬夹 ±5.7°（官方 App 也突破不了）；
-//   原地 201 姿态能到 ±14.7°。→ 分段状态机交替两个模式：
-//   ① 201 姿态保持（低头 0.25 → ~14°）0.6s：大角度姿态
-//   ② 303 前进（低头 0.10 → ~5.7° + 速度 0.3）0.5s：移动 + 保持极限角度
-//   循环 → 每轮前进一段 + 周期性恢复大角度。⚠ 之前 10ms 快速交替失败（模式打架），
-//   慢速分段（0.5s 级）每个模式有时间建立，是正确做法。
-// 反馈用 pitch_map：期望看到"摆动"（每次 ① 升到 ~14°，② 回落到 ~5.7°）但距离持续增长。
-void segmented_pitch_walk_test(MotionCtrl& motion, SensorData& sensor) {
-    const float POSE_PITCH  = 0.25f;   // 低头 0.25 rad（201 姿态，正值=低头 → ~14°）
-    const float WALK_PITCH  = 0.10f;   // 低头 0.10 rad（303 走路，步态夹持上限 → ~5.7°）
-    const float SPEED       = 0.3f;    // 前进速度
-    const float TARGET_DIST = 1.0f;    // 目标 1m
-    const int   POSE_MS     = 600;     // 姿态保持时长
-    const int   WALK_MS     = 500;     // 前进时长
-    motion.stand();
-    rclcpp::sleep_for(std::chrono::seconds(2));
-    fprintf(stderr, "\033[1;35m[SegPitch] 起点 pitch_map=%.1f°\033[0m\n",
-            sensor.pitch_map * 180.0f / M_PI);
-
-    float sx = sensor.odom_x, sy = sensor.odom_y;
-    float traveled = 0.0f;
-    int   cycles   = 0;
-    float peak_pitch = 0.0f;
-    int timeout = 2000;   // 40s 超时保护
-    while (traveled < TARGET_DIST && timeout-- > 0) {
-        // ① 201 姿态保持（大角度低头）
-        for (int i = 0; i < POSE_MS / 20; i++) {
-            motion.set_body_pitch(POSE_PITCH);
-            rclcpp::sleep_for(std::chrono::milliseconds(20));
-        }
-        float pk = sensor.pitch_map * 180.0f / M_PI;
-        if (pk > peak_pitch) peak_pitch = pk;
-        // ② 303 前进（保持极限低头 + 速度）
-        for (int i = 0; i < WALK_MS / 20; i++) {
-            motion.set_walk_velocity_pitch(SPEED, 0, 0, WALK_PITCH);
-            rclcpp::sleep_for(std::chrono::milliseconds(20));
-        }
-        cycles++;
-        float dx = sensor.odom_x - sx, dy = sensor.odom_y - sy;
-        traveled = std::sqrt(dx*dx + dy*dy);
-        if (cycles % 2 == 0)
-            fprintf(stderr, "    cycle=%d 走%.3fm pitch=%.1f°(峰值%.1f°)\n",
-                    cycles, traveled, sensor.pitch_map * 180.0f / M_PI, peak_pitch);
-    }
-    motion.stop();
-    fprintf(stderr, "\033[1;32m[SegPitch] 走满 %.3fm, %d轮, 峰值低头 %.1f° → %s\033[0m\n",
-            traveled, cycles, peak_pitch,
-            traveled > 0.3f ? "分段保持可行!" : "分段仍走不动");
-}
-
 // ── roll 走路保持侧倾（身躯姿态变化 + 前进组合，test18） ──
 // 【2026-08-08 排查 → LCM 参数通道打通方案】
 // - ❌ des_roll_pitch_height YamlParam(ROS topic)：真机无节点订阅 yaml_parameter，死通道
@@ -562,6 +512,68 @@ void pitch_unlock_test(MotionCtrl& motion, SensorData& sensor) {
             sensor.pitch_map * 180.0f / M_PI);
 }
 
+// ── 降低身体高度（test20） ──
+// 【2026-08-10 路线26】kWalkWave(60) + motion 参数降身高 — 唯一"走+降"都通的链路
+// 路线22: motion 参数降身高 ✅ (0.235→0.143) 不崩，但 kTrotInOut(56) 不走
+// 路线4: kWalkWave(60) ✅ 能走（MotionGaits 里唯一能前进的步态）
+// → 站定写 motion[2]=0.16 → kWalkWave(60) 走10秒（SetWalkWaveParams 读 motion[2]）
+void height_low_walk_test(MotionCtrl& motion, SensorData& sensor) {
+    const float SPEED = 0.2f;
+
+    // 站定写 motion 参数（安全不崩，路线22验证）
+    auto stand_set_motion = [&](float h) {
+        motion.stand();
+        rclcpp::sleep_for(std::chrono::seconds(3));
+        motion.set_body_params_motion_lcm(0, 0, h);
+        rclcpp::sleep_for(std::chrono::seconds(1));
+        fprintf(stderr, "    站定写motion %.2f body_height=%.3f\n", h, sensor.body_height);
+    };
+
+    motion.stand();
+    rclcpp::sleep_for(std::chrono::seconds(3));
+    fprintf(stderr, "\033[1;35m[HeightLow] 起点 body_height=%.3f\033[0m\n", sensor.body_height);
+
+    // 1) 站定写 motion[2]=0.16（WalkWave 身高 ≈ motion+0.02≈0.18，不擦地）
+    fprintf(stderr, "\033[1;36m[HeightLow] 1) 站定写motion 0.16\033[0m\n");
+    stand_set_motion(0.16f);
+
+    // 2) kWalkWave(60) 走路 10秒
+    fprintf(stderr, "\033[1;36m[HeightLow] 2) kWalkWave(60) 走10秒\033[0m\n");
+    float sx = sensor.odom_x, sy = sensor.odom_y;
+    float min_h = sensor.body_height, max_h = sensor.body_height;
+    for (int i = 0; i < 500; i++) {
+        motion.set_walk_wave(SPEED, 0, 0);
+        if (i % 50 == 0) {
+            float tr = std::sqrt((sensor.odom_x-sx)*(sensor.odom_x-sx) +
+                                 (sensor.odom_y-sy)*(sensor.odom_y-sy));
+            fprintf(stderr, "    t=%2.1fs body_height=%.3f 走%.3fm\n",
+                    i * 0.02f, sensor.body_height, tr);
+        }
+        if (sensor.body_height < min_h) min_h = sensor.body_height;
+        if (sensor.body_height > max_h) max_h = sensor.body_height;
+        rclcpp::sleep_for(std::chrono::milliseconds(20));
+    }
+    motion.stop();
+    float traveled = std::sqrt((sensor.odom_x-sx)*(sensor.odom_x-sx) +
+                               (sensor.odom_y-sy)*(sensor.odom_y-sy));
+    bool low = min_h < 0.18f;
+    bool walk = traveled > 0.3f;  // WalkWave 步态慢，放宽判据
+    fprintf(stderr, "\033[1;32m[HeightLow] 走%.3fm 身高 min=%.3f max=%.3f → %s\033[0m\n",
+            traveled, min_h, max_h,
+            (low && walk) ? "✓✓ WalkWave低姿走路成功!!!" :
+            (low ? "✓ 低姿到位但走不动" : (walk ? "✗ 能走但身高未降" : "✗ 走不动+身高未降")));
+
+    // 3) 复位
+    fprintf(stderr, "\033[1;36m[HeightLow] 3) 站定写回motion 0.225 + 201\033[0m\n");
+    stand_set_motion(0.225f);
+    for (int i = 0; i < 100; i++) {
+        motion.set_body_pose_height(0.235f);
+        rclcpp::sleep_for(std::chrono::milliseconds(20));
+    }
+    motion.stop();
+    fprintf(stderr, "\033[1;32m[HeightLow] 完成 body_height=%.3f\033[0m\n", sensor.body_height);
+}
+
 // ── RGB 实时预览（DEBUG_VISION 弹窗，按 ESC 退出） ──
 void rgb_view_test(MotionCtrl& motion, SensorData& sensor) {
     (void)motion; (void)sensor;
@@ -571,6 +583,40 @@ void rgb_view_test(MotionCtrl& motion, SensorData& sensor) {
     while (rclcpp::ok()) {
         rclcpp::sleep_for(std::chrono::milliseconds(100));
     }
+}
+
+// ── 前进0.3m + 跳跃（test21） ──
+void walk_jump_test(MotionCtrl& motion, SensorData& sensor) {
+    const float TARGET = 0.3f;
+    const float SPEED  = 0.25f;
+
+    fprintf(stderr, "\033[1;35m[WalkJump] 前进 %.1fm → 跳跃\033[0m\n", TARGET);
+    motion.stand();
+    rclcpp::sleep_for(std::chrono::seconds(2));
+
+    // 1) 前进 0.3m（odom 闭环）
+    float sx = sensor.odom_x, sy = sensor.odom_y;
+    float traveled = 0;
+    int timeout = 500;  // 10s 超时
+    while (traveled < TARGET && timeout-- > 0) {
+        motion.set_walk_velocity_step(SPEED, 0, 0, 0.15f);
+        rclcpp::sleep_for(std::chrono::milliseconds(20));
+        float dx = sensor.odom_x - sx, dy = sensor.odom_y - sy;
+        traveled = std::sqrt(dx*dx + dy*dy);
+        if (timeout % 25 == 0)
+            fprintf(stderr, "    走%.3fm/%.1f\n", traveled, TARGET);
+    }
+    motion.stop();
+    fprintf(stderr, "\033[1;32m[WalkJump] 前进 %.3fm\033[0m\n", traveled);
+
+    // 2) 跳跃
+    fprintf(stderr, "\033[1;33m[WalkJump] 跳!\033[0m\n");
+    rclcpp::sleep_for(std::chrono::milliseconds(200));
+    motion.jump_forward(0.3f);
+    rclcpp::sleep_for(std::chrono::seconds(2));
+
+    motion.stand();
+    fprintf(stderr, "\033[1;32m[WalkJump] 完成\033[0m\n");
 }
 
 } // namespace behavior

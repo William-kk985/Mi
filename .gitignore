@@ -4,6 +4,9 @@ camera_hw.yaml
 camera_config.conf
 llm_config.conf
 
+# RT 板固件备份（二进制，不入库）
+libcontrol_rt.so
+
 # IDE
 .vscode/
 *.swp

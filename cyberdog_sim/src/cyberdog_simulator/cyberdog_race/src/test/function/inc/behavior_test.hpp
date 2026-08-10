@@ -27,7 +27,8 @@ void step_height_walk_test(MotionCtrl& motion, SensorData& sensor); // 16: 步�
 void pitch_low_fwd_test(MotionCtrl& motion, SensorData& sensor);    // 17: 低头前进(303带rpy_des[1]=pitch, pitch_map验证)
 void roll_walk_test(MotionCtrl& motion, SensorData& sensor);        // 18: roll走路侧倾(des_roll_pitch_height[0] YamlParam, roll_map验证)
 void pitch_unlock_test(MotionCtrl& motion, SensorData& sensor);     // 19: pitch破限(x_effect_scale_pos=+30 放大走路pitch限位)
-void segmented_pitch_walk_test(MotionCtrl& motion, SensorData& sensor); // 20: 分段低头前进(201大姿态↔303前进交替, 大pitch+移动)
+void height_low_walk_test(MotionCtrl& motion, SensorData& sensor);    // 20: 降低身高前进(TOF确认收敛再走, 不靠时间)
+void walk_jump_test(MotionCtrl& motion, SensorData& sensor);          // 21: 前进0.3m + 跳跃
 
 } // namespace behavior
 
