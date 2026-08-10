@@ -22,14 +22,15 @@ export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 export ROS_DOMAIN_ID=42
 export DISPLAY="${DISPLAY:-:0}"
 
-# 2. 检查 NX 转发服务 (BatchMode + timeout 避免卡密码/卡连接, 失败仅警告)
-echo "① 检查 NX scan-forward 服务..."
+# 2. 确保 NX 转发服务 (未运行则自动尝试启动, 需输 NX 密码 + sudo 密码)
+echo "① 确保 NX scan-forward 转发服务..."
 if timeout 5 ssh -o ConnectTimeout=3 -o BatchMode=yes cyberdog \
     'systemctl is-active scan-forward' 2>/dev/null | grep -q active; then
     echo "   ✅ NX scan-forward 运行中"
 else
-    echo "   ⚠ 无法确认 NX scan-forward 状态(ssh 需密码或服务未起)"
-    echo "     请确认 NX 上已运行: sudo systemctl start scan-forward"
+    echo "   ⚠ NX scan-forward 未运行, 尝试启动 (输入 NX 密码 + sudo 密码)..."
+    ssh -t cyberdog 'sudo systemctl start scan-forward && echo "   ✅ NX scan-forward 已启动"' \
+        || echo "   ⚠ 启动失败, 请手动: ssh -t cyberdog '\''sudo systemctl start scan-forward'\''"
 fi
 
 # 3. 启动 VM 接收端 (8001/8002/8003)
@@ -44,20 +45,22 @@ else
     echo "   ⚠ 接收端可能未启动, 查看: cat /tmp/scan_receive.log"
 fi
 
-# 4. 发布静态 TF (laser_frame 挂到 map)
-echo "③ 发布静态 TF (map -> laser_frame)..."
+# 4. 发布静态 TF (laser_odom -> laser_frame)
+# ⚠ NX 的 /tf 建图未产出时无数据 → VM 自发布静态 TF, 雷达才能显示
+echo "③ 发布静态 TF (laser_odom -> laser_frame)..."
 pkill -f static_transform_publisher 2>/dev/null || true
 sleep 1
 nohup ros2 run tf2_ros static_transform_publisher \
-    0 0 0 0 0 0 map laser_frame > /tmp/tf.log 2>&1 &
+    0 0 0 0 0 0 laser_odom laser_frame > /tmp/tf.log 2>&1 &
 sleep 2
 echo "   ✅ TF 已发布"
 
 # 5. 启动 rviz2 (预配置)
-echo "④ 启动 rviz2..."
+# ⚠ VM 无 GPU, 默认 OpenGL 会段错误崩溃 → 必须 LIBGL_ALWAYS_SOFTWARE=1 软件渲染
+echo "④ 启动 rviz2 (软件渲染)..."
 pkill -f "rviz2" 2>/dev/null || true
 sleep 1
-nohup rviz2 -d /home/kaka/Mi/tools/rviz_cyberdog.rviz > /tmp/rviz2.log 2>&1 &
+LIBGL_ALWAYS_SOFTWARE=1 nohup rviz2 -d /home/kaka/Mi/tools/rviz_cyberdog.rviz > /tmp/rviz2.log 2>&1 &
 sleep 3
 echo "   ✅ rviz2 已启动"
 
