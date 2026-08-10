@@ -32,11 +32,16 @@ ssh -t cyberdog 'source /etc/mi/ros2_env.conf 2>/dev/null; NS="/mi_desktop_48_b0
     timeout 5 ros2 service call ${NS}/stop_mapping visualization/srv/Stop "{}" >/dev/null 2>&1; \
     timeout 5 ros2 lifecycle set ${NS}/map_builder deactivate >/dev/null 2>&1; \
     timeout 5 ros2 lifecycle set ${NS}/camera/camera deactivate >/dev/null 2>&1; \
-    echo "   ✅ NX 转发/建图/相机已关闭"'
+    echo "   ✅ NX 转发/建图/相机已关闭"; \
+    echo "③ 清理残留地图 (删文件 + 重启节点清 DDS 缓存)..."; \
+    sudo rm -rf /home/mi/mapping/* 2>/dev/null; \
+    sudo systemctl restart cyberdog_sudo.service cyberdog_bringup.service >/dev/null 2>&1; \
+    echo "   ✅ 残留地图已清除 (下次可视化无旧地图)"'
 
 echo ""
 echo "============================================"
 echo " ✅ 全部关闭完成!"
+echo " 已清除残留地图 (下次可视化是干净状态)"
 echo " 再次启动:"
 echo "   1. VM: bash ~/Mi/tools/start_rviz.sh"
 echo "   2. NX: bash /home/mi/start_mapping.sh"
