@@ -43,6 +43,10 @@ case "$STATE" in
             && echo "   ✅ 激活成功" || echo "   ⚠ 激活失败" ;;
 esac
 
+# ⚠ 必须等 map_builder 就绪再 start_mapping, 否则 success=False (2026-08-11 修复)
+echo "   (等待 map_builder 就绪 3s...)"
+sleep 3
+
 # ── 4. 开始建图 ──
 echo "④ 调用 start_mapping..."
 RESULT=$(timeout 6 ros2 service call ${NS}/start_mapping std_srvs/srv/SetBool "{data: true}" 2>&1 \
