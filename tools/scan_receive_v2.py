@@ -16,6 +16,7 @@ from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy, HistoryPo
 from sensor_msgs.msg import LaserScan
 from sensor_msgs.msg import PointCloud2
 from nav_msgs.msg import OccupancyGrid
+from tf2_msgs.msg import TFMessage
 
 # /map 是瞬态地图(OccupancyGrid), 必须用 Transient Local 才能被 rviz2 Map 显示
 MAP_QOS = QoSProfile(
@@ -29,6 +30,7 @@ PORTS = {
     8001: ("/scan", LaserScan),
     8002: ("/map", OccupancyGrid, MAP_QOS),
     8003: ("/point_cloud", PointCloud2),
+    8004: ("/tf", TFMessage),
 }
 
 
@@ -83,8 +85,9 @@ class MultiReceiver(Node):
                         msg = pickle.loads(payload)
                         msg.header.stamp = self.get_clock().now().to_msg()
                         self.pubs[port].publish(msg)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        self.get_logger().error(
+                            f"端口{port} 消息处理失败: {type(e).__name__}: {e}")
             except BlockingIOError:
                 pass
             except (BrokenPipeError, ConnectionResetError, OSError):
