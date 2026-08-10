@@ -48,16 +48,18 @@ export PYTHONPATH="/opt/ros2/cyberdog/lib/python3.6/site-packages:/opt/ros2/gala
 # ── D430i 红外+深度：lifecycle 激活（2026-08-10）──
 # ⚠ D430i 是 lifecycle 节点，未 activate 时 infra1/infra2/depth 无 Publisher！
 #   相机节点重启/狗重启后回到 unconfigured，必须重新激活
+# ⚠ lifecycle get/set 是无限等待的 service 调用 → 全部加 timeout 5 防挂（2026-08-10）
+#   camera/camera = realsense 驱动（Web 推流必需）；camera_align = 深度对齐（非必需，卡住就跳过）
 echo "🔴 激活 D430i（红外+深度）..."
 for node in camera/camera camera/camera_align; do
-    STATE=$(ros2 lifecycle get ${NS}/${node} 2>/dev/null)
+    STATE=$(timeout 5 ros2 lifecycle get ${NS}/${node} 2>/dev/null || true)
     case "$STATE" in
         *active*)            echo "  ✅ ${node} 已激活" ;;
         *unconfigured*|*inactive*)
-            ros2 lifecycle set ${NS}/${node} configure > /dev/null 2>&1
-            ros2 lifecycle set ${NS}/${node} activate > /dev/null 2>&1 \
-                && echo "  ✅ ${node} 激活成功" || echo "  ⚠ ${node} 激活失败" ;;
-        *) echo "  ⚠ ${node} lifecycle 查询失败（$STATE），跳过" ;;
+            timeout 5 ros2 lifecycle set ${NS}/${node} configure > /dev/null 2>&1 || true
+            timeout 5 ros2 lifecycle set ${NS}/${node} activate > /dev/null 2>&1 \
+                && echo "  ✅ ${node} 激活成功" || echo "  ⚠ ${node} 激活失败/超时，跳过" ;;
+        *) echo "  ⚠ ${node} lifecycle 查询失败/超时，跳过" ;;
     esac
 done
 sleep 1
