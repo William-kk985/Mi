@@ -71,10 +71,11 @@ class MultiForwarder(Node):
     def make_cb(self, port):
         def cb(msg):
             try:
+                data = pickle.dumps(msg)
                 if self.socks.get(port) is None:
                     self.connect(port)
-                    return
-                data = pickle.dumps(msg)
+                    if self.socks.get(port) is None:
+                        return
                 self.socks[port].sendall(
                     struct.pack(">I", len(data)) + data)
             except (BrokenPipeError, ConnectionResetError, OSError):

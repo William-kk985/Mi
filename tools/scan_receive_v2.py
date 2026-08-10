@@ -61,6 +61,9 @@ class MultiReceiver(Node):
             if self.conns[port] is None:
                 try:
                     self.conns[port], addr = self.socks[port].accept()
+                    # ⚠ 关键: accept 的连接默认阻塞, 必须 setblocking(False)
+                    #   否则 tick 里 recv() 会阻塞卡死整个接收端 (2026-08-11 修复)
+                    self.conns[port].setblocking(False)
                     self.get_logger().info(f"✅ 端口{port} 已连接 {addr}")
                 except BlockingIOError:
                     continue
