@@ -37,6 +37,7 @@ void Stage1Real::init() {
     prev_offset_ = 0.0f;
     traveled_    = 0.0f;
     turn_guard_  = 0;
+    loc_ready_   = false;   // 定位待就绪: 构造函数在 spin 前, global_to_robot 恒0, 需在 run() 里等
 
     // ── 站起: 完全移植 behavior test 已验证动作序列 ──
     //   构造函数 Motion init 已做 recovery+locomotion; 这里与 run_test() 开头一致再切一次
@@ -50,14 +51,6 @@ void Stage1Real::init() {
             svc_ready ? "✅就绪" : "❌超时", sensor_.odom_x, sensor_.odom_y, sensor_.yaw, sensor_.abs_yaw, sensor_.tof_clearance);
     fflush(stderr);
 #endif
-
-    // ★ 站起后再记录起点 (test14 同款时序! global_to_robot 定位此时才初始化)
-    //   ⚠ 站起前记录 → absYaw=0, 实际 1.52 → 回正把 1.52 当误差疯狂转向 (2026-08-11 根因)
-    start_x_   = sensor_.odom_x;
-    start_y_   = sensor_.odom_y;
-    start_yaw_ = sensor_.abs_yaw;
-    last_x_    = sensor_.odom_x;
-    last_y_    = sensor_.odom_y;
 
     motion_.set_walk_velocity_step(0.0f, 0.0f, 0.0f, STEP_H);  // 预热原地踏步(步高0.17)
     motion_.set_body_pitch(-0.10f);                          // 微微抬头(真机负值=抬头)
@@ -94,6 +87,37 @@ void Stage1Real::run() {
     }
 
     if (phase_ == Phase::DONE) { done_ = true; return; }
+
+    // ── ① 等定位就绪再开始前进 ──
+    // ⚠ 真正根因 (2026-08-12): init 在构造函数(spin前)跑, global_to_robot 回调没执行 → absYaw 恒0
+    //   必须在 run()(spin后)里等定位就绪, 再记录起点, 否则 start_yaw_=0 实际1.5 → 回正疯狂转向
+    if (!loc_ready_) {
+        if (sensor_.abs_yaw != 0.0f || sensor_.odom_x != 0.0f) {
+            loc_ready_  = true;
+            start_x_    = sensor_.odom_x;
+            start_y_    = sensor_.odom_y;
+            start_yaw_  = sensor_.abs_yaw;
+            last_x_     = sensor_.odom_x;
+            last_y_     = sensor_.odom_y;
+            traveled_   = 0.0f;
+            turn_guard_ = 0;
+#ifdef DEBUG_SENSOR
+            fprintf(stderr, "[S1S] 定位就绪: odom=(%.2f,%.2f) absYaw=%.2f 开始前进\n",
+                    sensor_.odom_x, sensor_.odom_y, sensor_.abs_yaw);
+            fflush(stderr);
+#endif
+        } else {
+            motion_.set_walk_velocity_step(0.0f, 0.0f, 0.0f, STEP_H);  // 原地踏步等定位
+#ifdef DEBUG_SENSOR
+            static int wait_dbg_ = 0;
+            if (++wait_dbg_ % 50 == 0) {
+                fprintf(stderr, "[S1S] 等待定位... absYaw=%.2f\n", sensor_.abs_yaw);
+                fflush(stderr);
+            }
+#endif
+            return;
+        }
+    }
 
     // ── ① 前进 6m (累计位移判定, 防定位跳变 2026-08-11) ──
     // ⚠ 之前用绝对位置差, 站起时 global_to_robot 定位跳变 → dist 瞬间≥6m → 误判走完
