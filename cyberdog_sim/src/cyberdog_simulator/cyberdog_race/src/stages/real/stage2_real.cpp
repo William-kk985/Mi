@@ -22,7 +22,7 @@ constexpr float TURN2_DEG  = +90.0f;   // 动作3: 左转 90°
 constexpr float DIST2_M    = 3.05f;    // 动作4: 走 3.05m
 constexpr float TURN3_DEG  = -90.0f;   // 动作5: 右转 90°
 constexpr float SCAN1_DEG  = +45.0f;   // 扫描位1: 左转 45°
-constexpr float SCAN2_DEG  = -135.0f;  // 扫描位2: 右转 135° (从+45°到-90°)
+constexpr float SCAN2_DEG  = -90.0f;   // 扫描位2: 右转 90° (从+45°到-45°, 相对基准左右45°对称; 2026-08-12 135°→90°)
 constexpr int   SCAN_WAIT_FRAMES = 200; // 每角度停 2 秒 (100Hz)
 constexpr float SCAN_POKE_DIST   = 0.2f; // 找到球 前进 0.2m
 constexpr float BALL_MAX_DIST    = 0.8f; // 橙色球距离 ≤0.8m 才算找到 (2026-08-12)
@@ -99,7 +99,7 @@ void Stage2Real::run() {
                 phase_ = Phase::SCAN2_WAIT;
                 wait_frames_ = 0;
 #ifdef DEBUG_STAGE
-                fprintf(stderr, "[S2Stage] 扫描位2(右转135°)停2秒找球\n");
+                fprintf(stderr, "[S2Stage] 扫描位2(右转90°)停2秒找球\n");
                 fflush(stderr);
 #endif
             }
@@ -139,7 +139,7 @@ void Stage2Real::run() {
             }
 #ifdef DEBUG_STAGE
             fprintf(stderr, "[S2Stage] 扫描位%d 2秒无球, %s\n",
-                    is_scan1 ? 1 : 2, is_scan1 ? "右转135°" : "DONE");
+                    is_scan1 ? 1 : 2, is_scan1 ? "右转90°" : "DONE");
             fflush(stderr);
 #endif
         }
@@ -185,7 +185,7 @@ void Stage2Real::run() {
                 phase_ = Phase::DONE;
             }
 #ifdef DEBUG_STAGE
-            fprintf(stderr, "[S2Stage] 退回完成, %s\n", is_scan1 ? "右转135°" : "DONE");
+            fprintf(stderr, "[S2Stage] 退回完成, %s\n", is_scan1 ? "右转90°" : "DONE");
             fflush(stderr);
 #endif
         } else {
