@@ -16,9 +16,8 @@ constexpr float STEP_H        = 0.17f;   // 步高 0.17 (石板磕碰测试, 202
 constexpr float WALK_V        = 0.30f;   // 正常前进速度 m/s
 constexpr float RUSH_V        = 0.50f;   // 卡住冲刺速度
 constexpr float GOAL_DIST     = 6.0f;    // 前进 6m (累计位移判定)
-constexpr float TURN_YAW      = M_PI / 2.0f;  // 目标转角 90° (仅文档, 实际用时间控制)
-constexpr float TURN_SPEED    = 0.40f;   // 原地转向速度 rad/s (正=左转, 2026-08-07 验证方向)
-constexpr int   TURN_FRAMES   = 400;     // 转向时长 4.0s (90°@0.4rad/s≈3.93s; 实测可校准)
+constexpr float TURN_YAW      = M_PI / 2.0f;  // 目标转角 90° (test14 相对转向)
+constexpr float TURN_SPEED    = 0.60f;   // 转向速度 rad/s (test14 同款, +0.6=左转, 2026-08-07 验证)
 constexpr float KP_YAW        = 0.8f;    // 视觉比例
 constexpr float KD_YAW        = 0.3f;    // 视觉微分
 constexpr float IMU_WEIGHT    = 0.3f;    // IMU 回正权重(视觉为主)
@@ -38,7 +37,7 @@ void Stage1Real::init() {
     prev_offset_ = 0.0f;
     start_x_     = sensor_.odom_x;
     start_y_     = sensor_.odom_y;
-    start_yaw_   = sensor_.yaw;          // ⚠ 方向判断用 IMU yaw(非地图), 用户要求不用 abs_yaw (2026-08-11)
+    start_yaw_   = sensor_.abs_yaw;      // ⚠ test14 同款: 相对转向基准用 abs_yaw, IMU yaw 真机恒0 (README 2026-08-11)
     last_x_      = sensor_.odom_x;
     last_y_      = sensor_.odom_y;
     traveled_    = 0.0f;
@@ -65,24 +64,25 @@ void Stage1Real::init() {
 void Stage1Real::run() {
     if (done_) return;
 
-    // ── ② 最后原地转 90° (时间控制, 不依赖任何 yaw 反馈) ──
-    // ⚠ 2026-08-11: IMU yaw 真机恒0 → 闭环永远转不到位(一直转); abs_yaw(地图)用户不用
-    //   → 最简单可靠: 固定左转速度 TURN_SPEED × 固定时长 TURN_FRAMES, 实测校准
+    // ── ② 最后原地转 90°: test14 相对转向同款 (abs_yaw 闭环, 真机验证误差~2.4%) ──
+    //   README: 反馈必须用 abs_yaw(global_to_robot.rpy[2]), IMU yaw 真机恒0 别用
     if (phase_ == Phase::TURN) {
+        float yaw_err = norm_yaw(start_yaw_ + TURN_YAW - sensor_.abs_yaw);
+        bool turn_done = (turn_guard_ > 20) && (std::abs(yaw_err) < 0.05f);  // 至少转0.2s防跳变
         turn_guard_++;
-        if (turn_guard_ >= TURN_FRAMES) {                    // 转够时长 → 停
+        if (turn_done) {                     // 转到位 (test14: err<0.05)
             motion_.stop();
             phase_ = Phase::DONE;
 #ifdef DEBUG_STAGE
-            fprintf(stderr, "[S1Stage] 转向完成(%.1fs), DONE\n", TURN_FRAMES / 100.0f);
+            fprintf(stderr, "[S1Stage] 转向完成 err=%.2f, DONE\n", yaw_err);
             fflush(stderr);
 #endif
         } else {
-            motion_.set_walk_velocity_step(0.0f, 0.0f, TURN_SPEED, STEP_H);
+            motion_.set_walk_velocity_step(0.0f, 0.0f, TURN_SPEED, STEP_H);  // 固定左转0.6 (test14同款)
 #ifdef DEBUG_STAGE
-            if (turn_guard_ % 50 == 0) {
-                fprintf(stderr, "[S1Stage] 转向中 %d/%.0f 帧 (yaw反馈忽略)\n",
-                        turn_guard_, (float)TURN_FRAMES);
+            if (turn_guard_ % 20 == 0) {
+                fprintf(stderr, "[S1Stage] 转向中 err=%.2f absYaw=%.2f 目标=%.2f\n",
+                        yaw_err, sensor_.abs_yaw, start_yaw_ + TURN_YAW);
                 fflush(stderr);
             }
 #endif
@@ -136,10 +136,10 @@ void Stage1Real::run() {
         stuck_ = 0;
     }
 
-    // ── ① 先直行前进 6m (最后才转向, 简单化 2026-08-11) ──
+    // ── ① 先直行前进 6m (最后才转向) ──
     // set_walk_velocity_step: 303 + 自定义步高 STEP_H(0.17)
-    // 回正用 IMU yaw 相对站起时朝向; IMU 恒0时 = 纯直行
-    float yaw_cmd = std::max(-0.5f, std::min(0.5f, -(sensor_.yaw - start_yaw_) * 0.8f));
+    // 回正用 abs_yaw 相对站起时朝向(start_yaw_), 防走偏 (IMU yaw 恒0别用)
+    float yaw_cmd = std::max(-0.5f, std::min(0.5f, -(sensor_.abs_yaw - start_yaw_) * 0.8f));
 #ifdef DEBUG_MOTION
     static int dbg_m_ = 0;
     if (++dbg_m_ % 10 == 0) {
