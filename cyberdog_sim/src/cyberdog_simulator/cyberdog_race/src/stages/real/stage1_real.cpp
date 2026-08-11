@@ -15,7 +15,7 @@ namespace {
 constexpr float STEP_H        = 0.17f;   // 步高 0.17 (石板磕碰测试, 2026-08-11 0.15→0.17)
 constexpr float WALK_V        = 0.30f;   // 正常前进速度 m/s
 constexpr float RUSH_V        = 0.50f;   // 卡住冲刺速度
-constexpr float GOAL_DIST     = 4.0f;    // 前进 4m (累计位移判定; 2026-08-12 6m→3m→4m)
+constexpr float GOAL_DIST     = 3.5f;    // 前进 3.5m (累计位移判定; 2026-08-12 6m→3m→4m→3.5m)
 constexpr float TURN_YAW      = M_PI / 2.0f;  // 目标转角 90° (test14 相对转向)
 constexpr float TURN_SPEED    = 0.60f;   // 转向速度 rad/s (test14 同款, +0.6=左转, 2026-08-07 验证)
 constexpr float KP_YAW        = 0.8f;    // 视觉比例
