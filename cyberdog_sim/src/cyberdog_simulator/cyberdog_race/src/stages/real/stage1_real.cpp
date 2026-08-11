@@ -185,7 +185,8 @@ void Stage1Real::run() {
     // ── ① 先直行前进 6m (最后才转向) ──
     // set_walk_velocity_step: 303 + 自定义步高 STEP_H(0.17)
     // 回正用 abs_yaw 相对站起时朝向(start_yaw_), 防走偏 (IMU yaw 恒0别用)
-    float yaw_cmd = std::max(-0.5f, std::min(0.5f, -(sensor_.abs_yaw - start_yaw_) * 0.8f));
+    // ★ norm_yaw 必须: 起点/途中跨过±π边界时不norm会转向饱和 (2026-08-12 修, 同Stage2)
+    float yaw_cmd = std::max(-0.5f, std::min(0.5f, -norm_yaw(sensor_.abs_yaw - start_yaw_) * 0.8f));
 #ifdef DEBUG_MOTION
     static int dbg_m_ = 0;
     if (++dbg_m_ % 10 == 0) {

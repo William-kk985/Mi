@@ -87,7 +87,8 @@ protected:
             nav_phase_ = NavPhase::DONE;
             return true;
         }
-        float yaw_cmd = std::max(-0.5f, std::min(0.5f, -(sensor_.abs_yaw - nav_target_yaw_) * 0.8f));
+        // ★ norm_yaw 必须: 跨±π边界时防止转向饱和 (2026-08-12 修, 同Stage1/2)
+        float yaw_cmd = std::max(-0.5f, std::min(0.5f, -norm_yaw(sensor_.abs_yaw - nav_target_yaw_) * 0.8f));
         motion_.set_walk_velocity_step(nav_speed_, 0.0f, yaw_cmd, nav_step_);
         return false;
     }

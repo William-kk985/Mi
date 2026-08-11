@@ -276,8 +276,9 @@ void Stage2Real::run() {
         return;
     }
 
-    // abs_yaw 定位噪声大(实测日志波动±0.1rad), 死区防抖 + 增益0.8→0.5 (2026-08-12)
-    float yaw_err = sensor_.abs_yaw - fwd_ref_yaw_;
+    // abs_yaw 定位噪声大(实测日志波动±0.1rad), 死区防抖 + 增益0.5 (2026-08-12)
+    // ★ norm_yaw 必须: abs_yaw 跨过±π边界时(如左转93°后), 不norm会 yaw_err≈6rad → 转向饱和疯狂转 (2026-08-12 修)
+    float yaw_err = norm_yaw(sensor_.abs_yaw - fwd_ref_yaw_);
     if (std::abs(yaw_err) < 0.03f) yaw_err = 0.0f;
     float yaw_cmd = std::max(-0.5f, std::min(0.5f, -yaw_err * 0.5f));
 #ifdef DEBUG_MOTION
