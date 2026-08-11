@@ -11,7 +11,7 @@
 
 namespace {
 
-constexpr float STEP_H        = 0.15f;   // 步高 0.15 (过 5cm 石板足够)
+constexpr float STEP_H        = 0.17f;   // 步高 0.17 (石板磕碰测试, 2026-08-11 0.15→0.17)
 constexpr float WALK_V        = 0.30f;   // 正常前进速度 m/s
 constexpr float RUSH_V        = 0.50f;   // 卡住冲刺速度
 constexpr float GOAL_DIST     = 6.0f;    // 前进 6m (里程计判定)
@@ -47,13 +47,13 @@ void Stage1Real::init() {
     motion_.stand();                                         // RECOVERYSTAND 官方站立
     rclcpp::sleep_for(std::chrono::seconds(3));              // 等真正站起(服务异步)
 #ifdef DEBUG_SENSOR
-    fprintf(stderr, "[S1S] 站起: 服务%s odom=(%.2f,%.2f) yaw=%.2f absYaw=%.2f\n",
-            svc_ready ? "✅就绪" : "❌超时", sensor_.odom_x, sensor_.odom_y, sensor_.yaw, sensor_.abs_yaw);
+    fprintf(stderr, "[S1S] 站起: 服务%s odom=(%.2f,%.2f) yaw=%.2f absYaw=%.2f tof=%.2f\n",
+            svc_ready ? "✅就绪" : "❌超时", sensor_.odom_x, sensor_.odom_y, sensor_.yaw, sensor_.abs_yaw, sensor_.tof_clearance);
 #endif
 
-    motion_.set_walk_velocity(0.0f, 0.0f, 0.0f);  // 预热原地踏步(测试 march 同款; 步高默认0.15)
+    motion_.set_walk_velocity_step(0.0f, 0.0f, 0.0f, STEP_H);  // 预热原地踏步(步高0.17)
     motion_.set_body_pitch(-0.10f);                          // 微微抬头(真机负值=抬头)
-    RCLCPP_INFO(rclcpp::get_logger("stage1_real"), "[Stage1Real] init: 步高0.15 前进%.1fm", GOAL_DIST);
+    RCLCPP_INFO(rclcpp::get_logger("stage1_real"), "[Stage1Real] init: 步高%.2f 前进%.1fm", STEP_H, GOAL_DIST);
 }
 
 void Stage1Real::run() {
@@ -74,7 +74,7 @@ void Stage1Real::run() {
 #endif
         } else {
             float turn = std::max(0.10f, std::min(0.45f, std::abs(yaw_err) * 0.6f));
-            motion_.set_walk_velocity(0.0f, 0.0f, yaw_err > 0 ? turn : -turn);
+            motion_.set_walk_velocity_step(0.0f, 0.0f, yaw_err > 0 ? turn : -turn, STEP_H);
         }
         return;
     }
@@ -99,12 +99,13 @@ void Stage1Real::run() {
 #ifdef DEBUG_SENSOR
     static int dbg_ = 0;
     if (++dbg_ % 10 == 0)
-        fprintf(stderr, "[S1S] odom=(%.2f,%.2f) yaw=%.2f absYaw=%.2f dist=%.2f moved=%.4f stuck=%d rush=%d\n",
-                sensor_.odom_x, sensor_.odom_y, sensor_.yaw, sensor_.abs_yaw, dist, moved, stuck_, rush_);
+        fprintf(stderr, "[S1S] odom=(%.2f,%.2f) yaw=%.2f absYaw=%.2f dist=%.2f moved=%.4f tof=%.2f elev=%.2f stuck=%d rush=%d\n",
+                sensor_.odom_x, sensor_.odom_y, sensor_.yaw, sensor_.abs_yaw, dist, moved,
+                sensor_.tof_clearance, sensor_.tof_elev_max, stuck_, rush_);
 #endif
 
     if (rush_ > 0) {                                         // 冲刺中
-        motion_.set_walk_velocity(RUSH_V, 0.0f, 0.0f);
+        motion_.set_walk_velocity_step(RUSH_V, 0.0f, 0.0f, STEP_H);
         --rush_;
         return;
     }
@@ -120,12 +121,12 @@ void Stage1Real::run() {
     }
 
     // ── 纯直行前进 (暂不上视觉巡线, 2026-08-11 用户要求; 后续再加回 lane_detector) ──
-    // 用测试验证过的 set_walk_velocity (303, 步高默认 0.15), 用 abs_yaw 回正防走偏 (IMU yaw 真机恒0)
+    // set_walk_velocity_step: 303 + 自定义步高 STEP_H(0.17); abs_yaw 回正防走偏 (IMU yaw 真机恒0)
     float yaw_cmd = std::max(-0.5f, std::min(0.5f, -sensor_.abs_yaw * 0.8f));
 #ifdef DEBUG_MOTION
     static int dbg_m_ = 0;
     if (++dbg_m_ % 10 == 0)
-        fprintf(stderr, "[S1M] cmd v=(%.2f,0,%.2f) 步高0.15\n", WALK_V, yaw_cmd);
+        fprintf(stderr, "[S1M] cmd v=(%.2f,0,%.2f) 步高%.2f\n", WALK_V, yaw_cmd, STEP_H);
 #endif
-    motion_.set_walk_velocity(WALK_V, 0.0f, yaw_cmd);
+    motion_.set_walk_velocity_step(WALK_V, 0.0f, yaw_cmd, STEP_H);
 }
