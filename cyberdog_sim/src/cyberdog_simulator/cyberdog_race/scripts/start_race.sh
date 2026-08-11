@@ -36,19 +36,25 @@ fi
 
 # ── 2. 激活 D430i (比赛视觉巡线需要 RGB/深度; web 可视化同一真实画面) ──
 echo "🔴 激活 D430i (红外+深度)..."
-# 等相机节点就绪(最多 30s; 狗刚开机时 lifecycle 查询会超时 2026-08-11)
+# 等相机节点出现(最多 60s; 狗刚开机 bringup 拉起相机较慢 2026-08-11)
+# ⚠ lifecycle get 直接查会因 DDS discovery 慢超时 → 先用 node list 判断节点存在
 for node in camera/camera camera/camera_align; do
-    for _ in $(seq 1 15); do
-        timeout 3 ros2 lifecycle get ${NS}/${node} >/dev/null 2>&1 && break
-        echo "   等待 ${node} 节点就绪..."
+    echo "   等待 ${node} 节点出现..."
+    NODE_OK=0
+    for i in $(seq 1 30); do
+        if timeout 5 ros2 node list 2>/dev/null | grep -q "${NS}/${node}"; then
+            NODE_OK=1; break
+        fi
+        [ $((i % 5)) -eq 0 ] && echo "   ...已等 $((i * 2))s"
         sleep 2
     done
-    STATE=$(timeout 5 ros2 lifecycle get ${NS}/${node} 2>/dev/null || true)
+    [ "$NODE_OK" = "1" ] && echo "  ✅ ${node} 节点已出现" || echo "  ⚠ ${node} 60s 未出现, 跳过"
+    STATE=$(timeout 8 ros2 lifecycle get ${NS}/${node} 2>/dev/null || true)
     case "$STATE" in
         *active*)            echo "  ✅ ${node} 已激活" ;;
         *unconfigured*|*inactive*)
-            timeout 5 ros2 lifecycle set ${NS}/${node} configure > /dev/null 2>&1 || true
-            timeout 5 ros2 lifecycle set ${NS}/${node} activate > /dev/null 2>&1 \
+            timeout 8 ros2 lifecycle set ${NS}/${node} configure > /dev/null 2>&1 || true
+            timeout 8 ros2 lifecycle set ${NS}/${node} activate > /dev/null 2>&1 \
                 && echo "  ✅ ${node} 激活成功" || echo "  ⚠ ${node} 激活失败/超时, 跳过" ;;
         *) echo "  ⚠ ${node} lifecycle 查询失败/超时, 跳过" ;;
     esac
