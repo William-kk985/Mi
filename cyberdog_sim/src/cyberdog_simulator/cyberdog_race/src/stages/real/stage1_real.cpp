@@ -35,7 +35,7 @@ void Stage1Real::init() {
     prev_offset_ = 0.0f;
     start_x_     = sensor_.odom_x;
     start_y_     = sensor_.odom_y;
-    start_yaw_   = sensor_.abs_yaw;      // ⚠ 转向必须用 abs_yaw(地图绝对朝向), IMU yaw 真机恒0 (2026-08-11)
+    start_yaw_   = sensor_.yaw;          // ⚠ 方向判断用 IMU yaw(非地图), 用户要求不用 abs_yaw (2026-08-11)
     last_x_      = sensor_.odom_x;
     last_y_      = sensor_.odom_y;
     traveled_    = 0.0f;
@@ -62,12 +62,12 @@ void Stage1Real::init() {
 void Stage1Real::run() {
     if (done_) return;
 
-    // ── ② 原地转 90° ─────────────────────────────────────
+    // ── ② 最后原地转 90° (先前进, 最后转向) ─────────────
     if (phase_ == Phase::TURN) {
-        float yaw_err = norm_yaw(start_yaw_ + TURN_YAW - sensor_.abs_yaw);   // ⚠ abs_yaw 闭环
+        float yaw_err = norm_yaw(start_yaw_ + TURN_YAW - sensor_.yaw);   // IMU yaw 闭环(非地图)
 #ifdef DEBUG_STAGE
-        fprintf(stderr, "[S1Stage] TURN: absYaw=%.2f 目标=%.2f err=%.2f\n",
-                sensor_.abs_yaw, start_yaw_ + TURN_YAW, yaw_err);
+        fprintf(stderr, "[S1Stage] TURN: yaw=%.2f 目标=%.2f err=%.2f\n",
+                sensor_.yaw, start_yaw_ + TURN_YAW, yaw_err);
         fflush(stderr);
 #endif
         bool turn_done = (turn_guard_ > 20) && (std::abs(yaw_err) < 0.05f);  // 至少转0.2s防跳变
@@ -132,9 +132,10 @@ void Stage1Real::run() {
         stuck_ = 0;
     }
 
-    // ── 纯直行前进 (暂不上视觉巡线, 2026-08-11 用户要求; 后续再加回 lane_detector) ──
-    // set_walk_velocity_step: 303 + 自定义步高 STEP_H(0.17); abs_yaw 回正防走偏 (IMU yaw 真机恒0)
-    float yaw_cmd = std::max(-0.5f, std::min(0.5f, -sensor_.abs_yaw * 0.8f));
+    // ── ① 先直行前进 6m (最后才转向, 简单化 2026-08-11) ──
+    // set_walk_velocity_step: 303 + 自定义步高 STEP_H(0.17)
+    // 回正用 IMU yaw 相对站起时朝向; IMU 恒0时 = 纯直行
+    float yaw_cmd = std::max(-0.5f, std::min(0.5f, -(sensor_.yaw - start_yaw_) * 0.8f));
 #ifdef DEBUG_MOTION
     static int dbg_m_ = 0;
     if (++dbg_m_ % 10 == 0) {

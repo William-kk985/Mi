@@ -70,6 +70,7 @@ sleep 1
 # ── 3. 启动比赛 ──
 echo "🚀 启动比赛 (Stage1: 前进6m 巡线 + IMU 90°转弯)"
 echo "   狗将自动站起开始! 请保持场地空旷"
-echo "   Web 可视化: http://192.168.44.1:8080 (同一真实画面+巡线标注)"
+echo "   Web 可视化: http://192.168.44.1:8080 (有线) 或 http://10.179.102.181:8080 (WiFi)"
+echo "   (同一真实画面+巡线标注)"
 echo ""
 exec /SDCARD/race_ws/install/lib/cyberdog_race/race_controller --ros-args -r __ns:=${NS}
