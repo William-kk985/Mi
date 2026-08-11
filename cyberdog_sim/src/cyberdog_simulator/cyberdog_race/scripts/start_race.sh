@@ -1,9 +1,10 @@
 #!/bin/bash
 # ============================================================
-# start_race.sh — 真机比赛一键启动 (NX 端)
+# start_race.sh — 真机比赛一键启动 (NX 端, 源码 scripts/ 目录)
 # 流程: 防双开 → 激活 D430i(视觉) → 启动 race_controller (Stage1)
 # 前置: 狗已开机, cyberdog_bringup 正常, 已用 build_race.sh 编译
-# 用法(NX): bash /home/mi/start_race.sh
+# 用法(NX): bash /SDCARD/race_ws/src/cyberdog_race/scripts/start_race.sh
+#   (由 build_race.sh 的 sync_to_nx.sh 同步到 NX)
 # ⚠ debug_config.hpp 已 #define REAL_DOG → 运行的是真机赛段
 #   Stage1Real: 步高0.15 前进6m 巡线 + IMU 90°转弯
 # 停止: Ctrl+C (狗会原地停); 全部关闭: VM 跑 stop_all.sh
