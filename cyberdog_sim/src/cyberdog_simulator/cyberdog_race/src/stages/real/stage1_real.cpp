@@ -39,18 +39,17 @@ void Stage1Real::init() {
     last_x_      = sensor_.odom_x;
     last_y_      = sensor_.odom_y;
 
-    // ── 站起: 对齐 behavior test 已验证的动作序列 ──
-    //   run_test() 开头都先 locomotion()(切行走模式) → stand()(111 官方站立) → 等站稳
-    //   ⚠ 只有 stand() 没有 locomotion() 时动作不对 (2026-08-11 上机发现, 与测试比对)
-    //   站起是异步服务 → 先等服务就绪, 再等待真正站起
-    motion_.locomotion();                                    // 切行走模式(与测试一致)
-    motion_.wait_motion_result_ready(5);
+    // ── 站起: 完全移植 behavior test 已验证动作序列 ──
+    //   构造函数 Motion init 已做 recovery+locomotion; 这里与 run_test() 开头一致再切一次
+    //   forward_test 同款: stand()(111官方站立) → 等站稳
+    motion_.locomotion();                                    // 切行走模式(run_test 开头同款)
+    motion_.wait_motion_result_ready(5);                     // 等 MotionResultCmd 服务就绪
     motion_.stand();                                         // RECOVERYSTAND 官方站立
     rclcpp::sleep_for(std::chrono::seconds(3));              // 等真正站起(服务异步)
 
-    motion_.set_walk_velocity_step(0.0f, 0.0f, 0.0f, STEP_H); // 预热: 303+步高0.15
-    motion_.set_body_pitch(-0.10f);                          // 微微抬头(真机负值=抬头), 防低头撞石板
-    RCLCPP_INFO(rclcpp::get_logger("stage1_real"), "[Stage1Real] init: 步高%.2f 前进%.1fm", STEP_H, GOAL_DIST);
+    motion_.set_walk_velocity(0.0f, 0.0f, 0.0f);  // 预热原地踏步(测试 march 同款; 步高默认0.15)
+    motion_.set_body_pitch(-0.10f);                          // 微微抬头(真机负值=抬头)
+    RCLCPP_INFO(rclcpp::get_logger("stage1_real"), "[Stage1Real] init: 步高0.15 前进%.1fm", GOAL_DIST);
 }
 
 void Stage1Real::run() {
@@ -64,7 +63,7 @@ void Stage1Real::run() {
             phase_ = Phase::DONE;
         } else {
             float turn = std::max(0.10f, std::min(0.45f, std::abs(yaw_err) * 0.6f));
-            motion_.set_walk_velocity_step(0.0f, 0.0f, yaw_err > 0 ? turn : -turn, STEP_H);
+            motion_.set_walk_velocity(0.0f, 0.0f, yaw_err > 0 ? turn : -turn);
         }
         return;
     }
@@ -85,7 +84,7 @@ void Stage1Real::run() {
     last_y_ = sensor_.odom_y;
 
     if (rush_ > 0) {                                         // 冲刺中
-        motion_.set_walk_velocity_step(RUSH_V, 0.0f, 0.0f, STEP_H);
+        motion_.set_walk_velocity(RUSH_V, 0.0f, 0.0f);
         --rush_;
         return;
     }
@@ -100,23 +99,8 @@ void Stage1Real::run() {
         stuck_ = 0;
     }
 
-    // 丢线保护: 视觉失效超限 → 纯 IMU 直行(靠 yaw 保持方向)
-    if (!sensor_.lane_valid) {
-        if (++lane_lost_ > LANE_LOST_LIM) {
-            motion_.set_walk_velocity_step(WALK_V, 0.0f, -sensor_.yaw * 0.8f, STEP_H);
-        }
-        return;
-    }
-    lane_lost_ = 0;
-
-    // 巡线: 视觉 PD + IMU 回正(视觉为主)
-    float d_offset = sensor_.lane_offset - prev_offset_;
-    prev_offset_   = sensor_.lane_offset;
-
-    float vis_cmd = -(KP_YAW * sensor_.lane_offset + KD_YAW * d_offset);
-    float imu_cmd = norm_yaw(-sensor_.yaw) * 0.3f;
-    float yaw_cmd = imu_cmd * IMU_WEIGHT + vis_cmd * (1.0f - IMU_WEIGHT);
-    yaw_cmd = std::max(-0.5f, std::min(0.5f, yaw_cmd));
-
-    motion_.set_walk_velocity_step(WALK_V, 0.0f, yaw_cmd, STEP_H);
+    // ── 纯直行前进 (暂不上视觉巡线, 2026-08-11 用户要求; 后续再加回 lane_detector) ──
+    // 用测试验证过的 set_walk_velocity (303, 步高默认 0.15), 只保留 IMU 回正防走偏
+    float yaw_cmd = std::max(-0.5f, std::min(0.5f, -sensor_.yaw * 0.8f));
+    motion_.set_walk_velocity(WALK_V, 0.0f, yaw_cmd);
 }
