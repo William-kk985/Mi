@@ -18,7 +18,7 @@ namespace {
 constexpr float WALK_V     = 0.30f;    // 前进速度 m/s
 constexpr float STEP_H     = 0.17f;    // 步高
 constexpr float TURN1_DEG  = -3.0f;    // 动作1: 右转 3° (负=右转)
-constexpr float DIST1_M    = 1.0f;     // 动作2: 走 1.0m
+constexpr float DIST1_M    = 0.8f;     // 动作2: 走 0.8m (2026-08-12: 1.0→0.8)
 constexpr float TURN2_DEG  = +90.0f;   // 动作3: 左转 90°
 constexpr float DIST2_M    = 2.9f;     // 动作4: 走 2.9m (2026-08-12: 3.05→2.9)
 constexpr float TURN3_DEG  = -90.0f;   // 动作5: 右转 90°
@@ -27,7 +27,7 @@ constexpr float SCAN1_DEG  = +45.0f;   // 扫描位1: 左转 45°
 constexpr float SCAN2_DEG  = -90.0f;   // 扫描位2: 右转 90° (从+45°到-45°, 相对基准左右45°对称; 2026-08-12 135°→90°)
 constexpr int   SCAN_WAIT_FRAMES = 200; // 每角度停 2 秒 (100Hz)
 constexpr float SCAN_POKE_DIST   = 0.2f; // 找到球 前进 0.2m
-constexpr float BALL_MAX_DIST    = 0.8f; // 橙色球距离 ≤0.8m 才算找到 (2026-08-12)
+constexpr float BALL_MAX_DIST    = 0.7f; // 橙色球距离 ≤0.7m 才算找到 (2026-08-12: 0.8→0.7)
 constexpr float TURN_SPEED = 0.60f;    // 转向速度 rad/s (test14 同款, +左转)
 
 }  // namespace
