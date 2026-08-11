@@ -18,8 +18,9 @@ constexpr float TURN1_DEG  = -3.0f;    // 动作1: 右转 3° (负=右转)
 constexpr float DIST1_M    = 1.0f;     // 动作2: 走 1.0m
 constexpr float TURN2_DEG  = +90.0f;   // 动作3: 左转 90°
 constexpr float DIST2_M    = 3.05f;    // 动作4: 走 3.05m
-constexpr float TURN3_DEG  = +45.0f;   // 动作5: 左转 45° (新增 2026-08-12)
-constexpr float TURN4_DEG  = -45.0f;   // 动作6: 右转 45° (新增 2026-08-12)
+constexpr float TURN3_DEG  = -90.0f;   // 动作5: 右转 90° (新增 2026-08-12)
+constexpr float TURN4_DEG  = +45.0f;   // 动作6: 左转 45°
+constexpr float TURN5_DEG  = -45.0f;   // 动作7: 右转 45°
 constexpr float TURN_SPEED = 0.60f;    // 转向速度 rad/s (test14 同款, +左转)
 
 }  // namespace
@@ -35,8 +36,8 @@ void Stage2Real::init() {
     last_y_        = sensor_.odom_y;
     traveled_      = 0.0f;
     RCLCPP_INFO(rclcpp::get_logger("stage2_real"),
-                "[Stage2Real] init: 右转%.0f°→走%.1fm→左转%.0f°→走%.1fm→左转%.0f°→右转%.0f°",
-                TURN1_DEG, DIST1_M, TURN2_DEG, DIST2_M, TURN3_DEG, TURN4_DEG);
+                "[Stage2Real] init: 右转%.0f°→走%.1fm→左转%.0f°→走%.1fm→右转%.0f°→左转%.0f°→右转%.0f°",
+                TURN1_DEG, DIST1_M, TURN2_DEG, DIST2_M, TURN3_DEG, TURN4_DEG, TURN5_DEG);
 }
 
 void Stage2Real::run() {
@@ -44,10 +45,12 @@ void Stage2Real::run() {
 
     // ── 转向 (TURN1..TURN4): 相对"进入转向时的朝向"转 turn_deg ──
     if (phase_ == Phase::TURN1 || phase_ == Phase::TURN2 ||
-        phase_ == Phase::TURN3 || phase_ == Phase::TURN4) {
+        phase_ == Phase::TURN3 || phase_ == Phase::TURN4 ||
+        phase_ == Phase::TURN5) {
         float deg = (phase_ == Phase::TURN1) ? TURN1_DEG :
                     (phase_ == Phase::TURN2) ? TURN2_DEG :
-                    (phase_ == Phase::TURN3) ? TURN3_DEG : TURN4_DEG;
+                    (phase_ == Phase::TURN3) ? TURN3_DEG :
+                    (phase_ == Phase::TURN4) ? TURN4_DEG : TURN5_DEG;
         float target_yaw = norm_yaw(turn_base_yaw_ + deg * M_PI / 180.0f);
         float yaw_err    = norm_yaw(target_yaw - sensor_.abs_yaw);
         bool ok = (turn_guard_ > 20) && (std::abs(yaw_err) < 0.05f);  // 至少0.2s防跳变
@@ -72,15 +75,23 @@ void Stage2Real::run() {
                 fprintf(stderr, "[S2Stage] 左转%.0f°完成, 走%.1fm\n", std::abs(deg), DIST2_M);
                 fflush(stderr);
 #endif
-            } else if (phase_ == Phase::TURN3) { // → 右转 45°
+            } else if (phase_ == Phase::TURN3) { // → 左转 45°
                 phase_ = Phase::TURN4;
+                turn_guard_    = 0;
+                turn_base_yaw_ = sensor_.abs_yaw;
+#ifdef DEBUG_STAGE
+                fprintf(stderr, "[S2Stage] 右转90°完成, 左转45°\n");
+                fflush(stderr);
+#endif
+            } else if (phase_ == Phase::TURN4) { // → 右转 45°
+                phase_ = Phase::TURN5;
                 turn_guard_    = 0;
                 turn_base_yaw_ = sensor_.abs_yaw;
 #ifdef DEBUG_STAGE
                 fprintf(stderr, "[S2Stage] 左转45°完成, 右转45°\n");
                 fflush(stderr);
 #endif
-            } else {                             // TURN4 → DONE
+            } else {                             // TURN5 → DONE
                 phase_ = Phase::DONE;
 #ifdef DEBUG_STAGE
                 fprintf(stderr, "[S2Stage] 右转45°完成, DONE\n");
@@ -125,7 +136,7 @@ void Stage2Real::run() {
             turn_guard_    = 0;
             turn_base_yaw_ = sensor_.abs_yaw;
 #ifdef DEBUG_STAGE
-            fprintf(stderr, "[S2Stage] 走%.1fm完成, 左转45°\n", DIST2_M);
+            fprintf(stderr, "[S2Stage] 走%.1fm完成, 右转90°\n", DIST2_M);
             fflush(stderr);
 #endif
         }

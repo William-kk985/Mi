@@ -12,7 +12,7 @@ public:
     [[nodiscard]] bool is_done() override { return done_; }
 
 private:
-    enum class Phase { TURN1, FWD1, TURN2, FWD2, TURN3, TURN4, DONE };
+    enum class Phase { TURN1, FWD1, TURN2, FWD2, TURN3, TURN4, TURN5, DONE };
 
     Phase phase_{Phase::TURN1};
     bool  done_{false};
