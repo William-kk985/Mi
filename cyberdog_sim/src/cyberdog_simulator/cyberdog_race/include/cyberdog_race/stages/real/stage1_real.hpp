@@ -22,4 +22,6 @@ private:
     float prev_offset_{0.0f};
     float start_x_{0.0f}, start_y_{0.0f}, start_yaw_{0.0f};
     float last_x_{0.0f}, last_y_{0.0f};
+    float traveled_{0.0f};   // 累计前进位移 (防定位跳变误判6m, 2026-08-11)
+    int   turn_guard_{0};    // 转弯最小帧数保护 (防 yaw 跳变立即到位)
 };

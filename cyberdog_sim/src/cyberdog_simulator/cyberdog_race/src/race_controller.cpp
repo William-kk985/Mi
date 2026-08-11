@@ -349,6 +349,13 @@ void RaceController::control_loop() {
 #ifdef DEBUG_STAGE
             RCLCPP_INFO(get_logger(), "[Stage] switching to stage %d", cur_stage_ + 1);
 #endif
+            // ⚠ 真机后续赛段未实现 stages_[N]==nullptr → 停止不崩 (2026-08-11)
+            if (!stages_[cur_stage_]) {
+                motion_.stop();
+                RCLCPP_WARN(get_logger(), "[Stage] stage %d 未实现, 已停止", cur_stage_ + 1);
+                timer_->cancel();
+                return;
+            }
             if (cur_stage_ == 2) lane_detector_.set_mode(LaneMode::RELAXED);
             else lane_detector_.set_mode(LaneMode::STRICT);
             if (cur_stage_ == 5) ball_detector_.reset_filter();

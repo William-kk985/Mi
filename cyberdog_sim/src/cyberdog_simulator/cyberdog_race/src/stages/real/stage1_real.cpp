@@ -38,6 +38,8 @@ void Stage1Real::init() {
     start_yaw_   = sensor_.abs_yaw;      // ⚠ 转向必须用 abs_yaw(地图绝对朝向), IMU yaw 真机恒0 (2026-08-11)
     last_x_      = sensor_.odom_x;
     last_y_      = sensor_.odom_y;
+    traveled_    = 0.0f;
+    turn_guard_  = 0;
 
     // ── 站起: 完全移植 behavior test 已验证动作序列 ──
     //   构造函数 Motion init 已做 recovery+locomotion; 这里与 run_test() 开头一致再切一次
@@ -49,6 +51,7 @@ void Stage1Real::init() {
 #ifdef DEBUG_SENSOR
     fprintf(stderr, "[S1S] 站起: 服务%s odom=(%.2f,%.2f) yaw=%.2f absYaw=%.2f tof=%.2f\n",
             svc_ready ? "✅就绪" : "❌超时", sensor_.odom_x, sensor_.odom_y, sensor_.yaw, sensor_.abs_yaw, sensor_.tof_clearance);
+    fflush(stderr);
 #endif
 
     motion_.set_walk_velocity_step(0.0f, 0.0f, 0.0f, STEP_H);  // 预热原地踏步(步高0.17)
@@ -65,12 +68,16 @@ void Stage1Real::run() {
 #ifdef DEBUG_STAGE
         fprintf(stderr, "[S1Stage] TURN: absYaw=%.2f 目标=%.2f err=%.2f\n",
                 sensor_.abs_yaw, start_yaw_ + TURN_YAW, yaw_err);
+        fflush(stderr);
 #endif
-        if (std::abs(yaw_err) < 0.05f) {                     // 转到位
+        bool turn_done = (turn_guard_ > 20) && (std::abs(yaw_err) < 0.05f);  // 至少转0.2s防跳变
+        turn_guard_++;
+        if (turn_done) {                     // 转到位
             motion_.stop();
             phase_ = Phase::DONE;
 #ifdef DEBUG_STAGE
             fprintf(stderr, "[S1Stage] 转弯完成, DONE\n");
+            fflush(stderr);
 #endif
         } else {
             float turn = std::max(0.10f, std::min(0.45f, std::abs(yaw_err) * 0.6f));
@@ -81,27 +88,32 @@ void Stage1Real::run() {
 
     if (phase_ == Phase::DONE) { done_ = true; return; }
 
-    // ── ① 前进 6m 巡线 ───────────────────────────────────
-    float dist = std::hypot(sensor_.odom_x - start_x_, sensor_.odom_y - start_y_);
-    if (dist >= GOAL_DIST) {                                 // 走完 6m
+    // ── ① 前进 6m (累计位移判定, 防定位跳变 2026-08-11) ──
+    // ⚠ 之前用绝对位置差, 站起时 global_to_robot 定位跳变 → dist 瞬间≥6m → 误判走完
+    float moved = std::hypot(sensor_.odom_x - last_x_, sensor_.odom_y - last_y_);
+    last_x_ = sensor_.odom_x;
+    last_y_ = sensor_.odom_y;
+    if (moved > 0.25f) moved = 0.0f;   // 跳变保护: 单帧>25cm 视为定位跳变, 忽略
+    traveled_ += moved;
+    float dist = traveled_;
+
+    if (dist >= GOAL_DIST) {                                 // 累计走完 6m
         motion_.stop();
         phase_ = Phase::TURN;
 #ifdef DEBUG_STAGE
         fprintf(stderr, "[S1Stage] 前进 %.2fm 完成, 转 90°\n", dist);
+        fflush(stderr);
 #endif
         return;
     }
-
-    // 卡住检测: 位移过小连续 N 帧 → 冲刺脱困(加速冲过石板)
-    float moved = std::hypot(sensor_.odom_x - last_x_, sensor_.odom_y - last_y_);
-    last_x_ = sensor_.odom_x;
-    last_y_ = sensor_.odom_y;
 #ifdef DEBUG_SENSOR
     static int dbg_ = 0;
-    if (++dbg_ % 10 == 0)
+    if (++dbg_ % 10 == 0) {
         fprintf(stderr, "[S1S] odom=(%.2f,%.2f) yaw=%.2f absYaw=%.2f dist=%.2f moved=%.4f tof=%.2f elev=%.2f stuck=%d rush=%d\n",
                 sensor_.odom_x, sensor_.odom_y, sensor_.yaw, sensor_.abs_yaw, dist, moved,
                 sensor_.tof_clearance, sensor_.tof_elev_max, stuck_, rush_);
+        fflush(stderr);
+    }
 #endif
 
     if (rush_ > 0) {                                         // 冲刺中
@@ -125,8 +137,10 @@ void Stage1Real::run() {
     float yaw_cmd = std::max(-0.5f, std::min(0.5f, -sensor_.abs_yaw * 0.8f));
 #ifdef DEBUG_MOTION
     static int dbg_m_ = 0;
-    if (++dbg_m_ % 10 == 0)
+    if (++dbg_m_ % 10 == 0) {
         fprintf(stderr, "[S1M] cmd v=(%.2f,0,%.2f) 步高%.2f\n", WALK_V, yaw_cmd, STEP_H);
+        fflush(stderr);
+    }
 #endif
     motion_.set_walk_velocity_step(WALK_V, 0.0f, yaw_cmd, STEP_H);
 }
