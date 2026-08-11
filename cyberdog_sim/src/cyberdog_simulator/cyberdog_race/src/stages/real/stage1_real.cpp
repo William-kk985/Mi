@@ -39,9 +39,11 @@ void Stage1Real::init() {
     last_x_      = sensor_.odom_x;
     last_y_      = sensor_.odom_y;
 
-    // ── 站起: 真机必须走 MotionResultCmd 111 (RECOVERYSTAND) ──
-    // ⚠ locomotion() 是 gamepad 接口, 真机无效 (2026-08-11 实测狗不站)
+    // ── 站起: 对齐 behavior test 已验证的动作序列 ──
+    //   run_test() 开头都先 locomotion()(切行走模式) → stand()(111 官方站立) → 等站稳
+    //   ⚠ 只有 stand() 没有 locomotion() 时动作不对 (2026-08-11 上机发现, 与测试比对)
     //   站起是异步服务 → 先等服务就绪, 再等待真正站起
+    motion_.locomotion();                                    // 切行走模式(与测试一致)
     motion_.wait_motion_result_ready(5);
     motion_.stand();                                         // RECOVERYSTAND 官方站立
     rclcpp::sleep_for(std::chrono::seconds(3));              // 等真正站起(服务异步)
