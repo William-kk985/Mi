@@ -11,22 +11,20 @@
 
 namespace {
 
-constexpr float CORRECT_YAW   = 5.0f * M_PI / 180.0f;  // 右转 5° 修正 (Stage1 转向偏差)
 constexpr float WALK_V        = 0.30f;   // 前进速度 m/s
-constexpr float GOAL_DIST     = 1.0f;    // 前进 1.0m (2026-08-12 1.5m→1m)
+constexpr float GOAL_Y        = 3.6f;    // 左转90°方向前进 3.6m (2026-08-12)
 constexpr float STEP_H        = 0.17f;   // 步高 (与 Stage1 一致)
-constexpr float KP_YAW        = 0.8f;    // 回正增益
 
 }  // namespace
 
 void Stage2Real::init() {
     phase_ = Phase::NAV;
     done_  = false;
-    // 目标点: 起点右转 5°(修正 Stage1 转向偏差)方向 1m 处 (不借助地图, goto_relative)
-    goto_relative(GOAL_DIST * std::cos(-CORRECT_YAW),
-                  GOAL_DIST * std::sin(-CORRECT_YAW), WALK_V, STEP_H);
+    // 目标点: 起点左转 90° 方向、3.6m 处
+    // (goto_relative 自动: 先转向对准 +y 方向=左转90°, 再走 3.6m)
+    goto_relative(0.0f, GOAL_Y, WALK_V, STEP_H);
     RCLCPP_INFO(rclcpp::get_logger("stage2_real"),
-                "[Stage2Real] init: 目标点(右转5°方向 %.1fm)", GOAL_DIST);
+                "[Stage2Real] init: 目标点(左转90°方向 %.1fm)", GOAL_Y);
 }
 
 void Stage2Real::run() {
