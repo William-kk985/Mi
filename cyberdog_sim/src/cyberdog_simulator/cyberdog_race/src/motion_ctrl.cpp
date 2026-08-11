@@ -234,6 +234,26 @@ void MotionCtrl::send_result_cmd(int motion_id) {
 }
 #endif
 
+// 等待 MotionResultCmd 服务就绪（带超时秒）——真机站/趴前调用
+// ⚠ 2026-08-11: 狗刚启动时服务端可能未就绪, send_result_cmd 会直接 return (服务未就绪)
+bool MotionCtrl::wait_motion_result_ready(int timeout_s) {
+#ifdef REAL_DOG
+    if (!motion_result_client_) {
+        fprintf(stderr, "[MotionCtrl] wait_motion_result_ready: 客户端未挂载\n");
+        return false;
+    }
+    for (int i = 0; i < timeout_s * 10; i++) {
+        if (motion_result_client_->service_is_ready()) return true;
+        rclcpp::sleep_for(std::chrono::milliseconds(100));
+    }
+    fprintf(stderr, "[MotionCtrl] wait_motion_result_ready: %ds 超时, 服务未就绪\n", timeout_s);
+    return false;
+#else
+    (void)timeout_s;
+    return true;
+#endif
+}
+
 // ── 真机官方跳跃（motion_servo_cmd 持续发布，档位固定） ──
 //   ⚠ 跳跃不走 MotionResultCmd（Command 133 not valid, 2026-08-07 上机确认）
 //   与姿态201/行走303一样走 ServoCmd，持续发布 ~1.5s 触发跳跃轨迹

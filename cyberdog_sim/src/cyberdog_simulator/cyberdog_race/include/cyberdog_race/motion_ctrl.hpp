@@ -120,6 +120,8 @@ public:
     void jump_forward(float dist);
     // 真机官方动作触发（MotionResultCmd 服务）：111=站立 101=趴下 133=前跳30cm 132=前跳60cm
     void send_result_cmd(int motion_id);
+    // 等待 MotionResultCmd 服务就绪（带超时秒）；真机站/趴前调用, 返回是否就绪（仿真恒 true）
+    bool wait_motion_result_ready(int timeout_s = 5);
     // 挂载 yaml_parameter 发布器（赛段姿态参数 des_roll_pitch_height，走路时保持姿态用）
     void attach_yaml_pub(rclcpp::Publisher<cyberdog_msg::msg::YamlParam>::SharedPtr pub);
     // 下发身躯参数：roll/pitch/身高（des_roll_pitch_height, 真机走路时姿态可能靠它保持）

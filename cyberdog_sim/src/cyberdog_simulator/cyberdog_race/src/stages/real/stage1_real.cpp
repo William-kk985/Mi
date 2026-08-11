@@ -39,7 +39,13 @@ void Stage1Real::init() {
     last_x_      = sensor_.odom_x;
     last_y_      = sensor_.odom_y;
 
-    motion_.locomotion();                                    // 切 trot 步态
+    // ── 站起: 真机必须走 MotionResultCmd 111 (RECOVERYSTAND) ──
+    // ⚠ locomotion() 是 gamepad 接口, 真机无效 (2026-08-11 实测狗不站)
+    //   站起是异步服务 → 先等服务就绪, 再等待真正站起
+    motion_.wait_motion_result_ready(5);
+    motion_.stand();                                         // RECOVERYSTAND 官方站立
+    rclcpp::sleep_for(std::chrono::seconds(3));              // 等真正站起(服务异步)
+
     motion_.set_walk_velocity_step(0.0f, 0.0f, 0.0f, STEP_H); // 预热: 303+步高0.15
     motion_.set_body_pitch(-0.10f);                          // 微微抬头(真机负值=抬头), 防低头撞石板
     RCLCPP_INFO(rclcpp::get_logger("stage1_real"), "[Stage1Real] init: 步高%.2f 前进%.1fm", STEP_H, GOAL_DIST);

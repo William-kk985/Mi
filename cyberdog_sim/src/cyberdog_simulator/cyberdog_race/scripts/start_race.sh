@@ -34,9 +34,15 @@ if ss -tln 2>/dev/null | grep -q ':8080 '; then
     sleep 1
 fi
 
-# ── 2. 激活 D430i (比赛视觉巡线需要 RGB/深度) ──
+# ── 2. 激活 D430i (比赛视觉巡线需要 RGB/深度; web 可视化同一真实画面) ──
 echo "🔴 激活 D430i (红外+深度)..."
+# 等相机节点就绪(最多 30s; 狗刚开机时 lifecycle 查询会超时 2026-08-11)
 for node in camera/camera camera/camera_align; do
+    for _ in $(seq 1 15); do
+        timeout 3 ros2 lifecycle get ${NS}/${node} >/dev/null 2>&1 && break
+        echo "   等待 ${node} 节点就绪..."
+        sleep 2
+    done
     STATE=$(timeout 5 ros2 lifecycle get ${NS}/${node} 2>/dev/null || true)
     case "$STATE" in
         *active*)            echo "  ✅ ${node} 已激活" ;;
@@ -49,8 +55,15 @@ for node in camera/camera camera/camera_align; do
 done
 sleep 1
 
+# RGB 流激活 (start_web.sh 同款; camera_service 不可用时跳过, 红外/深度不受影响)
+timeout 5 ros2 service call ${NS}/camera_service protocol/srv/CameraService \
+    "{command: 9, args: \"\", width: 640, height: 480, fps: 30}" > /dev/null 2>&1 \
+    || echo "⚠ camera_service 不可用, 跳过 RGB 激活"
+sleep 1
+
 # ── 3. 启动比赛 ──
 echo "🚀 启动比赛 (Stage1: 前进6m 巡线 + IMU 90°转弯)"
 echo "   狗将自动站起开始! 请保持场地空旷"
+echo "   Web 可视化: http://192.168.44.1:8080 (同一真实画面+巡线标注)"
 echo ""
 exec /SDCARD/race_ws/install/lib/cyberdog_race/race_controller --ros-args -r __ns:=${NS}
