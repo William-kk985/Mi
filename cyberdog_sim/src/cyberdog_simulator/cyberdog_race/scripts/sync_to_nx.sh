@@ -23,8 +23,11 @@
 # ============================================================
 set -e
 
+# NX 连接别名: 有线=cyberdog(192.168.44.1), WiFi=cyberdog-wifi(10.179.x)
+# build_race.sh 会自动探测并 export NX_HOST; 独立用时默认有线
+NX_HOST="${NX_HOST:-cyberdog}"
 LOCAL="/home/kaka/Mi/cyberdog_sim/src/cyberdog_simulator/cyberdog_race"
-REMOTE="cyberdog:/SDCARD/race_ws/src/cyberdog_race"
+REMOTE="$NX_HOST:/SDCARD/race_ws/src/cyberdog_race"
 SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=20 -o ServerAliveInterval=10"
 NX_REPO="/SDCARD/race_ws/src/cyberdog_race"
 
@@ -40,12 +43,12 @@ echo "=============================================="
 
 echo ""
 echo "=== 1. NX 上未提交改动总览（伙伴或本地的） ==="
-ssh $SSH_OPTS cyberdog \
+ssh $SSH_OPTS "$NX_HOST" \
   "cd $NX_REPO && git status --short 2>/dev/null | head -30 || echo '(非 git 仓库)'"
 
 echo ""
 echo "=== 2. 收集 NX 上【已修改未提交】的文件 → 本次【跳过不覆盖】 ==="
-ssh $SSH_OPTS cyberdog \
+ssh $SSH_OPTS "$NX_HOST" \
   "cd $NX_REPO && git status --porcelain 2>/dev/null | awk '\$1 ~ /M/ {print \$2}'" \
   > "$MOD_LIST" || true
 
@@ -61,7 +64,7 @@ fi
 
 echo ""
 echo "=== 3. 检查 NX 上被删除的文件（可用 git 恢复） ==="
-DELETED=$(ssh $SSH_OPTS cyberdog \
+DELETED=$(ssh $SSH_OPTS "$NX_HOST" \
   "cd $NX_REPO && git status --porcelain 2>/dev/null | awk '\$1 ~ /D/ {print \$2}'" || true)
 if [ -n "$DELETED" ]; then
   echo "  以下文件在 NX 上被删（可能之前误删），建议恢复："

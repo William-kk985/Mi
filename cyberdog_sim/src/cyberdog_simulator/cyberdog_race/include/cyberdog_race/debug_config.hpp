@@ -4,10 +4,10 @@
 // 日志/可视化开关
 // ============================================================
 
-// #define DEBUG_VISION    // cv::imshow 弹窗看传感器画面
-// #define DEBUG_MOTION
-// #define DEBUG_SENSOR
-// #define DEBUG_STAGE
+// #define DEBUG_VISION    // cv::imshow 弹窗看传感器画面 (⚠真机无显示器, 勿开)
+#define DEBUG_MOTION     // 运动指令日志 (2026-08-11 真机调试开)
+#define DEBUG_SENSOR     // 传感器数据日志 (odom/yaw/dist)
+#define DEBUG_STAGE      // 状态机切换日志
 
 #ifdef DEBUG_STAGE
 #define LOG_STAGE_GREEN(tag, msg) fprintf(stderr, "\033[1;34m[" tag "] " msg "\033[0m\n")
