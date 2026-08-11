@@ -1,4 +1,5 @@
 #include "cyberdog_race/stages/real/stage1_real.hpp"
+#include "cyberdog_race/debug_config.hpp"   // ★ 必须显式 include, DEBUG_MOTION/SENSOR/STAGE 宏 (2026-08-11 缺这个导致打印没编译!)
 #include <rclcpp/rclcpp.hpp>
 #include <cmath>
 
