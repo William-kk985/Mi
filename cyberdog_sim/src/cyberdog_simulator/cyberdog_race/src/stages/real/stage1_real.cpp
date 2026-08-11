@@ -15,8 +15,10 @@ namespace {
 constexpr float STEP_H        = 0.17f;   // 步高 0.17 (石板磕碰测试, 2026-08-11 0.15→0.17)
 constexpr float WALK_V        = 0.30f;   // 正常前进速度 m/s
 constexpr float RUSH_V        = 0.50f;   // 卡住冲刺速度
-constexpr float GOAL_DIST     = 6.0f;    // 前进 6m (里程计判定)
-constexpr float TURN_YAW      = M_PI / 2.0f;  // 目标转角 90°
+constexpr float GOAL_DIST     = 6.0f;    // 前进 6m (累计位移判定)
+constexpr float TURN_YAW      = M_PI / 2.0f;  // 目标转角 90° (仅文档, 实际用时间控制)
+constexpr float TURN_SPEED    = 0.40f;   // 原地转向速度 rad/s (正=左转, 2026-08-07 验证方向)
+constexpr int   TURN_FRAMES   = 400;     // 转向时长 4.0s (90°@0.4rad/s≈3.93s; 实测可校准)
 constexpr float KP_YAW        = 0.8f;    // 视觉比例
 constexpr float KD_YAW        = 0.3f;    // 视觉微分
 constexpr float IMU_WEIGHT    = 0.3f;    // IMU 回正权重(视觉为主)
@@ -63,26 +65,27 @@ void Stage1Real::init() {
 void Stage1Real::run() {
     if (done_) return;
 
-    // ── ② 最后原地转 90° (先前进, 最后转向) ─────────────
+    // ── ② 最后原地转 90° (时间控制, 不依赖任何 yaw 反馈) ──
+    // ⚠ 2026-08-11: IMU yaw 真机恒0 → 闭环永远转不到位(一直转); abs_yaw(地图)用户不用
+    //   → 最简单可靠: 固定左转速度 TURN_SPEED × 固定时长 TURN_FRAMES, 实测校准
     if (phase_ == Phase::TURN) {
-        float yaw_err = norm_yaw(start_yaw_ + TURN_YAW - sensor_.yaw);   // IMU yaw 闭环(非地图)
-#ifdef DEBUG_STAGE
-        fprintf(stderr, "[S1Stage] TURN: yaw=%.2f 目标=%.2f err=%.2f\n",
-                sensor_.yaw, start_yaw_ + TURN_YAW, yaw_err);
-        fflush(stderr);
-#endif
-        bool turn_done = (turn_guard_ > 20) && (std::abs(yaw_err) < 0.05f);  // 至少转0.2s防跳变
         turn_guard_++;
-        if (turn_done) {                     // 转到位
+        if (turn_guard_ >= TURN_FRAMES) {                    // 转够时长 → 停
             motion_.stop();
             phase_ = Phase::DONE;
 #ifdef DEBUG_STAGE
-            fprintf(stderr, "[S1Stage] 转弯完成, DONE\n");
+            fprintf(stderr, "[S1Stage] 转向完成(%.1fs), DONE\n", TURN_FRAMES / 100.0f);
             fflush(stderr);
 #endif
         } else {
-            float turn = std::max(0.10f, std::min(0.45f, std::abs(yaw_err) * 0.6f));
-            motion_.set_walk_velocity_step(0.0f, 0.0f, yaw_err > 0 ? turn : -turn, STEP_H);
+            motion_.set_walk_velocity_step(0.0f, 0.0f, TURN_SPEED, STEP_H);
+#ifdef DEBUG_STAGE
+            if (turn_guard_ % 50 == 0) {
+                fprintf(stderr, "[S1Stage] 转向中 %d/%.0f 帧 (yaw反馈忽略)\n",
+                        turn_guard_, (float)TURN_FRAMES);
+                fflush(stderr);
+            }
+#endif
         }
         return;
     }
