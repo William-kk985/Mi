@@ -35,11 +35,6 @@ void Stage1Real::init() {
     rush_        = 0;
     lane_lost_   = 0;
     prev_offset_ = 0.0f;
-    start_x_     = sensor_.odom_x;
-    start_y_     = sensor_.odom_y;
-    start_yaw_   = sensor_.abs_yaw;      // ⚠ test14 同款: 相对转向基准用 abs_yaw, IMU yaw 真机恒0 (README 2026-08-11)
-    last_x_      = sensor_.odom_x;
-    last_y_      = sensor_.odom_y;
     traveled_    = 0.0f;
     turn_guard_  = 0;
 
@@ -55,6 +50,14 @@ void Stage1Real::init() {
             svc_ready ? "✅就绪" : "❌超时", sensor_.odom_x, sensor_.odom_y, sensor_.yaw, sensor_.abs_yaw, sensor_.tof_clearance);
     fflush(stderr);
 #endif
+
+    // ★ 站起后再记录起点 (test14 同款时序! global_to_robot 定位此时才初始化)
+    //   ⚠ 站起前记录 → absYaw=0, 实际 1.52 → 回正把 1.52 当误差疯狂转向 (2026-08-11 根因)
+    start_x_   = sensor_.odom_x;
+    start_y_   = sensor_.odom_y;
+    start_yaw_ = sensor_.abs_yaw;
+    last_x_    = sensor_.odom_x;
+    last_y_    = sensor_.odom_y;
 
     motion_.set_walk_velocity_step(0.0f, 0.0f, 0.0f, STEP_H);  // 预热原地踏步(步高0.17)
     motion_.set_body_pitch(-0.10f);                          // 微微抬头(真机负值=抬头)
