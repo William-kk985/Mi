@@ -142,6 +142,10 @@ RaceController::RaceController() : Node("race_controller") {
     if (cur_stage_ == 2) lane_detector_.set_mode(LaneMode::RELAXED);
     if (cur_stage_ == 5) ball_detector_.reset_filter();
     stages_[cur_stage_]->init();
+#elif defined(REAL_DOG)  // 真机: 创建真机赛段 (2026-08-11)
+    stages_[0] = std::make_unique<Stage1Real>(motion_, sensor_);
+    // 后续赛段实现后在此追加: stages_[1] = ... Stage2Real 等
+    if (cur_stage_ == 0 && stages_[0]) stages_[0]->init();
 #endif
 
     if (lcm_sub_.good()) {
