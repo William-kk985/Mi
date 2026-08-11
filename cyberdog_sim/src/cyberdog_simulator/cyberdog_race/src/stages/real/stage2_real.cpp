@@ -5,12 +5,13 @@
 
 // ═══════════════════════════════════════════════════════════
 // Stage2Real 真机版 — 第2赛段
-// 右转3° → 走0.8m → 左转90° → 走2.9m → 右转90°
+// 右转3° → 走0.9m → 左转90° → 走2.9m → 右转90°
 // → 找球扫描: 左转45°停2秒 / 右转90°停2秒
 //   每个角度: 识别到橙色球→前进0.2m再退回; 没有→2秒后转下一个角度
 // → 扫描位2(右转90°)之后左转45°(不识别球) → 前进0.6m 朝好的方向继续走 (2026-08-12 新增)
 // 方向反馈用 abs_yaw(global_to_robot.rpy[2]), IMU yaw 真机恒0 别用 (README 2026-08-11)
 // 前进回正: 死区0.03rad + 增益0.5 (abs_yaw 定位噪声大, 2026-08-12 实测日志验证)
+// 转向: 实测 yaw=0.6 实际转速≈2rad/s, 已降至0.3(≈1rad/s) 提高精度 (2026-08-12)
 // ═══════════════════════════════════════════════════════════
 
 namespace {
@@ -19,7 +20,7 @@ namespace {
 constexpr float WALK_V     = 0.30f;    // 前进速度 m/s
 constexpr float STEP_H     = 0.17f;    // 步高
 constexpr float TURN1_DEG  = -3.0f;    // 动作1: 右转 3° (负=右转)
-constexpr float DIST1_M    = 0.8f;     // 动作2: 走 0.8m (2026-08-12: 1.0→0.8)
+constexpr float DIST1_M    = 0.9f;     // 动作2: 走 0.9m (2026-08-12: 0.8→0.9)
 constexpr float TURN2_DEG  = +90.0f;   // 动作3: 左转 90°
 constexpr float DIST2_M    = 2.9f;     // 动作4: 走 2.9m (2026-08-12: 3.05→2.9)
 constexpr float TURN3_DEG  = -90.0f;   // 动作5: 右转 90°
@@ -30,10 +31,10 @@ constexpr float SCAN2_DEG  = -90.0f;   // 扫描位2: 右转 90° (从+45°到-4
 constexpr int   SCAN_WAIT_FRAMES = 200; // 每角度停 2 秒 (100Hz)
 constexpr float SCAN_POKE_DIST   = 0.2f; // 找到球 前进 0.2m
 constexpr float BALL_MAX_DIST    = 0.7f; // 橙色球距离 ≤0.7m 才算找到 (2026-08-12: 0.8→0.7)
-constexpr float TURN_SPEED = 0.60f;    // 转向速度 rad/s (test14 同款, +左转)
+constexpr float TURN_SPEED = 0.45f;    // 转向速度 (实测 yaw=0.6 实际≈2rad/s, 0.3太慢, 2026-08-12 定0.45≈1.5rad/s)
 constexpr float TURN_DONE_ERR      = 0.04f;  // 转向完成误差 (2026-08-12: 0.05→0.04 + 停稳确认)
 constexpr float TURN_SLOW_ERR      = 0.25f;  // 末期减速误差阈值, <0.25rad 半速 (2026-08-12 新增)
-constexpr int   TURN_SETTLE_FRAMES = 15;     // 转到位停稳 0.15s (2026-08-12 新增)
+constexpr int   TURN_SETTLE_FRAMES = 25;     // 转到位停稳 0.25s (2026-08-12: 15→25 等abs_yaw稳定)
 
 }  // namespace
 
@@ -70,7 +71,11 @@ void Stage2Real::run() {
 
         auto finish_turn = [&]() {
             motion_.stop();
-            if (phase_ == Phase::TURN1) {        // → 走 1m
+#ifdef DEBUG_STAGE
+            fprintf(stderr, "[S2Stage] 转向完成 err=%.2f\n", yaw_err);
+            fflush(stderr);
+#endif
+            if (phase_ == Phase::TURN1) {        // → 走 0.9m
                 phase_ = Phase::FWD1;
                 fwd_ref_yaw_ = target_yaw;
                 last_x_ = sensor_.odom_x; last_y_ = sensor_.odom_y;
