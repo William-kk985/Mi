@@ -21,8 +21,8 @@ constexpr float TURN_SPEED    = 0.60f;   // 转向速度 rad/s (test14 同款, +
 constexpr float KP_YAW        = 0.8f;    // 视觉比例
 constexpr float KD_YAW        = 0.3f;    // 视觉微分
 constexpr float IMU_WEIGHT    = 0.3f;    // IMU 回正权重(视觉为主)
-constexpr float STUCK_DIST    = 0.008f;  // 卡住判定位移阈值 (m; 2026-08-12 0.01→0.008 放宽, 石板卡顿不算)
-constexpr int   STUCK_THRESH  = 60;      // 卡住帧数 (30→60 = 连续0.6s才算真卡住, 减少频繁误判)
+constexpr float STUCK_DIST    = 0.01f;   // 卡住判定位移阈值 (m)
+constexpr int   STUCK_THRESH  = 30;      // 卡住帧数 (2026-08-12 恢复默认)
 constexpr int   RUSH_FRAMES   = 20;      // 冲刺帧数
 constexpr int   LANE_LOST_LIM = 10;      // 丢线容忍帧数
 

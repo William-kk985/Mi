@@ -13,7 +13,7 @@ namespace {
 
 constexpr float CORRECT_YAW   = 5.0f * M_PI / 180.0f;  // 右转 5° 修正 (Stage1 转向偏差)
 constexpr float WALK_V        = 0.30f;   // 前进速度 m/s
-constexpr float GOAL_DIST     = 1.5f;    // 前进 1.5m
+constexpr float GOAL_DIST     = 1.0f;    // 前进 1.0m (2026-08-12 1.5m→1m)
 constexpr float STEP_H        = 0.17f;   // 步高 (与 Stage1 一致)
 constexpr float KP_YAW        = 0.8f;    // 回正增益
 
