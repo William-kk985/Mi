@@ -144,7 +144,7 @@ RaceController::RaceController() : Node("race_controller") {
     stages_[cur_stage_]->init();
 #elif defined(REAL_DOG)  // 真机: 创建真机赛段 (2026-08-11)
     stages_[0] = std::make_unique<Stage1Real>(motion_, sensor_);
-    // 后续赛段实现后在此追加: stages_[1] = ... Stage2Real 等
+    stages_[1] = std::make_unique<Stage2Real>(motion_, sensor_);
     if (cur_stage_ == 0 && stages_[0]) stages_[0]->init();
 #endif
 

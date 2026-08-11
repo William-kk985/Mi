@@ -112,7 +112,7 @@ set(SOURCES
   ${STAGE6_SRC}
   # ── 真机赛段（有实现后取消注释） ──
   src/stages/real/stage1_real.cpp
-  # src/stages/real/stage2_real.cpp
+  src/stages/real/stage2_real.cpp
   # src/stages/real/stage3_real.cpp
   # src/stages/real/stage4_real.cpp
   # src/stages/real/stage5_real.cpp
