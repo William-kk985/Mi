@@ -18,6 +18,9 @@ constexpr float RUSH_V        = 0.50f;   // 卡住冲刺速度
 constexpr float GOAL_DIST     = 3.65f;   // 前进 3.65m (2026-08-12 3.7m 少0.05m)
 constexpr float TURN_YAW      = M_PI / 2.0f;  // 目标转角 90° (test14 相对转向)
 constexpr float TURN_SPEED    = 0.60f;   // 转向速度 rad/s (test14 同款, +0.6=左转, 2026-08-07 验证)
+constexpr float TURN_DONE_ERR = 0.04f;  // 转向完成误差 (2026-08-12: 0.05→0.04 + 停稳确认)
+constexpr float TURN_SLOW_ERR = 0.25f;  // 末期减速误差阈值, <0.25rad 半速 (2026-08-12 新增)
+constexpr int   TURN_SETTLE_FRAMES = 15; // 转到位停稳 0.15s (2026-08-12 新增)
 constexpr float KP_YAW        = 0.8f;    // 视觉比例
 constexpr float KD_YAW        = 0.3f;    // 视觉微分
 constexpr float IMU_WEIGHT    = 0.3f;    // IMU 回正权重(视觉为主)
@@ -37,6 +40,7 @@ void Stage1Real::init() {
     prev_offset_ = 0.0f;
     traveled_    = 0.0f;
     turn_guard_  = 0;
+    turn_settle_ = 0;
     loc_ready_   = false;   // 定位待就绪: 构造函数在 spin 前, global_to_robot 恒0, 需在 run() 里等
 
     // ── 站起: 完全移植 behavior test 已验证动作序列 ──
@@ -64,17 +68,32 @@ void Stage1Real::run() {
     //   README: 反馈必须用 abs_yaw(global_to_robot.rpy[2]), IMU yaw 真机恒0 别用
     if (phase_ == Phase::TURN) {
         float yaw_err = norm_yaw(start_yaw_ + TURN_YAW - sensor_.abs_yaw);
-        bool turn_done = (turn_guard_ > 20) && (std::abs(yaw_err) < 0.05f);  // 至少转0.2s防跳变
-        turn_guard_++;
-        if (turn_done) {                     // 转到位 (test14: err<0.05)
-            motion_.stop();
-            phase_ = Phase::DONE;
+        // 停稳重校正 (2026-08-12): 转到位先停0.15s等abs_yaw稳定, 停稳后误差还大→低速补转
+        if (turn_settle_ > 0) {
+            motion_.set_walk_velocity_step(0.0f, 0.0f, 0.0f, STEP_H);
+            if (++turn_settle_ <= TURN_SETTLE_FRAMES) return;
+            turn_settle_ = 0;
+            if (std::abs(yaw_err) < TURN_DONE_ERR) {
+                motion_.stop();
+                phase_ = Phase::DONE;
 #ifdef DEBUG_STAGE
-            fprintf(stderr, "[S1Stage] 转向完成 err=%.2f, DONE\n", yaw_err);
-            fflush(stderr);
+                fprintf(stderr, "[S1Stage] 转向完成 err=%.2f, DONE\n", yaw_err);
+                fflush(stderr);
 #endif
+                return;
+            }
+            turn_guard_ = 0;                 // 还偏 → 低速补转
+            return;
+        }
+        bool turn_done = (turn_guard_ > 20) && (std::abs(yaw_err) < TURN_DONE_ERR);  // 至少转0.2s防跳变
+        turn_guard_++;
+        if (turn_done) {                     // 转到位 → 停稳确认
+            motion_.stop();
+            turn_settle_ = 1;
         } else {
-            motion_.set_walk_velocity_step(0.0f, 0.0f, TURN_SPEED, STEP_H);  // 固定左转0.6 (test14同款)
+            // 末期减速: 误差<0.25rad 半速, 减少过冲 (2026-08-12)
+            float spd = (std::abs(yaw_err) < TURN_SLOW_ERR) ? TURN_SPEED * 0.5f : TURN_SPEED;
+            motion_.set_walk_velocity_step(0.0f, 0.0f, yaw_err > 0 ? spd : -spd, STEP_H);
 #ifdef DEBUG_STAGE
             if (turn_guard_ % 20 == 0) {
                 fprintf(stderr, "[S1Stage] 转向中 err=%.2f absYaw=%.2f 目标=%.2f\n",

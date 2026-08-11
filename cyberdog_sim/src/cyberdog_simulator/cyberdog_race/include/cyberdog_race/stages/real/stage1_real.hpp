@@ -24,5 +24,6 @@ private:
     float last_x_{0.0f}, last_y_{0.0f};
     float traveled_{0.0f};   // 累计前进位移 (防定位跳变误判6m, 2026-08-11)
     int   turn_guard_{0};    // 转弯最小帧数保护 (防 yaw 跳变立即到位)
+    int   turn_settle_{0};   // 转向停稳确认帧 (2026-08-12 提高转向精度)
     bool  loc_ready_{false}; // global_to_robot 定位是否就绪 (spin后才有数据, 2026-08-12)
 };
