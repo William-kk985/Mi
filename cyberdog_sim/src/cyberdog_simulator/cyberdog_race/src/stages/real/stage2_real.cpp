@@ -16,12 +16,12 @@ namespace {
 constexpr float WALK_V = 0.30f;   // 前进速度 m/s
 constexpr float STEP_H = 0.17f;   // 步高 (与 Stage1 一致)
 
-// 点位1: 右转 5° 走 1.2m (cos5°=0.99619, sin5°=0.08716)
-constexpr float NAV1_X = 1.2f * 0.99619f;   // +1.195 (右转=负 y)
-constexpr float NAV1_Y = -1.2f * 0.08716f;  // -0.105
-// 点位2: 左转 85° 走 3.4m (cos85°=0.08716, sin85°=0.99619), 相对当前朝向
-constexpr float NAV2_X = 3.4f * 0.08716f;   // +0.296
-constexpr float NAV2_Y = 3.4f * 0.99619f;   // +3.387
+// 点位1: 右转 5° 走 1.0m (cos5°=0.99619, sin5°=0.08716; 2026-08-12 1.2m→1m)
+constexpr float NAV1_X = 1.0f * 0.99619f;   // +0.996 (右转=负 y)
+constexpr float NAV1_Y = -1.0f * 0.08716f;  // -0.087
+// 点位2: 左转 90° 走 3.4m (cos90°=0, sin90°=1; 2026-08-12 85°→90°), 相对当前朝向
+constexpr float NAV2_X = 0.0f;              // 0
+constexpr float NAV2_Y = 3.4f;              // 3.4
 
 }  // namespace
 
