@@ -36,6 +36,11 @@ constexpr float TURN_SPEED = 0.45f;    // 转向速度 (实测 yaw=0.6 实际≈
 constexpr float TURN_DONE_ERR      = 0.04f;  // 转向完成误差 (2026-08-12: 0.05→0.04 + 停稳确认)
 constexpr float TURN_SLOW_ERR      = 0.25f;  // 末期减速误差阈值, <0.25rad 半速 (2026-08-12 新增)
 constexpr int   TURN_SETTLE_FRAMES = 25;     // 转到位停稳 0.25s (2026-08-12: 15→25 等abs_yaw稳定)
+// ★ 转向精度补偿 (2026-08-13): 实测哪边偏小就填哪边, 不用再改角度主参数
+constexpr float LEFT_TURN_COMP_DEG  = 0.0f;  // 左转固定补偿角(°), 实测左转偏小→填正(如+3)
+constexpr float RIGHT_TURN_COMP_DEG = 0.0f;  // 右转固定补偿角(°), 实测右转偏小→填正
+constexpr float TURN_FINE_ERR = 0.06f;  // 精调误差阈值, <0.06rad 用超慢速蠕行提高末端精度
+constexpr float TURN_FINE_SPD = 0.12f;  // 精调速度 rad/s (超慢, 防过冲)
 
 }  // namespace
 
@@ -93,6 +98,9 @@ void Stage2Real::run() {
             case Phase::SCAN1_TURN: deg = SCAN1_DEG; break;
             default:                deg = SCAN2_DEG; break;
         }
+        // 左右转向固定补偿角 (2026-08-13): 实测偏小填正, 不用改主参数
+        if (deg > 0.0f) deg += LEFT_TURN_COMP_DEG;
+        else if (deg < 0.0f) deg -= RIGHT_TURN_COMP_DEG;
         float target_yaw = norm_yaw(turn_base_yaw_ + deg * M_PI / 180.0f);
         float yaw_err    = norm_yaw(target_yaw - sensor_.abs_yaw);
 
@@ -142,12 +150,15 @@ void Stage2Real::run() {
             motion_.stop();
             turn_settle_ = 1;                    // 转到位 → 停稳确认
         } else {
-            // 末期减速: 误差<0.25rad 半速, 减少过冲 (2026-08-12)
-            float spd = (std::abs(yaw_err) < TURN_SLOW_ERR) ? TURN_SPEED * 0.5f : TURN_SPEED;
+            // 三级速度: 误差<0.06rad 超慢精调(0.12) → <0.25rad 半速 → 全速 (2026-08-13)
+            float spd;
+            if (std::abs(yaw_err) < TURN_FINE_ERR)      spd = TURN_FINE_SPD;
+            else if (std::abs(yaw_err) < TURN_SLOW_ERR) spd = TURN_SPEED * 0.5f;
+            else                                        spd = TURN_SPEED;
             motion_.set_walk_velocity_step(0.0f, 0.0f, yaw_err > 0 ? spd : -spd, STEP_H);
 #ifdef DEBUG_STAGE
             if (turn_guard_ % 20 == 0) {
-                fprintf(stderr, "[S2Stage] 转向中 目标%.0f° err=%.2f\n", deg, yaw_err);
+                fprintf(stderr, "[S2Stage] 转向中 目标%.0f° err=%.2f spd=%.2f\n", deg, yaw_err, spd);
                 fflush(stderr);
             }
 #endif
