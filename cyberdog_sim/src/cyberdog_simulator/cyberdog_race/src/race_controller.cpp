@@ -173,7 +173,7 @@ RaceController::RaceController() : Node("race_controller") {
         [this]() { control_loop(); });
 
 #ifdef ENABLE_WEB_STREAMING
-    web_streamer_.start(WEB_STREAM_PORT, 4);
+    web_streamer_.start(WEB_STREAM_PORT, 8);   // 8客户端 (2026-08-12 4易被刷新占满→503黑屏)
     RCLCPP_INFO(get_logger(), "[WebStreamer] Dual-stream MJPEG on http://0.0.0.0:%d (max 4 clients)", WEB_STREAM_PORT);
 #endif
 

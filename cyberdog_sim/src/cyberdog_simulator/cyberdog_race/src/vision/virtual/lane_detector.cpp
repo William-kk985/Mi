@@ -10,15 +10,6 @@ LaneResult LaneDetector::detect(const cv::Mat& frame) {
     cv::cvtColor(frame, hsv, cv::COLOR_BGR2HSV);
     cv::inRange(hsv, hsv_low_, hsv_high_, mask);
 
-    // ★ 鲁棒性增强 (2026-08-12, 参考开源巡线做法):
-    //   - 形态学: 开运算去小噪点 + 闭运算连接断裂黄线
-    //   - 连通域面积过滤: 去掉 <30px 的黄色碎片 (反光/杂物, 实地抗干扰)
-    cv::morphologyEx(mask, mask, cv::MORPH_OPEN,
-                     cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3)));
-    cv::morphologyEx(mask, mask, cv::MORPH_CLOSE,
-                     cv::getStructuringElement(cv::MORPH_RECT, cv::Size(7, 7)));
-    remove_small_blobs(mask, 30);
-
     // 2. 逐行扫描
     std::vector<cv::Point> left_pts, right_pts;
     scan_edges(mask, left_pts, right_pts);
@@ -85,19 +76,6 @@ void LaneDetector::scan_edges(const cv::Mat& binary,
             }
         }
     }
-}
-
-// 连通域面积过滤: 去掉小块噪点 (参考开源, 抗反光/杂物, 2026-08-12)
-void LaneDetector::remove_small_blobs(cv::Mat& mask, int min_area) {
-    cv::Mat labels, stats, centroids;
-    int n = cv::connectedComponentsWithStats(mask, labels, stats, centroids);
-    if (n <= 1) return;
-    cv::Mat clean = cv::Mat::zeros(mask.size(), CV_8UC1);
-    for (int i = 1; i < n; ++i) {
-        if (stats.at<int>(i, cv::CC_STAT_AREA) >= min_area)
-            clean |= (labels == i);
-    }
-    mask = clean;
 }
 
 // 思路1：过滤横向干扰

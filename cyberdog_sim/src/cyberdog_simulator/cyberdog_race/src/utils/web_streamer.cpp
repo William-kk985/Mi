@@ -648,9 +648,10 @@ void WebStreamer::client_handler(int client_fd, const std::string& path) {
 
     // 等待第一帧（最多 3 秒）
     uint64_t last_seq = 0;
+    bool have_first = false;
     {
         std::unique_lock<std::mutex> lock(frame_mutex_);
-        frame_cv_.wait_for(lock, std::chrono::seconds(3), [&] {
+        have_first = frame_cv_.wait_for(lock, std::chrono::seconds(3), [&] {
             if (!running_.load()) return true;
             switch (stype) {
                 case 10: return has_infra2_frame_;
@@ -665,6 +666,13 @@ void WebStreamer::client_handler(int client_fd, const std::string& path) {
             }
         });
         if (!running_.load()) {
+            active_clients_--;
+            close(client_fd);
+            return;
+        }
+        // ★ 3s 首帧超时仍无帧 → 直接退出释放连接 (2026-08-12)
+        //   否则该流一直挂起占着 active_clients_, 占满后新连接全 503 → Web 黑屏
+        if (!have_first) {
             active_clients_--;
             close(client_fd);
             return;
