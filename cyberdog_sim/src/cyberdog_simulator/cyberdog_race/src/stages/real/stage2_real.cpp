@@ -20,12 +20,12 @@ namespace {
 constexpr float WALK_V     = 0.30f;    // 前进速度 m/s
 constexpr float STEP_H     = 0.17f;    // 步高
 constexpr float TURN1_DEG  = -3.0f;    // 动作1: 右转 3° (负=右转)
-constexpr float DIST1_M    = 0.95f;    // 动作2: 走 0.95m (2026-08-12: 0.9→0.95)
+constexpr float DIST1_M    = 0.9f;     // 动作2: 走 0.9m (2026-08-13: 0.95→0.9)
 constexpr float TURN2_DEG  = +93.0f;   // 动作3: 左转 93° (2026-08-12: 90°→93° 补偿实测左转偏小)
 constexpr float DIST2_M    = 2.9f;     // 动作4: 走 2.9m (2026-08-12: 3.05→2.9)
 constexpr float TURN3_DEG  = -90.0f;   // 动作5: 右转 90°
 constexpr float TURN4_DEG  = +45.0f;   // 动作7: 扫描位2之后 左转45° (不识别球, 朝好的方向继续走; 2026-08-12 新增)
-constexpr float FWD3_DIST   = 0.6f;    // 动作8: 收尾左转45°后 前进 0.6m (2026-08-12 新增)
+constexpr float FWD3_DIST   = 0.75f;   // 动作8: 收尾左转45°后 前进 0.75m (2026-08-13: 0.6→0.75)
 constexpr float SCAN1_DEG  = +45.0f;   // 扫描位1: 左转 45°
 constexpr float SCAN2_DEG  = -90.0f;   // 扫描位2: 右转 90° (从+45°到-45°, 相对基准左右45°对称; 2026-08-12 135°→90°)
 constexpr int   SCAN_WAIT_FRAMES = 200; // 每角度停 2 秒 (100Hz)
