@@ -39,6 +39,7 @@
 #ifdef REAL_DOG
 #include "cyberdog_race/stages/real/stage1_real.hpp"  // 真机第1赛段 石径探路 (2026-08-11)
 #include "cyberdog_race/stages/real/stage2_real.hpp"  // 真机第2赛段 (2026-08-12)
+#include "cyberdog_race/stages/real/stage3_real.hpp"  // 真机第3赛段 破限低头前进 (2026-08-12)
 #endif
 #include "behavior_test.hpp"
 #include "cyberdog_race/vision/virtual/lane_detector.hpp"
