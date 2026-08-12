@@ -42,6 +42,7 @@ void Stage3Real::run() {
     if (done_) return;
 
     // ── ① 等定位就绪再开始 (init 在 spin 前, 回调没跑 absYaw 恒0, 同Stage1) ──
+    // ⚠ 等定位期间不发任何303命令(111站立保持), 否则303步态残留会干扰后面的201低头 (2026-08-12)
     if (phase_ == Phase::WAIT_READY) {
         if (sensor_.abs_yaw != 0.0f || sensor_.odom_x != 0.0f) {
             phase_ = Phase::LOW_HOLD;
@@ -51,8 +52,14 @@ void Stage3Real::run() {
             fflush(stderr);
 #endif
         } else {
-            motion_.set_walk_velocity_step(0.0f, 0.0f, 0.0f, 0.17f);   // 原地踏步等定位
-            return;
+#ifdef DEBUG_SENSOR
+            static int w_ = 0;
+            if (++w_ % 50 == 0) {   // 静止等待, 不发命令
+                fprintf(stderr, "[S3S] 等待定位... absYaw=%.2f\n", sensor_.abs_yaw);
+                fflush(stderr);
+            }
+#endif
+            return;   // 狗保持站立(111)静止等待, 不发303踏步
         }
     }
 
