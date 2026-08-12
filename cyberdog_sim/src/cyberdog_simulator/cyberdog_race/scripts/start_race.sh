@@ -34,46 +34,10 @@ if ss -tln 2>/dev/null | grep -q ':8080 '; then
     sleep 1
 fi
 
-# ── 2. 激活相机: 只用 RGB(stereo_camera) ──
-# ★ 任务只用RGB, D430i红外/深度已关闭 (DISABLE_D435_SUB, 2026-08-13)
-# ⚠ RGB 画面 /image_rgb 由 stereo_camera(双目RGB) + camera_server 出流; stereo_camera 未激活 → 黑屏
-echo "🔴 激活 RGB 相机 (stereo_camera)..."
-# 等相机节点出现(最多 60s; 狗刚开机 bringup 拉起相机较慢 2026-08-11)
-# ⚠ lifecycle get 直接查会因 DDS discovery 慢超时 → 先用 node list 判断节点存在
-for node in stereo_camera; do
-    echo "   等待 ${node} 节点出现..."
-    NODE_OK=0
-    for i in $(seq 1 30); do
-        if timeout 5 ros2 node list 2>/dev/null | grep -q "${NS}/${node}"; then
-            NODE_OK=1; break
-        fi
-        [ $((i % 5)) -eq 0 ] && echo "   ...已等 $((i * 2))s"
-        sleep 2
-    done
-    [ "$NODE_OK" = "1" ] && echo "  ✅ ${node} 节点已出现" || echo "  ⚠ ${node} 60s 未出现, 跳过"
-    STATE=$(timeout 8 ros2 lifecycle get ${NS}/${node} 2>/dev/null || true)
-    case "$STATE" in
-        *active*)            echo "  ✅ ${node} 已激活" ;;
-        *unconfigured*|*inactive*)
-            timeout 8 ros2 lifecycle set ${NS}/${node} configure > /dev/null 2>&1 || true
-            sleep 1
-            ACT=0
-            for _ in $(seq 1 3); do   # activate 重试3次 (DDS/时序慢会失败)
-                if timeout 8 ros2 lifecycle set ${NS}/${node} activate > /dev/null 2>&1; then
-                    ACT=1; break
-                fi
-                sleep 2
-            done
-            [ "$ACT" = "1" ] && echo "  ✅ ${node} 激活成功" || echo "  ⚠ ${node} 激活失败/超时, 跳过" ;;
-        *) echo "  ⚠ ${node} lifecycle 查询失败/超时, 跳过" ;;
-    esac
-    sleep 1
-
-done
-sleep 1
-
-# ── RGB 推流激活: camera_service START_IMAGE_PUBLISH, 重试3次 (防黑屏, 2026-08-12) ──
-echo "📷 激活 RGB 推流 (camera_service START_IMAGE_PUBLISH)..."
+# ── 2. 启动 RGB 推流: camera_service → camera_server 发布 /image (2026-08-13) ──
+# ★ stereo_camera 直读 VI 的采集管线已坏 (no reply from camera processor, 0帧);
+#   camera_server 推流管线正常 (/image bgr8 640x480 ~21fps) → 改用 /image, 不碰 stereo_camera
+echo "🔴 启动 RGB 推流 (camera_service → /image)..."
 for attempt in 1 2 3; do
     if timeout 8 ros2 service call ${NS}/camera_service protocol/srv/CameraService \
         "{command: 9, args: \"\", width: 640, height: 480, fps: 30}" > /dev/null 2>&1; then
@@ -84,18 +48,7 @@ for attempt in 1 2 3; do
     sleep 2
 done
 
-# 确认 /image_rgb 有 publisher (最多 30s; stereo_camera active 后才出流, 2026-08-12)
-IMAGE_OK=0
-for i in $(seq 1 15); do
-    PUB=$(timeout 5 ros2 topic info ${NS}/image_rgb 2>/dev/null | grep "Publisher count" | awk '{print $3}')
-    if [ -n "$PUB" ] && [ "$PUB" != "0" ]; then IMAGE_OK=1; break; fi
-    sleep 2
-done
-[ "$IMAGE_OK" = "1" ] && echo "  ✅ RGB /image_rgb 有 Publisher" \
-                       || echo "  ⚠ RGB /image_rgb 无 Publisher, 继续启动(Web 可能黑屏)"
-
-# ★ 验证实际帧数: lifecycle active 可能"假激活"(采集线程卡死0帧, 2026-08-13)
-#   无帧 → 杀 stereo_camera 进程重拉(bringup 自动重启) + 重新 activate
+# ★ 验证 /image 实际帧数 (2026-08-13: stereo_camera 会假激活0帧, /image 是真实画面源)
 check_rgb_frames() {
     timeout 8 python3 -c "
 import rclpy,time
@@ -104,30 +57,57 @@ from sensor_msgs.msg import Image
 rclpy.init(); n=rclpy.create_node('chk')
 q=QoSProfile(depth=4,reliability=ReliabilityPolicy.BEST_EFFORT)
 c={'n':0}
-n.create_subscription(Image, '$NS/image_rgb', lambda m: c.__setitem__('n',c['n']+1), q)
+n.create_subscription(Image, '$NS/image', lambda m: c.__setitem__('n',c['n']+1), q)
 end=time.time()+3
 while time.time()<end: rclpy.spin_once(n,timeout_sec=0.05)
 print(c['n'])
 " 2>/dev/null
 }
 
+# 重新调 camera_service 恢复推流 (不杀进程)
+restart_image() {
+    echo "  ⚠ /image 无实际帧, 重新调 camera_service..."
+    timeout 8 ros2 service call ${NS}/camera_service protocol/srv/CameraService \
+        "{command: 9, args: \"\", width: 640, height: 480, fps: 30}" > /dev/null 2>&1
+    sleep 4
+}
+
 RGB_FRAMES=$(check_rgb_frames)
 if [ -z "$RGB_FRAMES" ] || [ "$RGB_FRAMES" = "0" ]; then
-    echo "  ⚠ /image_rgb 无实际帧, 相机可能卡死(假active), 强制重启 stereo_camera..."
-    pkill -f stereo_camera 2>/dev/null || true
-    sleep 6
-    timeout 8 ros2 lifecycle set ${NS}/stereo_camera activate > /dev/null 2>&1 || true
-    sleep 3
+    restart_image
 fi
 RGB_FRAMES=$(check_rgb_frames)
 if [ -n "$RGB_FRAMES" ] && [ "$RGB_FRAMES" != "0" ]; then
-    echo "  ✅ RGB 画面正常 (${RGB_FRAMES}帧/3s)"
+    echo "  ✅ RGB /image 画面正常 (${RGB_FRAMES}帧/3s)"
 else
-    echo "  ⚠ RGB 仍无帧, 相机驱动深度卡死, 建议重启狗(bringup)恢复"
+    echo "  ⚠ RGB /image 无帧, Web 可能黑屏"
 fi
 sleep 1
 
-# ── 3. 启动比赛 ──
+# ── 3. 相机 watchdog: 后台持续检测 /image 帧率, 无帧自动重新推流 (2026-08-13) ──
+#   检测: 每8s用3s采样, 连续2次<2帧 → 重新调 camera_service
+(
+    BAD=0
+    while true; do
+        F=$(check_rgb_frames)
+        if [ -z "$F" ] || [ "$F" -lt 2 ]; then
+            BAD=$((BAD+1))
+            echo "[watchdog] ⚠ /image 帧率过低 (${F:-0}帧/3s), 第${BAD}次"
+        else
+            [ "$BAD" -gt 0 ] && echo "[watchdog] ✅ 帧率恢复 (${F}帧/3s)"
+            BAD=0
+        fi
+        if [ "$BAD" -ge 2 ]; then
+            echo "[watchdog] 🔄 连续低帧, 重新调 camera_service..."
+            restart_image
+            BAD=0
+            sleep 15   # 重启后稳定期
+        fi
+        sleep 8
+    done
+) &
+
+# ── 4. 启动比赛 ──
 echo "🚀 启动比赛 (Stage1: 前进6m 巡线 + IMU 90°转弯)"
 echo "   狗将自动站起开始! 请保持场地空旷"
 echo "   Web 可视化: http://192.168.44.1:8080 (有线) 或 http://10.179.102.181:8080 (WiFi)"
