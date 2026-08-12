@@ -21,7 +21,7 @@
 // 赛段调试模式（都不定义 = 正式比赛从第1段跑完整6段）
 // ============================================================
 
-// #define DEBUG_SINGLE_STAGE 1
+#define DEBUG_SINGLE_STAGE 3   // 只跑 Stage3 破限低头前进 (2026-08-12 调参中)
 // #define DEBUG_START_STAGE  4
 // #define DEBUG_END_STAGE    6
 
