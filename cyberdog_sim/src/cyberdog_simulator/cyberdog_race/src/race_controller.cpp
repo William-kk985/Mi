@@ -390,7 +390,16 @@ void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
     if (cur_stage_ == 1) {
         ball = ball_detector_.detect(cv_img->image, BallColor::ORANGE);   // Stage2 找橙球
     } else if (cur_stage_ == 2) {
-        lane = lane_detector_.detect(cv_img->image);                       // Stage3 巡线
+        // Stage3 巡线: 半分辨率+每2帧1次 (2026-08-13): 640x480全频检测在NX单线程executor
+        //   下拖垮Web(实测FPS掉到1), 320x240每2帧≈10Hz检测, 控制够用 Web流畅
+        static LaneResult last_lane;
+        static int lane_cnt = 0;
+        if (++lane_cnt % 2 == 0) {
+            cv::Mat small;
+            cv::resize(cv_img->image, small, cv::Size(), 0.5, 0.5);
+            last_lane = lane_detector_.detect(small);
+        }
+        lane = last_lane;
     }
     // Stage1: 纯里程计, 不跑任何视觉
 #else
@@ -448,7 +457,10 @@ void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
 
 // ── 标注画面生成（供 DEBUG_VISION imshow 和 Web 双流共用） ──
 #if defined(DEBUG_VISION) || defined(ENABLE_WEB_STREAMING)
-    cv::Mat frame = cv_img->image.clone();
+    // ★ 半分辨率标注 (2026-08-13): 640x480的HSV/inRange/circle在NX上太重,
+    //   单线程executor下拖垮Web(FPS掉到1); Web输出本来就是320x240, 画质无损
+    cv::Mat frame;
+    cv::resize(cv_img->image, frame, cv::Size(), 0.5, 0.5);
     cv::Mat hsv, mask;
     cv::cvtColor(frame, hsv, cv::COLOR_BGR2HSV);   // 统一BGR输入
     cv::inRange(hsv, cv::Scalar(20, 100, 150), cv::Scalar(35, 255, 255), mask);
