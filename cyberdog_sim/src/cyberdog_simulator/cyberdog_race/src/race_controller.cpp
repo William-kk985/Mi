@@ -374,11 +374,24 @@ void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
     // 统一转 BGR（检测器+调试画面全基于BGR，cv_bridge自动处理源编码rgb8→bgr8）
     auto cv_img = cv_bridge::toCvShare(msg, "bgr8");
 
-    // ── 视觉检测（锁外，5-30ms，不阻塞 IMU/LiDAR 回调） ──
-    auto lane  = lane_detector_.detect(cv_img->image);
-    auto ball  = ball_detector_.detect(cv_img->image, BallColor::ORANGE);
-    auto blue  = ball_detector_.detect(cv_img->image, BallColor::BLUE);
-    auto white = ball_detector_.detect(cv_img->image, BallColor::WHITE);
+    // ── 视觉检测（锁外） ──
+    // ★ 按赛段 (2026-08-12): Stage1纯里程计不跑视觉, Stage2只橙色球, Stage3只巡线
+    //   省CPU, 防RGB流卡顿/黑屏; 仿真保持原逻辑
+    LaneResult lane;
+    BallResult ball, blue, white;
+#ifdef REAL_DOG
+    if (cur_stage_ == 1) {
+        ball = ball_detector_.detect(cv_img->image, BallColor::ORANGE);   // Stage2 找橙球
+    } else if (cur_stage_ == 2) {
+        lane = lane_detector_.detect(cv_img->image);                       // Stage3 巡线
+    }
+    // Stage1: 纯里程计, 不跑任何视觉
+#else
+    lane = lane_detector_.detect(cv_img->image);
+    ball  = ball_detector_.detect(cv_img->image, BallColor::ORANGE);
+    blue  = ball_detector_.detect(cv_img->image, BallColor::BLUE);
+    white = ball_detector_.detect(cv_img->image, BallColor::WHITE);
+#endif
     Stage4Result s4_result;
     if (cur_stage_ == 3) {
         s4_result = stage4_detector_.detect(cv_img->image);
@@ -409,16 +422,20 @@ void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
         }
     }
 
-    // ── Web 推流（锁外，JPEG编码 20-40ms） ──
+    // ── Web 推流（锁外，JPEG编码） ──
 #ifdef ENABLE_WEB_STREAMING
     web_streamer_.push_frame(cv_img->image);
-    int eo = web_streamer_.exposure_offset();
-    if (eo < 0) {
-        cv::Mat dark;
-        cv_img->image.convertTo(dark, -1, 1.0, eo);
-        web_streamer_.push_dark_frame(dark);
-    } else {
-        web_streamer_.push_dark_frame(cv_img->image);
+    // ★ dark预览(曝光调整)降频每2帧: 省一次全分辨率JPEG编码 (2026-08-12)
+    static int dark_cnt = 0;
+    if (++dark_cnt % 2 == 0) {
+        int eo = web_streamer_.exposure_offset();
+        if (eo < 0) {
+            cv::Mat dark;
+            cv_img->image.convertTo(dark, -1, 1.0, eo);
+            web_streamer_.push_dark_frame(dark);
+        } else {
+            web_streamer_.push_dark_frame(cv_img->image);
+        }
     }
 #endif
 
