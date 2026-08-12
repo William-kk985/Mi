@@ -72,7 +72,7 @@
 //   模组2 底部D430i(/camera/camera):  /camera/infra1(红外) /camera/depth(深度) /camera/imu(IMU)
 // ⚠ D430i 无 RGB 彩色输出，只有红外+深度！
 #ifdef REAL_DOG
-  #define TOPIC_RGB_CAMERA       ROBOT_NS "/image"                       // AI相机 RGB（camera_server推流, 编码rgb8）
+  #define TOPIC_RGB_CAMERA       ROBOT_NS "/image_rgb"                   // RGB摄像头 (stereo_camera发布, 编码rgb8; 2026-08-12 /image无帧改用)
   #define TOPIC_IMU              ROBOT_NS "/camera/imu"                  // D430i 内置IMU（真狗无独立身体IMU topic）
   #define TOPIC_LIDAR            ROBOT_NS "/scan"                        // sensor_msgs/LaserScan ✅
   #define TOPIC_D435_INFRA1      ROBOT_NS "/camera/infra1/image_rect_raw" // D430i左目红外 灰度 ✅

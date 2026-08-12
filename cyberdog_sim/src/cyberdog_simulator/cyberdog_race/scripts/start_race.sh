@@ -34,11 +34,12 @@ if ss -tln 2>/dev/null | grep -q ':8080 '; then
     sleep 1
 fi
 
-# ── 2. 激活 D430i (比赛视觉巡线需要 RGB/深度; web 可视化同一真实画面) ──
-echo "🔴 激活 D430i (红外+深度)..."
+# ── 2. 逐个激活相机: D430i(camera/camera + camera_align) + RGB(stereo_camera) ──
+# ⚠ RGB 画面 /image 由 stereo_camera(双目RGB) + camera_server 出流; stereo_camera 未激活 → 黑屏 (2026-08-12)
+echo "🔴 逐个激活相机 (D430i 红外/深度 + stereo_camera RGB)..."
 # 等相机节点出现(最多 60s; 狗刚开机 bringup 拉起相机较慢 2026-08-11)
 # ⚠ lifecycle get 直接查会因 DDS discovery 慢超时 → 先用 node list 判断节点存在
-for node in camera/camera camera/camera_align; do
+for node in camera/camera camera/camera_align stereo_camera; do
     echo "   等待 ${node} 节点出现..."
     NODE_OK=0
     for i in $(seq 1 30); do
@@ -54,17 +55,43 @@ for node in camera/camera camera/camera_align; do
         *active*)            echo "  ✅ ${node} 已激活" ;;
         *unconfigured*|*inactive*)
             timeout 8 ros2 lifecycle set ${NS}/${node} configure > /dev/null 2>&1 || true
-            timeout 8 ros2 lifecycle set ${NS}/${node} activate > /dev/null 2>&1 \
-                && echo "  ✅ ${node} 激活成功" || echo "  ⚠ ${node} 激活失败/超时, 跳过" ;;
+            sleep 1
+            ACT=0
+            for _ in $(seq 1 3); do   # activate 重试3次 (DDS/时序慢会失败)
+                if timeout 8 ros2 lifecycle set ${NS}/${node} activate > /dev/null 2>&1; then
+                    ACT=1; break
+                fi
+                sleep 2
+            done
+            [ "$ACT" = "1" ] && echo "  ✅ ${node} 激活成功" || echo "  ⚠ ${node} 激活失败/超时, 跳过" ;;
         *) echo "  ⚠ ${node} lifecycle 查询失败/超时, 跳过" ;;
     esac
+    sleep 1
+
 done
 sleep 1
 
-# RGB 流激活 (start_web.sh 同款; camera_service 不可用时跳过, 红外/深度不受影响)
-timeout 5 ros2 service call ${NS}/camera_service protocol/srv/CameraService \
-    "{command: 9, args: \"\", width: 640, height: 480, fps: 30}" > /dev/null 2>&1 \
-    || echo "⚠ camera_service 不可用, 跳过 RGB 激活"
+# ── RGB 推流激活: camera_service START_IMAGE_PUBLISH, 重试3次 (防黑屏, 2026-08-12) ──
+echo "📷 激活 RGB 推流 (camera_service START_IMAGE_PUBLISH)..."
+for attempt in 1 2 3; do
+    if timeout 8 ros2 service call ${NS}/camera_service protocol/srv/CameraService \
+        "{command: 9, args: \"\", width: 640, height: 480, fps: 30}" > /dev/null 2>&1; then
+        echo "  ✅ camera_service 第${attempt}次调用成功"
+        break
+    fi
+    echo "  ⚠ camera_service 第${attempt}次失败, 2s后重试"
+    sleep 2
+done
+
+# 确认 /image_rgb 有 publisher (最多 30s; stereo_camera active 后才出流, 2026-08-12)
+IMAGE_OK=0
+for i in $(seq 1 15); do
+    PUB=$(timeout 5 ros2 topic info ${NS}/image_rgb 2>/dev/null | grep "Publisher count" | awk '{print $3}')
+    if [ -n "$PUB" ] && [ "$PUB" != "0" ]; then IMAGE_OK=1; break; fi
+    sleep 2
+done
+[ "$IMAGE_OK" = "1" ] && echo "  ✅ RGB /image_rgb 推流确认 (Publisher=$PUB)" \
+                       || echo "  ⚠ RGB /image_rgb 未确认推流, 继续启动(Web 可能黑屏)"
 sleep 1
 
 # ── 3. 启动比赛 ──
