@@ -371,6 +371,11 @@ void RaceController::control_loop() {
 // ── 传感器回调 ──
 void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
     try {
+#ifdef DEBUG_SENSOR
+    static int rgb_dbg_ = 0;   // 诊断 on_rgb 是否收到帧 (2026-08-12)
+    if (++rgb_dbg_ % 30 == 0)
+        fprintf(stderr, "[RGB] recv enc=%s %dx%d\n", msg->encoding.c_str(), msg->width, msg->height);
+#endif
     // 统一转 BGR（检测器+调试画面全基于BGR，cv_bridge自动处理源编码rgb8→bgr8）
     auto cv_img = cv_bridge::toCvShare(msg, "bgr8");
 
