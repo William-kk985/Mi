@@ -34,12 +34,13 @@ if ss -tln 2>/dev/null | grep -q ':8080 '; then
     sleep 1
 fi
 
-# ── 2. 逐个激活相机: D430i(camera/camera + camera_align) + RGB(stereo_camera) ──
-# ⚠ RGB 画面 /image 由 stereo_camera(双目RGB) + camera_server 出流; stereo_camera 未激活 → 黑屏 (2026-08-12)
-echo "🔴 逐个激活相机 (D430i 红外/深度 + stereo_camera RGB)..."
+# ── 2. 激活相机: 只用 RGB(stereo_camera) ──
+# ★ 任务只用RGB, D430i红外/深度已关闭 (DISABLE_D435_SUB, 2026-08-13)
+# ⚠ RGB 画面 /image_rgb 由 stereo_camera(双目RGB) + camera_server 出流; stereo_camera 未激活 → 黑屏
+echo "🔴 激活 RGB 相机 (stereo_camera)..."
 # 等相机节点出现(最多 60s; 狗刚开机 bringup 拉起相机较慢 2026-08-11)
 # ⚠ lifecycle get 直接查会因 DDS discovery 慢超时 → 先用 node list 判断节点存在
-for node in camera/camera camera/camera_align stereo_camera; do
+for node in stereo_camera; do
     echo "   等待 ${node} 节点出现..."
     NODE_OK=0
     for i in $(seq 1 30); do

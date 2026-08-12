@@ -34,6 +34,7 @@ RaceController::RaceController() : Node("race_controller") {
     sub_lidar_ = create_subscription<sensor_msgs::msg::LaserScan>(
         TOPIC_LIDAR, 10,
         [this](sensor_msgs::msg::LaserScan::SharedPtr msg) { on_lidar(msg); });
+#ifndef DISABLE_D435_SUB   // 任务只用RGB, 关闭D430i红外/深度 (2026-08-13)
     sub_d435_infra1_ = create_subscription<sensor_msgs::msg::Image>(
         TOPIC_D435_INFRA1, qos_be,
         [this](sensor_msgs::msg::Image::SharedPtr msg) { on_d435_infra1(msg); });
@@ -43,6 +44,7 @@ RaceController::RaceController() : Node("race_controller") {
     sub_d435_depth_ = create_subscription<sensor_msgs::msg::Image>(
         TOPIC_D435_DEPTH, qos_be,
         [this](sensor_msgs::msg::Image::SharedPtr msg) { on_d435_depth(msg); });
+#endif
 #ifdef REAL_DOG
     sub_head_tof_ = create_subscription<protocol::msg::HeadTofPayload>(
         TOPIC_TOF_HEAD, 10,
