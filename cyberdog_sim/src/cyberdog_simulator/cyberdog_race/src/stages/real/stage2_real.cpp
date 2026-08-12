@@ -4,10 +4,12 @@
 #include <cmath>
 
 // ═══════════════════════════════════════════════════════════
-// Stage2Real 真机版 — 第2赛段 (2026-08-13 三轮S形)
-// 轮1: 右转90° → 前进2.8m → 左转90° → 左右扫描(左45°停2s/右90°停2s) → 回正左45° → 前进0.75m
-// 轮2: 左转90° → 前进2.8m → 右转90° → 左右扫描 → 回正 → 前进0.75m
-// 轮3: 右转90° → 前进2.8m → 左右扫描 → 结束
+// Stage2Real 真机版 — 第2赛段 (2026-08-13 四轮S形)
+// 衔接: 前进0.92m → 左转90° (Stage1结束后进入赛道)
+// 轮1: 前进2.8m → 右转90° → 左右扫描(左45°停2s/右90°停2s) → 回正左45° → 前进0.75m
+// 轮2: 右转90° → 前进2.8m → 左转90° → 左右扫描 → 回正 → 前进0.75m
+// 轮3: 左转90° → 前进2.8m → 右转90° → 左右扫描 → 回正 → 前进0.75m
+// 轮4: 右转90° → 前进2.8m → 左转90° → 左右扫描 → 结束
 // 找球: 每个扫描角度 识别到橙色球(≤0.7m)→前进0.2m再退回; 没有→2秒后转下一个角度
 // 方向反馈用 abs_yaw(global_to_robot.rpy[2]), IMU yaw 真机恒0 别用 (README 2026-08-11)
 // 前进回正: 死区0.03rad + 增益0.5 (abs_yaw 定位噪声大, 2026-08-12 实测日志验证)
@@ -17,10 +19,11 @@
 
 namespace {
 
-// ═══ Stage2 动作参数 (三轮S形, 2026-08-13 重构) ═══
+// ═══ Stage2 动作参数 (四轮S形, 2026-08-13 重构) ═══
 constexpr float WALK_V      = 0.30f;    // 前进速度 m/s
 constexpr float STEP_H      = 0.17f;    // 步高
-constexpr float TURN_MAIN   = 90.0f;    // 首转/次转 90° (方向按轮次)
+constexpr float ENTER_DIST_M = 0.92f;   // 衔接: Stage1结束后 前进0.92m (2026-08-13)
+constexpr float TURN_MAIN   = 90.0f;    // 转 90° (方向按动作)
 constexpr float FWD_LONG_M  = 2.8f;     // 每轮前进主段 2.8m (2026-08-13: 2.9→2.8)
 constexpr float FWD_SHORT_M = 0.75f;    // 回正后前进 0.75m (2026-08-13: 0.6→0.75)
 constexpr float SCAN1_DEG   = +45.0f;   // 扫描位1: 左转 45°
@@ -46,7 +49,7 @@ void Stage2Real::init() {
     turn_settle_   = 0;
     wait_frames_   = 0;
     adjust_frames_ = 0;
-    phase_         = Phase::TURN1;
+    phase_         = Phase::FWD0;   // 开头衔接: 前进0.92m → 左转90° (2026-08-13)
     last_x_        = sensor_.odom_x;
     last_y_        = sensor_.odom_y;
     traveled_      = 0.0f;
@@ -55,8 +58,8 @@ void Stage2Real::init() {
     turn_start_x_  = sensor_.odom_x;
     turn_start_y_  = sensor_.odom_y;
     RCLCPP_INFO(rclcpp::get_logger("stage2_real"),
-                "[Stage2Real] init: 三轮S形 每轮转90°+前进%.1fm+左右扫描+回正+%.1fm",
-                FWD_LONG_M, FWD_SHORT_M);
+                "[Stage2Real] init: 衔接前进%.2fm+左转90° → 四轮S形(每轮前进%.1fm+扫描+回正+%.1fm)",
+                ENTER_DIST_M, FWD_LONG_M, FWD_SHORT_M);
 }
 
 void Stage2Real::run() {
@@ -75,14 +78,17 @@ void Stage2Real::run() {
         }
     };
 
-    // ── 转向: TURN1(首转)/TURN2(次转)/TURN3(回正) + SCAN1_TURN/SCAN2_TURN ──
-    if (phase_ == Phase::TURN1 || phase_ == Phase::TURN2 || phase_ == Phase::TURN3 ||
+    // ── 转向: TURN0(衔接左转90°)/TURN1(轮首转)/TURN2(轮中转)/TURN3(回正) + SCAN1_TURN/SCAN2_TURN ──
+    if (phase_ == Phase::TURN0 || phase_ == Phase::TURN1 || phase_ == Phase::TURN2 || phase_ == Phase::TURN3 ||
         phase_ == Phase::SCAN1_TURN || phase_ == Phase::SCAN2_TURN) {
-        // 角度按轮次 (2026-08-13 三轮S形): 轮1/3首转右90°, 轮2首转左90°; 轮1次转左90°, 轮2次转右90°
+        // 角度按动作 (2026-08-13 四轮S形):
+        //   轮首转(轮2/3/4): 轮2右90° 轮3左90° 轮4右90° → 奇数轮右转
+        //   轮中转(扫描前): 轮1右90° 轮2左90° 轮3右90° 轮4左90° → 偶数轮右转
         float deg;
         switch (phase_) {
-            case Phase::TURN1: deg = (round_ == 1) ? TURN_MAIN : -TURN_MAIN; break;
-            case Phase::TURN2: deg = (round_ == 0) ? TURN_MAIN : -TURN_MAIN; break;
+            case Phase::TURN0: deg = TURN_MAIN; break;                              // 衔接左转90°
+            case Phase::TURN1: deg = (round_ % 2 == 1) ? -TURN_MAIN : TURN_MAIN; break;
+            case Phase::TURN2: deg = (round_ % 2 == 0) ? -TURN_MAIN : TURN_MAIN; break;
             case Phase::TURN3: deg = BACK_DEG; break;                            // 回正
             case Phase::SCAN1_TURN: deg = SCAN1_DEG; break;
             default:                deg = SCAN2_DEG; break;
@@ -100,6 +106,7 @@ void Stage2Real::run() {
         auto finish_turn = [&]() {
             motion_.stop();
             switch (phase_) {
+                case Phase::TURN0:      after_adjust_ = Phase::FWD1;       break;   // 衔接后直接前进2.8m(轮1无首转)
                 case Phase::TURN1:      after_adjust_ = Phase::FWD1;       break;
                 case Phase::TURN2:      after_adjust_ = Phase::SCAN1_TURN; break;
                 case Phase::TURN3:      after_adjust_ = Phase::FWD3;       break;
@@ -198,17 +205,17 @@ void Stage2Real::run() {
                 phase_ = Phase::SCAN2_TURN;
                 turn_guard_    = 0;
                 turn_base_yaw_ = sensor_.abs_yaw;
-            } else if (round_ < 2) {
+            } else if (round_ < 3) {
                 phase_ = Phase::TURN3;                       // 回正左45°
                 turn_guard_    = 0;
                 turn_base_yaw_ = sensor_.abs_yaw;
             } else {
-                phase_ = Phase::DONE;                        // 轮3: 扫描完直接结束
+                phase_ = Phase::DONE;                        // 轮4: 扫描完直接结束
             }
 #ifdef DEBUG_STAGE
             fprintf(stderr, "[S2Stage] 轮%d 扫描位%d 2秒无球, %s\n",
                     round_ + 1, is_scan1 ? 1 : 2,
-                    is_scan1 ? "右转90°" : (round_ < 2 ? "回正左45°" : "结束"));
+                    is_scan1 ? "右转90°" : (round_ < 3 ? "回正左45°" : "结束"));
             fflush(stderr);
 #endif
         }
@@ -250,16 +257,16 @@ void Stage2Real::run() {
                 phase_ = Phase::SCAN2_TURN;
                 turn_guard_    = 0;
                 turn_base_yaw_ = sensor_.abs_yaw;
-            } else if (round_ < 2) {
+            } else if (round_ < 3) {
                 phase_ = Phase::TURN3;                       // 回正
                 turn_guard_    = 0;
                 turn_base_yaw_ = sensor_.abs_yaw;
             } else {
-                phase_ = Phase::DONE;                        // 轮3结束
+                phase_ = Phase::DONE;                        // 轮4结束
             }
 #ifdef DEBUG_STAGE
             fprintf(stderr, "[S2Stage] 退回完成, %s\n",
-                    is_scan1 ? "右转90°" : (round_ < 2 ? "回正左45°" : "结束"));
+                    is_scan1 ? "右转90°" : (round_ < 3 ? "回正左45°" : "结束"));
             fflush(stderr);
 #endif
         } else {
@@ -270,8 +277,9 @@ void Stage2Real::run() {
 
     if (phase_ == Phase::DONE) { done_ = true; return; }
 
-    // ── 前进 FWD1(2.8m) / FWD3(0.75m): 累计位移 + 跳变保护, 按 fwd_ref_yaw_ 回正 ──
-    float dist  = (phase_ == Phase::FWD1) ? FWD_LONG_M : FWD_SHORT_M;
+    // ── 前进 FWD0(衔接0.92m)/FWD1(2.8m)/FWD3(0.75m): 累计位移 + 跳变保护, 按 fwd_ref_yaw_ 回正 ──
+    float dist  = (phase_ == Phase::FWD0) ? ENTER_DIST_M :
+                  (phase_ == Phase::FWD1) ? FWD_LONG_M : FWD_SHORT_M;
     float moved = std::hypot(sensor_.odom_x - last_x_, sensor_.odom_y - last_y_);
     last_x_ = sensor_.odom_x;
     last_y_ = sensor_.odom_y;
@@ -280,27 +288,25 @@ void Stage2Real::run() {
 
     if (traveled_ >= dist) {
         motion_.stop();
-        if (phase_ == Phase::FWD1) {
-            if (round_ < 2) {
-                phase_ = Phase::TURN2;
-                turn_guard_    = 0;
-                turn_base_yaw_ = sensor_.abs_yaw;
+        if (phase_ == Phase::FWD0) {
+            phase_ = Phase::TURN0;                        // 衔接前进完成 → 左转90°
+            turn_guard_    = 0;
+            turn_base_yaw_ = sensor_.abs_yaw;
 #ifdef DEBUG_STAGE
-                fprintf(stderr, "[S2Stage] 轮%d 走%.1fm完成, 次转\n", round_ + 1, FWD_LONG_M);
-                fflush(stderr);
+            fprintf(stderr, "[S2Stage] 衔接前进%.2fm完成, 左转90°\n", ENTER_DIST_M);
+            fflush(stderr);
 #endif
-            } else {
-                phase_ = Phase::SCAN1_TURN;   // 轮3: 前进后直接扫描
-                turn_guard_    = 0;
-                turn_base_yaw_ = sensor_.abs_yaw;
+        } else if (phase_ == Phase::FWD1) {
+            phase_ = Phase::TURN2;                        // 每轮前进2.8m后 → 轮中转(扫描前)
+            turn_guard_    = 0;
+            turn_base_yaw_ = sensor_.abs_yaw;
 #ifdef DEBUG_STAGE
-                fprintf(stderr, "[S2Stage] 轮%d 走%.1fm完成, 直接扫描\n", round_ + 1, FWD_LONG_M);
-                fflush(stderr);
+            fprintf(stderr, "[S2Stage] 轮%d 走%.1fm完成, 轮中转\n", round_ + 1, FWD_LONG_M);
+            fflush(stderr);
 #endif
-            }
         } else {                             // FWD3 收尾 → 下一轮
             round_++;
-            if (round_ < 3) {
+            if (round_ < 4) {
                 phase_ = Phase::TURN1;
                 turn_guard_    = 0;
                 turn_base_yaw_ = sensor_.abs_yaw;
@@ -311,7 +317,7 @@ void Stage2Real::run() {
             } else {
                 phase_ = Phase::DONE;
 #ifdef DEBUG_STAGE
-                fprintf(stderr, "[S2Stage] 全部3轮完成, DONE\n");
+                fprintf(stderr, "[S2Stage] 全部4轮完成, DONE\n");
                 fflush(stderr);
 #endif
             }

@@ -1,10 +1,12 @@
 #pragma once
 #include "cyberdog_race/stages/stage_base.hpp"
 
-/// 赛段真机版 — 第2赛段 (2026-08-13 三轮S形)
-/// 轮1: 右转90°→前进2.8m→左转90°→左右扫描→回正→前进0.75m
-/// 轮2: 左转90°→前进2.8m→右转90°→左右扫描→回正→前进0.75m
-/// 轮3: 右转90°→前进2.8m→左右扫描→结束
+/// 赛段真机版 — 第2赛段 (2026-08-13 四轮S形)
+/// 衔接: 前进0.92m→左转90° (Stage1结束后进入赛道)
+/// 轮1: 前进2.8m→右转90°→左右扫描→回正→前进0.75m
+/// 轮2: 右转90°→前进2.8m→左转90°→左右扫描→回正→前进0.75m
+/// 轮3: 左转90°→前进2.8m→右转90°→左右扫描→回正→前进0.75m
+/// 轮4: 右转90°→前进2.8m→左转90°→左右扫描→结束
 class Stage2Real : public StageBase {
 public:
     using StageBase::StageBase;
@@ -13,12 +15,12 @@ public:
     [[nodiscard]] bool is_done() override { return done_; }
 
 private:
-    enum class Phase { TURN1, FWD1, TURN2,
+    enum class Phase { FWD0, TURN0, TURN1, FWD1, TURN2,
                        SCAN1_TURN, SCAN1_WAIT, SCAN1_ACT, SCAN1_BACK,
                        SCAN2_TURN, SCAN2_WAIT, SCAN2_ACT, SCAN2_BACK,
                        TURN3, FWD3, ADJUST, DONE };
 
-    Phase phase_{Phase::TURN1};
+    Phase phase_{Phase::FWD0};
     Phase after_adjust_{Phase::DONE};  // ADJUST 修正完成后去向 (2026-08-13)
     bool  done_{false};
     int   round_{0};           // 轮次 0/1/2 (2026-08-13 三轮S形)
