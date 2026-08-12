@@ -17,16 +17,20 @@ private:
     enum class Phase { TURN1, FWD1, TURN2, FWD2, TURN3,
                        SCAN1_TURN, SCAN1_WAIT, SCAN1_ACT, SCAN1_BACK,
                        SCAN2_TURN, SCAN2_WAIT, SCAN2_ACT, SCAN2_BACK,
-                       TURN4, FWD3, DONE };
+                       TURN4, FWD3, ADJUST, DONE };
 
     Phase phase_{Phase::TURN1};
+    Phase after_adjust_{Phase::DONE};  // ADJUST 修正完成后去向 (2026-08-13)
     bool  done_{false};
     int   turn_guard_{0};      // 转向最小帧数保护
     int   turn_settle_{0};     // 转向停稳确认帧 (2026-08-12 提高转向精度)
     int   wait_frames_{0};     // 扫描停2秒计数
+    int   adjust_frames_{0};   // ADJUST 修正帧计数/超时保护 (2026-08-13)
     float turn_base_yaw_{0.0f};   // 进入转向时的朝向 (相对当前转)
     float fwd_ref_yaw_{0.0f};     // 前进段目标朝向 (回正基准)
     float start_yaw_{0.0f};       // 赛段初始朝向
     float last_x_{0.0f}, last_y_{0.0f};
     float traveled_{0.0f};        // 累计位移 (前进/扫描戳球)
+    float hold_x_{0.0f}, hold_y_{0.0f};            // 原地位置保持基准 (2026-08-13 防踏步后退)
+    float turn_start_x_{0.0f}, turn_start_y_{0.0f}; // 转向起点 (2026-08-13 转向后顶回后退漂移)
 };

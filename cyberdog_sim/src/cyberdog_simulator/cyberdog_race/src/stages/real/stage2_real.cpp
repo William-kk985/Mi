@@ -22,7 +22,7 @@ constexpr float STEP_H     = 0.17f;    // 步高
 constexpr float TURN1_DEG  = -3.0f;    // 动作1: 右转 3° (负=右转)
 constexpr float DIST1_M    = 0.9f;     // 动作2: 走 0.9m (2026-08-13: 0.95→0.9)
 constexpr float TURN2_DEG  = +93.0f;   // 动作3: 左转 93° (2026-08-12: 90°→93° 补偿实测左转偏小)
-constexpr float DIST2_M    = 2.9f;     // 动作4: 走 2.9m (2026-08-12: 3.05→2.9)
+constexpr float DIST2_M    = 2.8f;     // 动作4: 走 2.8m (2026-08-13: 2.9→2.8)
 constexpr float TURN3_DEG  = -90.0f;   // 动作5: 右转 90°
 constexpr float TURN4_DEG  = +45.0f;   // 动作7: 扫描位2之后 左转45° (不识别球, 朝好的方向继续走; 2026-08-12 新增)
 constexpr float FWD3_DIST   = 0.75f;   // 动作8: 收尾左转45°后 前进 0.75m (2026-08-13: 0.6→0.75)
@@ -46,10 +46,15 @@ void Stage2Real::init() {
     turn_guard_    = 0;
     turn_settle_   = 0;
     wait_frames_   = 0;
+    adjust_frames_ = 0;
     phase_         = Phase::TURN1;
     last_x_        = sensor_.odom_x;
     last_y_        = sensor_.odom_y;
     traveled_      = 0.0f;
+    hold_x_        = sensor_.odom_x;
+    hold_y_        = sensor_.odom_y;
+    turn_start_x_  = sensor_.odom_x;
+    turn_start_y_  = sensor_.odom_y;
     RCLCPP_INFO(rclcpp::get_logger("stage2_real"),
                 "[Stage2Real] init: 右转%.0f°→走%.1fm→左转%.0f°→走%.1fm→右转%.0f°→扫描找球→左转%.0f°朝前",
                 TURN1_DEG, DIST1_M, TURN2_DEG, DIST2_M, TURN3_DEG, TURN4_DEG);
@@ -57,6 +62,19 @@ void Stage2Real::init() {
 
 void Stage2Real::run() {
     if (done_) return;
+
+    // ── 原地位置保持 (2026-08-13): 踏步会后退+odom漂移, 机器人系后退>2cm → 小前进顶回 ──
+    //   (侧移不可靠, 只修前后分量; 每帧按 hold_x_/hold_y_ 基准计算)
+    auto pos_hold = [&]() {
+        float dx = sensor_.odom_x - hold_x_;
+        float dy = sensor_.odom_y - hold_y_;
+        float back = dx * std::cos(sensor_.abs_yaw) + dy * std::sin(sensor_.abs_yaw);
+        if (back < -0.02f) {
+            motion_.set_walk_velocity_step(0.08f, 0.0f, 0.0f, STEP_H);   // 后退>2cm → 顶回
+        } else {
+            motion_.set_walk_velocity_step(0.0f, 0.0f, 0.0f, STEP_H);
+        }
+    };
 
     // ── 转向: TURN1/2/3 + 扫描转向 SCAN1/2_TURN + 收尾 TURN4 (相对进入时的朝向) ──
     if (phase_ == Phase::TURN1 || phase_ == Phase::TURN2 || phase_ == Phase::TURN3 ||
@@ -69,67 +87,39 @@ void Stage2Real::run() {
         float target_yaw = norm_yaw(turn_base_yaw_ + deg * M_PI / 180.0f);
         float yaw_err    = norm_yaw(target_yaw - sensor_.abs_yaw);
 
+        // 转向开始时记录起点 (转向后顶回后退漂移, 2026-08-13)
+        if (turn_guard_ == 0 && turn_settle_ == 0) {
+            turn_start_x_ = sensor_.odom_x;
+            turn_start_y_ = sensor_.odom_y;
+        }
+
+        // 转向完成 → 进入 ADJUST (朝转向起点顶回后退漂移), 修正完再切下一段
         auto finish_turn = [&]() {
             motion_.stop();
+            switch (phase_) {
+                case Phase::TURN1:      after_adjust_ = Phase::FWD1;       break;
+                case Phase::TURN2:      after_adjust_ = Phase::FWD2;       break;
+                case Phase::TURN3:      after_adjust_ = Phase::SCAN1_TURN; break;
+                case Phase::SCAN1_TURN: after_adjust_ = Phase::SCAN1_WAIT; break;
+                case Phase::SCAN2_TURN: after_adjust_ = Phase::SCAN2_WAIT; break;
+                default:                after_adjust_ = Phase::FWD3;       break;   // TURN4
+            }
+            fwd_ref_yaw_ = target_yaw;   // 前进回正基准 (ADJUST 后使用)
+            hold_x_ = turn_start_x_;     // 修正基准 = 转向起点
+            hold_y_ = turn_start_y_;
+            adjust_frames_ = 0;
+            phase_ = Phase::ADJUST;
 #ifdef DEBUG_STAGE
-            fprintf(stderr, "[S2Stage] 转向完成 err=%.2f\n", yaw_err);
+            float dx = sensor_.odom_x - hold_x_, dy = sensor_.odom_y - hold_y_;
+            fprintf(stderr, "[S2Stage] 转向%.0f°完成 err=%.2f 漂移=%.3fm, 修正中\n",
+                    deg, yaw_err, std::hypot(dx, dy));
             fflush(stderr);
 #endif
-            if (phase_ == Phase::TURN1) {        // → 走 0.9m
-                phase_ = Phase::FWD1;
-                fwd_ref_yaw_ = target_yaw;
-                last_x_ = sensor_.odom_x; last_y_ = sensor_.odom_y;
-                traveled_ = 0.0f;
-#ifdef DEBUG_STAGE
-                fprintf(stderr, "[S2Stage] 右转%.0f°完成, 走%.1fm\n", std::abs(deg), DIST1_M);
-                fflush(stderr);
-#endif
-            } else if (phase_ == Phase::TURN2) { // → 走 3.05m
-                phase_ = Phase::FWD2;
-                fwd_ref_yaw_ = target_yaw;
-                last_x_ = sensor_.odom_x; last_y_ = sensor_.odom_y;
-                traveled_ = 0.0f;
-#ifdef DEBUG_STAGE
-                fprintf(stderr, "[S2Stage] 左转%.0f°完成, 走%.1fm\n", std::abs(deg), DIST2_M);
-                fflush(stderr);
-#endif
-            } else if (phase_ == Phase::TURN3) { // → 扫描位1 (左转45°)
-                phase_ = Phase::SCAN1_TURN;
-                turn_guard_    = 0;
-                turn_base_yaw_ = sensor_.abs_yaw;
-#ifdef DEBUG_STAGE
-                fprintf(stderr, "[S2Stage] 右转%.0f°完成, 扫描左转45°\n", std::abs(deg));
-                fflush(stderr);
-#endif
-            } else if (phase_ == Phase::SCAN1_TURN) { // → 扫描位1 停2秒
-                phase_ = Phase::SCAN1_WAIT;
-                wait_frames_ = 0;
-#ifdef DEBUG_STAGE
-                fprintf(stderr, "[S2Stage] 扫描位1(左转45°)停2秒找球\n");
-                fflush(stderr);
-#endif
-            } else if (phase_ == Phase::SCAN2_TURN) { // → 扫描位2 停2秒
-                phase_ = Phase::SCAN2_WAIT;
-                wait_frames_ = 0;
-#ifdef DEBUG_STAGE
-                fprintf(stderr, "[S2Stage] 扫描位2(右转90°)停2秒找球\n");
-                fflush(stderr);
-#endif
-            } else {                             // TURN4 → 左转45°完成, 前进0.6m
-                phase_ = Phase::FWD3;
-                fwd_ref_yaw_ = target_yaw;
-                last_x_ = sensor_.odom_x; last_y_ = sensor_.odom_y;
-                traveled_ = 0.0f;
-#ifdef DEBUG_STAGE
-                fprintf(stderr, "[S2Stage] 左转%.0f°完成, 前进%.1fm\n", std::abs(deg), FWD3_DIST);
-                fflush(stderr);
-#endif
-            }
         };
 
         // 停稳重校正 (2026-08-12): 转到位先停0.15s等abs_yaw稳定, 停稳后误差还大→低速补转
         if (turn_settle_ > 0) {
-            motion_.set_walk_velocity_step(0.0f, 0.0f, 0.0f, STEP_H);
+            pos_hold();   // 停稳期间也防后退 (2026-08-13)
             if (++turn_settle_ <= TURN_SETTLE_FRAMES) return;
             turn_settle_ = 0;
             if (std::abs(yaw_err) < TURN_DONE_ERR) { finish_turn(); return; }
@@ -156,9 +146,41 @@ void Stage2Real::run() {
         return;
     }
 
+    // ── 转向后修正: 朝转向起点顶回后退漂移 (2026-08-13) ──
+    //   原地转圈时踏步会产生后退, 转完先把后退量顶回来再走
+    if (phase_ == Phase::ADJUST) {
+        pos_hold();
+        float dx = sensor_.odom_x - hold_x_;
+        float dy = sensor_.odom_y - hold_y_;
+        float back = dx * std::cos(sensor_.abs_yaw) + dy * std::sin(sensor_.abs_yaw);
+        if (back > -0.02f || ++adjust_frames_ > 200) {   // 顶回到位 或 2s 超时保护
+            phase_ = after_adjust_;
+            switch (phase_) {
+                case Phase::FWD1: case Phase::FWD2: case Phase::FWD3:
+                    last_x_ = sensor_.odom_x; last_y_ = sensor_.odom_y;
+                    traveled_ = 0.0f;
+                    break;
+                case Phase::SCAN1_WAIT: case Phase::SCAN2_WAIT:
+                    wait_frames_ = 0;
+                    hold_x_ = sensor_.odom_x; hold_y_ = sensor_.odom_y;   // 扫描原地保持基准
+                    break;
+                default:   // 下一个转向
+                    turn_guard_    = 0;
+                    turn_base_yaw_ = sensor_.abs_yaw;
+                    break;
+            }
+#ifdef DEBUG_STAGE
+            fprintf(stderr, "[S2Stage] 修正完成 (漂移剩余=%.3fm)\n",
+                    std::hypot(sensor_.odom_x - hold_x_, sensor_.odom_y - hold_y_));
+            fflush(stderr);
+#endif
+        }
+        return;
+    }
+
     // ── 扫描停 2 秒找球 ──
     if (phase_ == Phase::SCAN1_WAIT || phase_ == Phase::SCAN2_WAIT) {
-        motion_.set_walk_velocity_step(0.0f, 0.0f, 0.0f, STEP_H);   // 原地停
+        pos_hold();   // 位置保持: 踏步会后退, 后退>2cm自动顶回 (2026-08-13)
         bool is_scan1 = (phase_ == Phase::SCAN1_WAIT);
         if (sensor_.ball_found && sensor_.ball_dist <= BALL_MAX_DIST) {   // 球距≤0.8m 才算
             phase_ = is_scan1 ? Phase::SCAN1_ACT : Phase::SCAN2_ACT;
