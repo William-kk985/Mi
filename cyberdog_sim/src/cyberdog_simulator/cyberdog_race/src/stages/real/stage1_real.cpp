@@ -13,7 +13,7 @@
 namespace {
 
 constexpr float STEP_H        = 0.20f;   // 步高 0.20 (2026-08-13 0.18→0.20 防卡脚; ⚠>0.25会不稳)
-constexpr float WALK_V        = 0.30f;   // 正常前进速度 m/s
+constexpr float WALK_V        = 0.35f;   // 正常前进速度 m/s (2026-08-13 0.30→0.35 加快)
 constexpr float RUSH_V        = 0.60f;   // 卡住冲刺速度 (2026-08-13 0.50→0.60 突破更猛)
 constexpr float GOAL_DIST     = 3.65f;   // 前进 3.65m (2026-08-12 3.7m 少0.05m)
 constexpr float TURN_YAW      = M_PI / 2.0f;  // 目标转角 90° (test14 相对转向)
@@ -25,7 +25,7 @@ constexpr float KP_YAW        = 0.8f;    // 视觉比例
 constexpr float KD_YAW        = 0.3f;    // 视觉微分
 constexpr float IMU_WEIGHT    = 0.3f;    // IMU 回正权重(视觉为主)
 constexpr float STUCK_DIST    = 0.01f;   // 卡住判定位移阈值 (m)
-constexpr int   STUCK_THRESH  = 20;      // 卡住帧数 (2026-08-13 30→20 更快触发脱困)
+constexpr int   STUCK_THRESH  = 30;      // 卡住帧数 (2026-08-13 改回30, 避免冲刺太频繁打断)
 constexpr int   RUSH_FRAMES   = 20;      // 冲刺帧数
 constexpr int   LANE_LOST_LIM = 10;      // 丢线容忍帧数
 
