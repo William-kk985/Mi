@@ -4,27 +4,25 @@
 #include <cmath>
 
 // ═══════════════════════════════════════════════════════════
-// Stage3Real 真机版 — 第3赛段: 破限低头 + 视觉检测 (测试形态, 不前进)
-// 破限低头: LCM 7668 设 x_effect_scale_pos=+30 放大走路pitch限位
-//   → set_walk_velocity_pitch(0,0,0,PITCH) 原地踏步低头保持 (test19 真机✅14°)
-// 视觉: LaneDetector(on_rgb /image) 持续检测, Web 标注看两侧黄线
-// ⚠ 测试形态: 原地低头不前进, 便于调视觉; 正式巡线待验证 (2026-08-12)
-// ⚠ 破限参数同时放大 y/yaw 限位, 本形态不发转向; 手动停止后重启复原
+// Stage3Real 真机版 — 第3赛段: 低头 + 视觉检测 (测试形态, 不前进)
+// 低头: 201姿态控制 set_body_pitch(0.25) 原地保持 → ~14° (无步态夹持, 无需破限)
+//   ⚠ 201 servo 需持续发布(停4帧=Servo data lost) → 控制循环100Hz每3帧发一次≈33Hz
+//   ⚠ 不能与 303 踏步交替(模式打架, test17教训) → 只发201, 狗静止
+// 视觉: LaneDetector(on_rgb /image_rgb) 持续检测, Web 标注看两侧黄线
+// ⚠ 测试形态: 原地低头不动, 便于调视觉; 正式巡线待验证 (2026-08-12)
 // 真机约定: 正值=低头 (2026-08-08 舵机方向确认)
 // ═══════════════════════════════════════════════════════════
 
 namespace {
-constexpr float  PITCH         = 0.25f;    // 低头 0.25 rad (正值=低头)
-constexpr float  STEP_H        = 0.17f;    // 步高
-constexpr double SCALE_HACK    = 30.0;     // x_effect_scale_pos 破限放大值
-constexpr double SCALE_RESTORE = -0.55;    // 默认值 (cyberdog2-ctrl-user-parameters.yaml)
+constexpr float PITCH        = 0.25f;    // 低头 0.25 rad (201姿态, 原地可到~14°)
+constexpr int   PITCH_EVERY  = 3;       // 100Hz循环每3帧发一次 ≈33Hz (servo需20Hz)
 }  // namespace
 
 void Stage3Real::init() {
-    done_       = false;
-    loc_ready_  = false;
-    unlock_set_ = false;
-    phase_      = Phase::WAIT_READY;
+    done_      = false;
+    loc_ready_ = false;
+    pitch_hold_ = 0;
+    phase_     = Phase::WAIT_READY;
 
     // ── 站起 (与 Stage1 同款已验证序列) ──
     motion_.locomotion();
@@ -36,9 +34,8 @@ void Stage3Real::init() {
             svc_ready ? "✅就绪" : "❌超时", sensor_.odom_x, sensor_.odom_y, sensor_.abs_yaw);
     fflush(stderr);
 #endif
-    motion_.set_walk_velocity_step(0.0f, 0.0f, 0.0f, STEP_H);   // 预热原地踏步
     RCLCPP_INFO(rclcpp::get_logger("stage3_real"),
-                "[Stage3Real] init: 破限低头+视觉 测试形态(原地不前进)");
+                "[Stage3Real] init: 低头+视觉 测试形态(201原地低头不动)");
 }
 
 void Stage3Real::run() {
@@ -47,30 +44,28 @@ void Stage3Real::run() {
     // ── ① 等定位就绪再开始 (init 在 spin 前, 回调没跑 absYaw 恒0, 同Stage1) ──
     if (phase_ == Phase::WAIT_READY) {
         if (sensor_.abs_yaw != 0.0f || sensor_.odom_x != 0.0f) {
-            // 破限开关: LCM 7668 直改 RT 板参数 x_effect_scale_pos=+30
-            motion_.set_user_param_double_lcm("x_effect_scale_pos", SCALE_HACK);
-            unlock_set_ = true;
             phase_ = Phase::LOW_HOLD;
 #ifdef DEBUG_STAGE
-            fprintf(stderr, "[S3Stage] 定位就绪 odom=(%.2f,%.2f), 破限+30, 原地低头保持\n",
+            fprintf(stderr, "[S3Stage] 定位就绪 odom=(%.2f,%.2f), 201低头保持\n",
                     sensor_.odom_x, sensor_.odom_y);
             fflush(stderr);
 #endif
         } else {
-            motion_.set_walk_velocity_step(0.0f, 0.0f, 0.0f, STEP_H);   // 原地踏步等定位
+            motion_.set_walk_velocity_step(0.0f, 0.0f, 0.0f, 0.17f);   // 原地踏步等定位
             return;
         }
     }
 
-    // ── ② 破限低头原地保持 + 视觉检测 (不前进) ──
+    // ── ② 201原地低头保持 + 视觉检测 (不前进) ──
     if (phase_ == Phase::LOW_HOLD) {
-        // 原地踏步低头: 速度0 + 低头PITCH (破限后无夹持, pitch_map≈14°)
-        motion_.set_walk_velocity_pitch(0.0f, 0.0f, 0.0f, PITCH);
+        // 201姿态低头: 持续发布保持(每3帧≈33Hz), 狗静止不动 (不混303防打架)
+        if (++pitch_hold_ % PITCH_EVERY == 0)
+            motion_.set_body_pitch(PITCH);
         // 视觉检测由 on_rgb 持续运行, 这里只打印状态供观察
 #ifdef DEBUG_SENSOR
         static int dbg_ = 0;
         if (++dbg_ % 10 == 0) {
-            fprintf(stderr, "[S3S] pitch_map=%.1f° off=%.2f curv=%.0f valid=%d | 原地保持\n",
+            fprintf(stderr, "[S3S] pitch_map=%.1f° off=%.2f curv=%.0f valid=%d | 原地低头\n",
                     sensor_.pitch_map * 180.0f / M_PI, sensor_.lane_offset,
                     sensor_.lane_curvature, (int)sensor_.lane_valid);
             fflush(stderr);
