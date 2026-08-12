@@ -4,34 +4,27 @@
 #include <cmath>
 
 // ═══════════════════════════════════════════════════════════
-// Stage3Real 真机版 — 第3赛段: 视觉巡线 (两边黄色赛道)
-// 检测: LaneDetector(on_rgb, /image RGB) → lane_offset/curvature/valid
-// 控制: 纯视觉 PD (真机 IMU yaw 恒0, 不做IMU回正)
-//   yaw_cmd = -(KP*offset + KD*d_offset), 偏右(offset>0)→右转回中
-//   (set_walk_velocity_step yaw 正=左转)
-// 弯道: curvature>60 减速 + 增益提高; 丢线: 保持上次yaw慢速直行
-// 结束: 累计位移 ≥ GOAL_DIST (2026-08-12 可调)
+// Stage3Real 真机版 — 第3赛段: 破限低头 + 视觉检测 (测试形态, 不前进)
+// 破限低头: LCM 7668 设 x_effect_scale_pos=+30 放大走路pitch限位
+//   → set_walk_velocity_pitch(0,0,0,PITCH) 原地踏步低头保持 (test19 真机✅14°)
+// 视觉: LaneDetector(on_rgb /image) 持续检测, Web 标注看两侧黄线
+// ⚠ 测试形态: 原地低头不前进, 便于调视觉; 正式巡线待验证 (2026-08-12)
+// ⚠ 破限参数同时放大 y/yaw 限位, 本形态不发转向; 手动停止后重启复原
+// 真机约定: 正值=低头 (2026-08-08 舵机方向确认)
 // ═══════════════════════════════════════════════════════════
 
 namespace {
-constexpr float WALK_V        = 0.30f;    // 直道速度 m/s
-constexpr float CURVE_V       = 0.18f;    // 弯道速度 m/s
-constexpr float STEP_H        = 0.17f;    // 步高
-constexpr float KP_YAW        = 0.6f;     // 视觉P增益 (仿真stage1同款)
-constexpr float KD_YAW        = 0.10f;    // 视觉D增益
-constexpr float CURVE_THRESH  = 60.0f;    // 曲率>60 判弯道 (仿真同款)
-constexpr float GOAL_DIST     = 4.0f;     // 巡线总里程 m (2026-08-12 可调!)
-constexpr int   LANE_LOST_LIM = 120;      // 丢线保持帧数 (约1.2s@100Hz)
+constexpr float  PITCH         = 0.25f;    // 低头 0.25 rad (正值=低头)
+constexpr float  STEP_H        = 0.17f;    // 步高
+constexpr double SCALE_HACK    = 30.0;     // x_effect_scale_pos 破限放大值
+constexpr double SCALE_RESTORE = -0.55;    // 默认值 (cyberdog2-ctrl-user-parameters.yaml)
 }  // namespace
 
 void Stage3Real::init() {
-    done_         = false;
-    loc_ready_    = false;
-    traveled_     = 0.0f;
-    prev_offset_  = 0.0f;
-    last_yaw_cmd_ = 0.0f;
-    lane_lost_    = 0;
-    phase_        = Phase::WAIT_READY;
+    done_       = false;
+    loc_ready_  = false;
+    unlock_set_ = false;
+    phase_      = Phase::WAIT_READY;
 
     // ── 站起 (与 Stage1 同款已验证序列) ──
     motion_.locomotion();
@@ -45,7 +38,7 @@ void Stage3Real::init() {
 #endif
     motion_.set_walk_velocity_step(0.0f, 0.0f, 0.0f, STEP_H);   // 预热原地踏步
     RCLCPP_INFO(rclcpp::get_logger("stage3_real"),
-                "[Stage3Real] init: 视觉巡线 直道%.2f 弯道%.2f 里程%.1fm", WALK_V, CURVE_V, GOAL_DIST);
+                "[Stage3Real] init: 破限低头+视觉 测试形态(原地不前进)");
 }
 
 void Stage3Real::run() {
@@ -54,15 +47,12 @@ void Stage3Real::run() {
     // ── ① 等定位就绪再开始 (init 在 spin 前, 回调没跑 absYaw 恒0, 同Stage1) ──
     if (phase_ == Phase::WAIT_READY) {
         if (sensor_.abs_yaw != 0.0f || sensor_.odom_x != 0.0f) {
-            last_x_       = sensor_.odom_x;
-            last_y_       = sensor_.odom_y;
-            traveled_     = 0.0f;
-            prev_offset_  = sensor_.lane_offset;
-            last_yaw_cmd_ = 0.0f;
-            lane_lost_    = 0;
-            phase_ = Phase::LANE_FOLLOW;
+            // 破限开关: LCM 7668 直改 RT 板参数 x_effect_scale_pos=+30
+            motion_.set_user_param_double_lcm("x_effect_scale_pos", SCALE_HACK);
+            unlock_set_ = true;
+            phase_ = Phase::LOW_HOLD;
 #ifdef DEBUG_STAGE
-            fprintf(stderr, "[S3Stage] 定位就绪 odom=(%.2f,%.2f), 开始巡线\n",
+            fprintf(stderr, "[S3Stage] 定位就绪 odom=(%.2f,%.2f), 破限+30, 原地低头保持\n",
                     sensor_.odom_x, sensor_.odom_y);
             fflush(stderr);
 #endif
@@ -72,62 +62,21 @@ void Stage3Real::run() {
         }
     }
 
-    // ── ② 视觉巡线 ──
-    if (phase_ == Phase::LANE_FOLLOW) {
-        float moved = std::hypot(sensor_.odom_x - last_x_, sensor_.odom_y - last_y_);
-        last_x_ = sensor_.odom_x;
-        last_y_ = sensor_.odom_y;
-        if (moved > 0.25f) moved = 0.0f;   // 跳变保护
-        traveled_ += moved;
-
-        if (traveled_ >= GOAL_DIST) {      // 走满 → 结束
-            motion_.stop();
-            phase_ = Phase::DONE;
-#ifdef DEBUG_STAGE
-            fprintf(stderr, "[S3Stage] 巡线走满 %.2fm, DONE\n", traveled_);
-            fflush(stderr);
-#endif
-            return;
-        }
-
-        // 丢线保护: 保持上次 yaw 慢速直行; 丢线过久 → 更慢
-        if (!sensor_.lane_valid) {
-            lane_lost_++;
-            float hold = (lane_lost_ > LANE_LOST_LIM) ? 0.10f : WALK_V * 0.6f;
-            motion_.set_walk_velocity_step(hold, 0.0f, last_yaw_cmd_, STEP_H);
-#ifdef DEBUG_STAGE
-            if (lane_lost_ % 30 == 0) {
-                fprintf(stderr, "[S3Stage] 丢线 %d帧, 保持前进 hold=%.2f\n", lane_lost_, hold);
-                fflush(stderr);
-            }
-#endif
-            return;
-        }
-        lane_lost_ = 0;
-
-        // 视觉 PD: 弯道提高增益 + 减速
-        float d_offset = sensor_.lane_offset - prev_offset_;
-        prev_offset_   = sensor_.lane_offset;
-        bool curve = sensor_.lane_curvature > CURVE_THRESH;
-        float kp = curve ? KP_YAW * 1.3f : KP_YAW;
-        float kd = curve ? KD_YAW * 1.2f : KD_YAW;
-        float yaw_cmd = -(kp * sensor_.lane_offset + kd * d_offset);
-        yaw_cmd = std::max(-0.5f, std::min(0.5f, yaw_cmd));
-        last_yaw_cmd_ = yaw_cmd;
-        float speed = curve ? CURVE_V : WALK_V;
-
-        motion_.set_walk_velocity_step(speed, 0.0f, yaw_cmd, STEP_H);
+    // ── ② 破限低头原地保持 + 视觉检测 (不前进) ──
+    if (phase_ == Phase::LOW_HOLD) {
+        // 原地踏步低头: 速度0 + 低头PITCH (破限后无夹持, pitch_map≈14°)
+        motion_.set_walk_velocity_pitch(0.0f, 0.0f, 0.0f, PITCH);
+        // 视觉检测由 on_rgb 持续运行, 这里只打印状态供观察
 #ifdef DEBUG_SENSOR
         static int dbg_ = 0;
         if (++dbg_ % 10 == 0) {
-            fprintf(stderr, "[S3S] off=%.2f curv=%.0f valid=%d v=%.2f yaw=%.2f 走%.2fm\n",
-                    sensor_.lane_offset, sensor_.lane_curvature, (int)sensor_.lane_valid,
-                    speed, yaw_cmd, traveled_);
+            fprintf(stderr, "[S3S] pitch_map=%.1f° off=%.2f curv=%.0f valid=%d | 原地保持\n",
+                    sensor_.pitch_map * 180.0f / M_PI, sensor_.lane_offset,
+                    sensor_.lane_curvature, (int)sensor_.lane_valid);
             fflush(stderr);
         }
 #endif
-        return;
+        return;   // 测试形态: 不前进, 不结束 (保持原地低头+视觉)
     }
-
-    if (phase_ == Phase::DONE) { done_ = true; return; }
 }
+
