@@ -1,11 +1,10 @@
 #pragma once
 #include "cyberdog_race/stages/stage_base.hpp"
 
-/// 赛段真机版 — 第2赛段
-/// 右转3°→走0.95m→左转93°→走2.9m→右转90°
-/// → 找球扫描: 左转45°停2秒 / 右转90°停2秒
-///   每个角度: 识别到橙色球→前进0.2m再退回; 没有→2秒后转下一个角度
-/// → 扫描位2(右转90°)之后左转45°(不识别球) → 前进0.6m 朝好的方向继续走 (2026-08-12 新增)
+/// 赛段真机版 — 第2赛段 (2026-08-13 三轮S形)
+/// 轮1: 右转90°→前进2.8m→左转90°→左右扫描→回正→前进0.75m
+/// 轮2: 左转90°→前进2.8m→右转90°→左右扫描→回正→前进0.75m
+/// 轮3: 右转90°→前进2.8m→左右扫描→结束
 class Stage2Real : public StageBase {
 public:
     using StageBase::StageBase;
@@ -14,14 +13,15 @@ public:
     [[nodiscard]] bool is_done() override { return done_; }
 
 private:
-    enum class Phase { TURN1, FWD1, TURN2, FWD2, TURN3,
+    enum class Phase { TURN1, FWD1, TURN2,
                        SCAN1_TURN, SCAN1_WAIT, SCAN1_ACT, SCAN1_BACK,
                        SCAN2_TURN, SCAN2_WAIT, SCAN2_ACT, SCAN2_BACK,
-                       TURN4, FWD3, ADJUST, DONE };
+                       TURN3, FWD3, ADJUST, DONE };
 
     Phase phase_{Phase::TURN1};
     Phase after_adjust_{Phase::DONE};  // ADJUST 修正完成后去向 (2026-08-13)
     bool  done_{false};
+    int   round_{0};           // 轮次 0/1/2 (2026-08-13 三轮S形)
     int   turn_guard_{0};      // 转向最小帧数保护
     int   turn_settle_{0};     // 转向停稳确认帧 (2026-08-12 提高转向精度)
     int   wait_frames_{0};     // 扫描停2秒计数
