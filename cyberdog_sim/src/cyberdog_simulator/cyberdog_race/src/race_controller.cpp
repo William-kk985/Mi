@@ -526,6 +526,9 @@ void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
 void RaceController::on_d435_infra1(sensor_msgs::msg::Image::SharedPtr msg) {
     (void)msg;
 #ifdef ENABLE_WEB_STREAMING
+    // ★ 降频每4帧处理1次(30fps→7.5fps): 防JPEG编码霸占executor饿死on_rgb (2026-08-12 黑屏根因)
+    static int s1 = 0;
+    if (++s1 % 4 != 0) return;
     try {
         cv::Mat frame;
         if (msg->encoding == sensor_msgs::image_encodings::MONO8) {
@@ -541,6 +544,7 @@ void RaceController::on_d435_infra1(sensor_msgs::msg::Image::SharedPtr msg) {
             if (cv_img->image.channels() == 1) cv::cvtColor(cv_img->image, frame, cv::COLOR_GRAY2BGR);
             else frame = cv_img->image;
         }
+        cv::resize(frame, frame, cv::Size(frame.cols / 2, frame.rows / 2));   // 半分辨率编码
         web_streamer_.push_d435_frame(frame);
     } catch (const cv_bridge::Exception& e) {
         RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "[D435 infra] cv_bridge error: %s", e.what());
@@ -552,6 +556,9 @@ void RaceController::on_d435_infra1(sensor_msgs::msg::Image::SharedPtr msg) {
 void RaceController::on_d435_depth(sensor_msgs::msg::Image::SharedPtr msg) {
     (void)msg;
 #ifdef ENABLE_WEB_STREAMING
+    // ★ 降频每4帧处理1次: 防JPEG编码霸占executor饿死on_rgb (2026-08-12)
+    static int s3 = 0;
+    if (++s3 % 4 != 0) return;
     try {
         cv::Mat cv_depth;
         if (msg->encoding == "16UC1" || msg->encoding == "mono16") {
@@ -572,6 +579,7 @@ void RaceController::on_d435_depth(sensor_msgs::msg::Image::SharedPtr msg) {
         cv::Mat norm, color;
         cv_depth.convertTo(norm, CV_8UC1, 255.0 / 5000.0);
         cv::applyColorMap(norm, color, cv::COLORMAP_JET);
+        cv::resize(color, color, cv::Size(color.cols / 2, color.rows / 2));   // 半分辨率编码
         web_streamer_.push_depth_frame(color);
     } catch (const std::exception& e) {
         RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
@@ -584,6 +592,9 @@ void RaceController::on_d435_depth(sensor_msgs::msg::Image::SharedPtr msg) {
 void RaceController::on_d435_infra2(sensor_msgs::msg::Image::SharedPtr msg) {
     (void)msg;
 #ifdef ENABLE_WEB_STREAMING
+    // ★ 降频每4帧处理1次: 防JPEG编码霸占executor饿死on_rgb (2026-08-12)
+    static int s2 = 0;
+    if (++s2 % 4 != 0) return;
     try {
         cv::Mat frame;
         if (msg->encoding == sensor_msgs::image_encodings::MONO8) {
@@ -594,6 +605,7 @@ void RaceController::on_d435_infra2(sensor_msgs::msg::Image::SharedPtr msg) {
             if (cv_img->image.channels() == 1) cv::cvtColor(cv_img->image, frame, cv::COLOR_GRAY2BGR);
             else frame = cv_img->image;
         }
+        cv::resize(frame, frame, cv::Size(frame.cols / 2, frame.rows / 2));   // 半分辨率编码
         web_streamer_.push_infra2_frame(frame);
     } catch (const cv_bridge::Exception& e) {
         RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "[D435 infra2] cv_bridge error: %s", e.what());
