@@ -64,9 +64,13 @@ print(c['n'])
 " 2>/dev/null
 }
 
-# 重新调 camera_service 恢复推流 (不杀进程)
+# 重启 camera_server 进程再推流 (2026-08-13: 仅调service不够, 采集线程卡死需重启进程)
 restart_image() {
-    echo "  ⚠ /image 无实际帧, 重新调 camera_service..."
+    echo "  ⚠ /image 无实际帧, 重启 camera_server 并重新推流..."
+    pkill -f "camera_test/camera_server" 2>/dev/null || true
+    sleep 4
+    nohup ros2 run camera_test camera_server --ros-args -r __ns:=${NS} > /tmp/camera_server.log 2>&1 &
+    sleep 6
     timeout 8 ros2 service call ${NS}/camera_service protocol/srv/CameraService \
         "{command: 9, args: \"\", width: 640, height: 480, fps: 30}" > /dev/null 2>&1
     sleep 4
@@ -84,8 +88,8 @@ else
 fi
 sleep 1
 
-# ── 3. 相机 watchdog: 后台持续检测 /image 帧率, 无帧自动重新推流 (2026-08-13) ──
-#   检测: 每8s用3s采样, 连续2次<2帧 → 重新调 camera_service
+# ── 3. 相机 watchdog: 后台持续检测 /image 帧率, 无帧自动重启 camera_server (2026-08-13) ──
+#   检测: 每8s用3s采样, 连续2次<2帧 → 杀 camera_server 进程重启 + 重新推流
 (
     BAD=0
     while true; do

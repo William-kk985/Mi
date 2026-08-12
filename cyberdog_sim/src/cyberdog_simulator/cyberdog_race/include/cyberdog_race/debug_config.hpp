@@ -21,9 +21,9 @@
 // 赛段调试模式（都不定义 = 正式比赛从第1段跑完整6段）
 // ============================================================
 
-// #define DEBUG_SINGLE_STAGE 3   // 只跑 Stage3 破限低头+视觉测试 (原地不前进, 2026-08-12)
+#define DEBUG_SINGLE_STAGE 3   // 只跑 Stage3 (2026-08-13)
 // #define DEBUG_START_STAGE  4
-#define DEBUG_END_STAGE    2     // 只跑 Stage1+2, 到 Stage2 结束停止 (2026-08-13)
+// #define DEBUG_END_STAGE    2     // 只跑 Stage1+2, 到 Stage2 结束停止 (2026-08-13)
 
 // 调试开关：禁用撞球，只观察视觉效果
 // #define DEBUG_NO_HIT
