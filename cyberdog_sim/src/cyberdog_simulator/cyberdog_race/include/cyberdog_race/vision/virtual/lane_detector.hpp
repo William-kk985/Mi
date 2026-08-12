@@ -57,6 +57,7 @@ private:
                     std::vector<cv::Point>& right);
     void filter_lateral(std::vector<cv::Point>& pts);
     void filter_continuity(std::vector<cv::Point>& pts, float& last_valid_x, int img_width);
+    void remove_small_blobs(cv::Mat& mask, int min_area);  // 连通域面积过滤 (2026-08-12 增强)
     float calc_offset(const std::vector<cv::Point>& left,
                       const std::vector<cv::Point>& right,
                       int img_width);
