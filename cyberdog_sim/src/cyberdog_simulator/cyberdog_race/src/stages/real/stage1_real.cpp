@@ -12,7 +12,7 @@
 
 namespace {
 
-constexpr float STEP_H        = 0.18f;   // 步高 0.18 (2026-08-13 0.17→0.18 防卡脚)
+constexpr float STEP_H        = 0.20f;   // 步高 0.20 (2026-08-13 0.18→0.20 防卡脚; ⚠>0.25会不稳)
 constexpr float WALK_V        = 0.30f;   // 正常前进速度 m/s
 constexpr float RUSH_V        = 0.60f;   // 卡住冲刺速度 (2026-08-13 0.50→0.60 突破更猛)
 constexpr float GOAL_DIST     = 3.65f;   // 前进 3.65m (2026-08-12 3.7m 少0.05m)
