@@ -90,8 +90,40 @@ for i in $(seq 1 15); do
     if [ -n "$PUB" ] && [ "$PUB" != "0" ]; then IMAGE_OK=1; break; fi
     sleep 2
 done
-[ "$IMAGE_OK" = "1" ] && echo "  ✅ RGB /image_rgb 推流确认 (Publisher=$PUB)" \
-                       || echo "  ⚠ RGB /image_rgb 未确认推流, 继续启动(Web 可能黑屏)"
+[ "$IMAGE_OK" = "1" ] && echo "  ✅ RGB /image_rgb 有 Publisher" \
+                       || echo "  ⚠ RGB /image_rgb 无 Publisher, 继续启动(Web 可能黑屏)"
+
+# ★ 验证实际帧数: lifecycle active 可能"假激活"(采集线程卡死0帧, 2026-08-13)
+#   无帧 → 杀 stereo_camera 进程重拉(bringup 自动重启) + 重新 activate
+check_rgb_frames() {
+    timeout 8 python3 -c "
+import rclpy,time
+from rclpy.qos import QoSProfile,ReliabilityPolicy
+from sensor_msgs.msg import Image
+rclpy.init(); n=rclpy.create_node('chk')
+q=QoSProfile(depth=4,reliability=ReliabilityPolicy.BEST_EFFORT)
+c={'n':0}
+n.create_subscription(Image, '$NS/image_rgb', lambda m: c.__setitem__('n',c['n']+1), q)
+end=time.time()+3
+while time.time()<end: rclpy.spin_once(n,timeout_sec=0.05)
+print(c['n'])
+" 2>/dev/null
+}
+
+RGB_FRAMES=$(check_rgb_frames)
+if [ -z "$RGB_FRAMES" ] || [ "$RGB_FRAMES" = "0" ]; then
+    echo "  ⚠ /image_rgb 无实际帧, 相机可能卡死(假active), 强制重启 stereo_camera..."
+    pkill -f stereo_camera 2>/dev/null || true
+    sleep 6
+    timeout 8 ros2 lifecycle set ${NS}/stereo_camera activate > /dev/null 2>&1 || true
+    sleep 3
+fi
+RGB_FRAMES=$(check_rgb_frames)
+if [ -n "$RGB_FRAMES" ] && [ "$RGB_FRAMES" != "0" ]; then
+    echo "  ✅ RGB 画面正常 (${RGB_FRAMES}帧/3s)"
+else
+    echo "  ⚠ RGB 仍无帧, 相机驱动深度卡死, 建议重启狗(bringup)恢复"
+fi
 sleep 1
 
 # ── 3. 启动比赛 ──
