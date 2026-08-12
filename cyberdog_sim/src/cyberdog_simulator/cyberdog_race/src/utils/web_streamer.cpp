@@ -332,9 +332,12 @@ void WebStreamer::stop() {
 void WebStreamer::push_frame(const cv::Mat& frame) {
     if (!running_.load() || frame.empty()) return;
 
+    // ★ 半分辨率编码: tegra 全分辨率JPEG太慢导致RGB流时有时无 (2026-08-13)
+    cv::Mat small;
+    cv::resize(frame, small, cv::Size(frame.cols / 2, frame.rows / 2));
     std::vector<uint8_t> jpeg;
     std::vector<int> params = {cv::IMWRITE_JPEG_QUALITY, 70};
-    cv::imencode(".jpg", frame, jpeg, params);
+    cv::imencode(".jpg", small, jpeg, params);
 
     {
         std::lock_guard<std::mutex> lock(frame_mutex_);
@@ -348,9 +351,12 @@ void WebStreamer::push_frame(const cv::Mat& frame) {
 void WebStreamer::push_debug_frame(const cv::Mat& frame) {
     if (!running_.load() || frame.empty()) return;
 
+    // ★ 半分辨率编码: 防RGB流时有时无 (2026-08-13)
+    cv::Mat small;
+    cv::resize(frame, small, cv::Size(frame.cols / 2, frame.rows / 2));
     std::vector<uint8_t> jpeg;
     std::vector<int> params = {cv::IMWRITE_JPEG_QUALITY, 70};
-    cv::imencode(".jpg", frame, jpeg, params);
+    cv::imencode(".jpg", small, jpeg, params);
 
     {
         std::lock_guard<std::mutex> lock(frame_mutex_);
@@ -414,12 +420,15 @@ void WebStreamer::push_infra2_frame(const cv::Mat& frame) {
 
 void WebStreamer::push_dark_frame(const cv::Mat& frame) {
     if (!running_.load() || frame.empty()) return;
+    // ★ 半分辨率编码: 防RGB流时有时无 (2026-08-13)
+    cv::Mat small;
+    cv::resize(frame, small, cv::Size(frame.cols / 2, frame.rows / 2));
     std::vector<uint8_t> jpeg;
     int jq = jpeg_quality_;
     if (jq < 1) jq = 1;
     if (jq > 100) jq = 100;
     std::vector<int> params = {cv::IMWRITE_JPEG_QUALITY, jq};
-    cv::imencode(".jpg", frame, jpeg, params);
+    cv::imencode(".jpg", small, jpeg, params);
     { std::lock_guard<std::mutex> lock(frame_mutex_);
       jpeg_dark_buffer_.swap(jpeg); has_dark_frame_ = true; dark_frame_seq_++; }
     frame_cv_.notify_all();
