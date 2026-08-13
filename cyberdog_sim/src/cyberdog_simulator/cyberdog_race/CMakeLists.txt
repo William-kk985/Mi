@@ -161,4 +161,19 @@ endif()
 
 install(TARGETS race_controller DESTINATION lib/${PROJECT_NAME})
 
+# ── center_cam: 官方 camera_api 桥接节点 (2026-08-14) ──
+#   把 cam_id 0/1/2/3 的相机(bottom/center 模组)发成 ROS topic
+#   仅真机: camera_api 库只在 NX /opt/ros2/cyberdog 有
+find_library(CAMERA_API_LIB camera_api PATHS /opt/ros2/cyberdog/lib NO_DEFAULT_PATH)
+if(CAMERA_API_LIB)
+  include_directories(/opt/ros2/cyberdog/include)
+  add_executable(center_cam src/center_cam.cpp)
+  ament_target_dependencies(center_cam rclcpp sensor_msgs cv_bridge)
+  target_link_libraries(center_cam ${CAMERA_API_LIB} ${OpenCV_LIBS})
+  install(TARGETS center_cam DESTINATION lib/${PROJECT_NAME})
+  message(STATUS "[CAM] center_cam 已启用 (libcamera_api)")
+else()
+  message(STATUS "[CAM] 未找到 camera_api 库, 跳过 center_cam")
+endif()
+
 ament_package()

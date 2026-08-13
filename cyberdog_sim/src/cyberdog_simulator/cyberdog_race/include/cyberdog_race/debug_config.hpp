@@ -21,9 +21,9 @@
 // 赛段调试模式（都不定义 = 正式比赛从第1段跑完整6段）
 // ============================================================
 
-#define DEBUG_SINGLE_STAGE 3   // 只跑 Stage3 (2026-08-13)
+// #define DEBUG_SINGLE_STAGE 3   // 只跑 Stage3 (2026-08-13)
 // #define DEBUG_START_STAGE  4
-// #define DEBUG_END_STAGE    2     // 只跑 Stage1+2, 到 Stage2 结束停止 (2026-08-13)
+#define DEBUG_END_STAGE    2     // 只跑 Stage1+2, 到 Stage2 结束停止 (2026-08-14 侧移扫球测试)
 
 // 调试开关：禁用撞球，只观察视觉效果
 // #define DEBUG_NO_HIT
@@ -52,6 +52,10 @@
 // ── 关闭 D430i 红外/深度 (任务只用RGB, 关闭减少CPU/资源竞争, 2026-08-13) ──
 #define DISABLE_D435_SUB
 
+// ── RGB 相机通道 (2026-08-14) ──
+// center 模组 (ov9782 双目, cam_id 2/3) 视角更适合寻线; bottom 相机(camera_server)位置不好
+#define USE_CENTER_CAM
+
 // ============================================================
 // 仿真 / 真机模式切换
 // ============================================================
@@ -75,7 +79,11 @@
 //   模组2 底部D430i(/camera/camera):  /camera/infra1(红外) /camera/depth(深度) /camera/imu(IMU)
 // ⚠ D430i 无 RGB 彩色输出，只有红外+深度！
 #ifdef REAL_DOG
-  #define TOPIC_RGB_CAMERA       ROBOT_NS "/image"                      // RGB (camera_server推流, bgr8 640x480 ~21fps; 2026-08-13 stereo_camera的VI故障no reply→改用camera_server通道)
+  #ifdef USE_CENTER_CAM
+    #define TOPIC_RGB_CAMERA       ROBOT_NS "/image_center"        // center ov9782 双目 (2026-08-14: 视角好, center_cam节点17fps)
+  #else
+    #define TOPIC_RGB_CAMERA       ROBOT_NS "/image"               // bottom camera_server推流 (备用)
+  #endif
   #define TOPIC_IMU              ROBOT_NS "/camera/imu"                  // D430i 内置IMU（真狗无独立身体IMU topic）
   #define TOPIC_LIDAR            ROBOT_NS "/scan"                        // sensor_msgs/LaserScan ✅
   #define TOPIC_D435_INFRA1      ROBOT_NS "/camera/infra1/image_rect_raw" // D430i左目红外 灰度 ✅
