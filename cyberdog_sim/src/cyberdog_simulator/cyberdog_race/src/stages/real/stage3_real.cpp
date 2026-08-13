@@ -16,7 +16,9 @@ namespace {
 constexpr float WALK_V   = 0.30f;    // 巡线前进速度 m/s
 constexpr float PITCH    = 0.32f;    // 低头 0.32 rad (~18°) (2026-08-13: 0.38太低调回0.32)
 constexpr float KP_VIS   = 1.0f;     // 视觉巡线增益 (offset→yaw) (2026-08-13: 0.5→1.0 转弯力度不够)
-constexpr float KD_VIS   = 0.5f;     // 微分预测增益 (2026-08-13: 偏移趋势提前打方向, 冲出去也不至于太偏)
+constexpr float KD_VIS   = 0.15f;    // 微分预测增益 (2026-08-13: 0.5实测尖峰±0.8抽方向→0.15)
+constexpr float KD_LIM   = 0.25f;    // 微分项单独限幅 (2026-08-13: 防检测噪声×100放大盖过KP主项)
+constexpr float KC_CURV  = 0.20f;    // 曲率前馈 (2026-08-13: 弯道提前转, 直行问题根因是看不到弯道)
 constexpr float YAW_LIM  = 0.8f;     // 巡线 yaw 限幅 (2026-08-13: 0.5→0.8)
 constexpr float FWD_DIST = 3.0f;     // 巡线总距离 m (2026-08-13 待实测调整)
 constexpr double SCALE_HACK    = 30.0;   // 破限: x_effect_scale_pos=+30 (前进中放大pitch限位)
@@ -118,12 +120,15 @@ void Stage3Real::run() {
         //   微分项: 偏移在增大就提前加大转向, 没矫正过来冲出去也缓一缓
         //   丢线保持: 赛道出画面后按最后方向继续转(衰减), 把赛道拉回画面 (低头视角关键!)
         float yaw_cmd = 0.0f;
+        float d_off = 0.0f;
         if (sensor_.lane_valid) {
             float off = sensor_.lane_offset;
-            float d_off = (off - last_offset_) * 100.0f;   // 100Hz差分≈变化速率
+            d_off = (off - last_offset_) * 100.0f;   // 100Hz差分≈变化速率
             last_offset_ = off;
+            float kd_term = std::max(-KD_LIM, std::min(KD_LIM, KD_VIS * d_off));
+            // 曲率前馈: curv>0=右弯→负yaw右转, 弯道在远处就提前打方向
             yaw_cmd = std::max(-YAW_LIM, std::min(YAW_LIM,
-                                -KP_VIS * off - KD_VIS * d_off));
+                                -KP_VIS * off - kd_term - KC_CURV * sensor_.lane_curvature));
             last_yaw_ = yaw_cmd;
         } else {
             // 丢线: 保持最后转向并逐帧衰减(~1.5s衰减完), 把赛道拉回画面
@@ -136,9 +141,10 @@ void Stage3Real::run() {
 #ifdef DEBUG_SENSOR
         static int dbg2_ = 0;
         if (++dbg2_ % 10 == 0) {
-            fprintf(stderr, "[S3S] %.1f/%.1fm pitch_map=%.1f° off=%.2f valid=%d yaw=%.2f\n",
+            fprintf(stderr, "[S3S] %.1f/%.1fm pitch_map=%.1f° off=%.2f curv=%.1f d=%.2f valid=%d yaw=%.2f\n",
                     traveled_, FWD_DIST, sensor_.pitch_map * 180.0f / M_PI,
-                    sensor_.lane_offset, (int)sensor_.lane_valid, yaw_cmd);
+                    sensor_.lane_offset, sensor_.lane_curvature, d_off,
+                    (int)sensor_.lane_valid, yaw_cmd);
             fflush(stderr);
         }
 #endif

@@ -5,8 +5,8 @@ LaneResult LaneDetector::detect(const cv::Mat& frame) {
     LaneResult result;
     if (frame.empty()) return result;
 
-    // 1. ROI: 只用下面 1/4 寻线 (2026-08-13: 1/3→1/5→1/4)
-    int roi_y = frame.rows * 3 / 4;
+    // 1. ROI: 下半屏寻线 (2026-08-13: 下1/4只看脚下0.2m, 弯道看不到→直行; 改下1/2看远~2倍)
+    int roi_y = frame.rows / 2;
     cv::Rect roi(0, roi_y, frame.cols, frame.rows - roi_y);
     cv::Mat sub = frame(roi);
 
@@ -218,5 +218,6 @@ float LaneDetector::calc_curvature(const std::vector<cv::Point>& edge) {
     }
     if (n < 2) return 0.0f;
     float mean = sum_slope / n;
-    return std::sqrt(sum_sq / n - mean * mean);
+    // 带符号斜率: >0=线向右弯(需右转), <0=向左弯 (2026-08-13 供曲率前馈用)
+    return std::max(-3.0f, std::min(3.0f, mean));
 }

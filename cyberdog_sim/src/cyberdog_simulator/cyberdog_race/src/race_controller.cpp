@@ -468,13 +468,17 @@ void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
     overlay.setTo(cv::Scalar(0, 255, 0), mask);
     cv::addWeighted(frame, 0.7, overlay, 0.3, 0, frame);
 
-    for (auto& p : lane_detector_.last_left_)
-        cv::circle(frame, p, 4, {255, 0, 0}, -1);
-    for (auto& p : lane_detector_.last_right_)
-        cv::circle(frame, p, 4, {0, 0, 255}, -1);
+    // ★ 视觉debug (2026-08-13): ROI框+线点连线, 肉眼验证检测看到了什么
+    int roi_y = frame.rows / 2;
+    cv::rectangle(frame, {0, roi_y}, {frame.cols, frame.rows}, {0, 255, 255}, 1);
+    cv::putText(frame, "ROI", {4, roi_y + 14}, cv::FONT_HERSHEY_SIMPLEX, 0.45, {0, 255, 255}, 1);
 
     auto& lpts = lane_detector_.last_left_;
     auto& rpts = lane_detector_.last_right_;
+    if (lpts.size() > 1) cv::polylines(frame, lpts, false, {255, 0, 0}, 2);   // 蓝=左黄线
+    if (rpts.size() > 1) cv::polylines(frame, rpts, false, {0, 0, 255}, 2);   // 红=右黄线
+    for (auto& p : lpts) cv::circle(frame, p, 3, {255, 0, 0}, -1);
+    for (auto& p : rpts) cv::circle(frame, p, 3, {0, 0, 255}, -1);
     for (size_t li = 0, ri = 0; li < lpts.size() && ri < rpts.size(); ) {
         if (lpts[li].y == rpts[ri].y) {
             cv::circle(frame, {(lpts[li].x + rpts[ri].x) / 2, lpts[li].y}, 3, {0, 255, 255}, -1);
@@ -505,9 +509,19 @@ void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
     }
 
     cv::line(frame, {frame.cols/2, 0}, {frame.cols/2, frame.rows}, {255, 255, 255}, 1);
-    cv::putText(frame, cv::format("S%d | off=%.2f curv=%.1f ball=%d r=%.0fpx dist=%.2fm",
-                cur_stage_+1, lane.offset, lane.curvature, ball.found, ball.radius, ball.dist_m),
-            {10, 30}, cv::FONT_HERSHEY_SIMPLEX, 0.55, {0, 255, 255}, 2);
+    // ★ 检测到的道路中心(红竖线+箭头) vs 车中线(白竖线): 箭头方向=狗认为线在哪边
+    if (lane.valid) {
+        int cx = frame.cols / 2;
+        int road_x = static_cast<int>(cx * (1.0f + lane.offset));
+        cv::line(frame, {road_x, roi_y}, {road_x, frame.rows}, {0, 0, 255}, 2);
+        cv::arrowedLine(frame, {cx, roi_y - 8}, {road_x, roi_y - 8}, {0, 0, 255}, 2, 8, 0, 0.3);
+    }
+    const char* side = (lane.offset > 0.03f) ? "carL->turnR" :
+                       (lane.offset < -0.03f) ? "carR->turnL" : "mid";
+    cv::putText(frame, cv::format("S%d off=%.2f %s curv=%.1f L=%d R=%d v=%d",
+                cur_stage_+1, lane.offset, side, lane.curvature,
+                (int)lpts.size(), (int)rpts.size(), (int)lane.valid),
+            {10, 30}, cv::FONT_HERSHEY_SIMPLEX, 0.5, {0, 255, 255}, 2);
     // 快照 odom 字段用于显示（避免与回调线程数据竞争）
     float dox, doy, dyaw;
     {
