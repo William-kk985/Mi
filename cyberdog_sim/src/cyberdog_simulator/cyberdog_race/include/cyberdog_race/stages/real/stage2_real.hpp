@@ -24,6 +24,8 @@ private:
     bool  hit_this_round_{false};  // 本轮已撞击过 → 剩余侧移只走完不再找球 (2026-08-14 防重撞)
     float slide_left_{0.0f};    // 本轮侧移剩余距离
     float slide_yaw_ref_{0.0f}; // 侧移航向基准 (2026-08-14 侧移漂移补偿: 锁航向)
+    float impact_x_{0.0f}, impact_y_{0.0f};   // 撞击起点 (2026-08-14 回位漂移诊断)
+    float impact_yaw_{0.0f};
     float last_x_{0.0f}, last_y_{0.0f};
     float traveled_{0.0f};      // 当前子段累计位移
 };

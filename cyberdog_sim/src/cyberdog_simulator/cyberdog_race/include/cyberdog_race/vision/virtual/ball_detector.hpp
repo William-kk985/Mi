@@ -19,8 +19,9 @@ public:
     void reset_filter() { dist_filtered_ = 0.0f; }  // 切换赛段时重置
 
 private:
-    cv::Scalar orange_low_{5, 80, 80};
-    cv::Scalar orange_high_{25, 255, 255};
+    // (2026-08-14 折中: S≥130近处球反光边缘漏检; 放宽靠圆度过滤防误检)
+    cv::Scalar orange_low_{6, 90, 80};
+    cv::Scalar orange_high_{22, 255, 255};
     cv::Scalar blue_low_{95, 80, 80};
     cv::Scalar blue_high_{125, 255, 255};
     cv::Scalar white_low_{0, 0, 180};

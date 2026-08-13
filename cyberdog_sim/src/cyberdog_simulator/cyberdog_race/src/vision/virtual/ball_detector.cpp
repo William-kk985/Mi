@@ -44,8 +44,13 @@ BallResult BallDetector::find_ball(const cv::Mat& frame,
         if (max_area < 200) return result;
     } else {
         for (size_t i = 0; i < contours.size(); i++) {
-            double a = cv::contourArea(contours[i]);
-            if (a > max_area) { max_area = a; max_idx = i; }
+            double area = cv::contourArea(contours[i]);
+            if (area < 100) continue;
+            // ★ 圆度过滤 (2026-08-14): 黄线/横线是长条, 圆度低→滤掉防误检
+            double perimeter = cv::arcLength(contours[i], true);
+            double circularity = 4 * M_PI * area / (perimeter * perimeter);
+            if (circularity < 0.55f) continue;
+            if (area > max_area) { max_area = area; max_idx = i; }
         }
         if (max_area < 100) return result;
     }

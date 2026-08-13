@@ -408,8 +408,9 @@ void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
     BallResult ball, blue, white;
 #ifdef REAL_DOG
     if (cur_stage_ == 1) {
-        // 1280x960 输入 (2026-08-14): 半分辨率检测省CPU; radius减半→raw距离×2, 修正回真实
-        //   radius 不修正: 标注画面同为半分辨率域, 像素一致
+        // 1280x960 输入 (2026-08-14): 半分辨率检测省CPU; radius不修正(标注同域)
+        //   ★ 距离修正: 1280x960 视野比旧 640x480 广, 同距球更小 → raw距离偏大
+        //     系数=真实距离/显示距离, 实测不准就调这个
         static cv::Mat ball_small;
         cv::resize(cv_img->image, ball_small, cv::Size(), 0.5, 0.5);
         ball = ball_detector_.detect(ball_small, BallColor::ORANGE);
