@@ -148,6 +148,9 @@ RaceController::RaceController() : Node("race_controller") {
     stages_[0] = std::make_unique<Stage1Real>(motion_, sensor_);
     stages_[1] = std::make_unique<Stage2Real>(motion_, sensor_);
     stages_[2] = std::make_unique<Stage3Real>(motion_, sensor_);  // 破限低头前进 (2026-08-12)
+#ifdef USE_TEST_REAL_STAGE3
+    stages_[2] = std::make_unique<Stage3RealTest>(motion_, sensor_);  // 伙伴算法实验 (2026-08-14)
+#endif
     if (stages_[cur_stage_]) stages_[cur_stage_]->init();  // 从哪段开始就 init 哪段 (2026-08-12)
 #endif
 
@@ -175,9 +178,10 @@ RaceController::RaceController() : Node("race_controller") {
         [this]() { control_loop(); });
 
 #ifdef DEBUG_SENSOR
-    // 订阅匹配自检 (2026-08-14): 每5s落盘 matched pub 与收帧计数,
+    // 订阅匹配自检 (2026-08-14): 每2s落盘 matched pub 与收帧计数,
     // 黑屏时直接区分「发现失败(pub=0)」还是「发现OK但无数据(pub≥1)」
-    create_wall_timer(std::chrono::milliseconds(5000), [this]() {
+    // 2s周期: 用户常在spin后几秒就Ctrl+C, 5s周期一条都打不出
+    create_wall_timer(std::chrono::milliseconds(2000), [this]() {
         RCLCPP_INFO(get_logger(), "[RGB] matched pub=%zu recv=%u",
                     sub_rgb_->get_publisher_count(), rgb_recv_cnt_);
     });
@@ -203,6 +207,11 @@ RaceController::RaceController() : Node("race_controller") {
 #endif
 
     RCLCPP_INFO(get_logger(), "Race controller started, stage %d", cur_stage_ + 1);
+#ifdef DEBUG_SENSOR
+    // 进入spin前立即打一次匹配状态 (2026-08-14): 短跑几秒就Ctrl+C也能抓到
+    RCLCPP_INFO(get_logger(), "[RGB] pre-spin matched pub=%zu",
+                sub_rgb_->get_publisher_count());
+#endif
 }
 
 RaceController::~RaceController() {
@@ -479,7 +488,11 @@ void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
     cv::addWeighted(frame, 0.7, overlay, 0.3, 0, frame);
 
     // ★ 视觉debug (2026-08-13): ROI框+线点连线, 肉眼验证检测看到了什么
+#ifdef USE_TEST_LANE_V2
+    int roi_y = static_cast<int>(frame.rows * 0.42f);   // 伙伴版ROI (2026-08-14)
+#else
     int roi_y = frame.rows / 2;
+#endif
     cv::rectangle(frame, {0, roi_y}, {frame.cols, frame.rows}, {0, 255, 255}, 1);
     cv::putText(frame, "ROI", {4, roi_y + 14}, cv::FONT_HERSHEY_SIMPLEX, 0.45, {0, 255, 255}, 1);
 

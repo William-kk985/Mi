@@ -134,6 +134,16 @@ add_real_test(4)
 add_real_test(5)
 add_real_test(6)
 
+# ── 伙伴连通域寻线算法实验 (2026-08-14) ──
+# USE_TEST_REAL_STAGE3 时整体替换 lane_detector.cpp → 测试版 v2
+#   v2 类名/接口与正式版同构, race_controller 通过 USE_TEST_LANE_V2 条件include
+if(USE_TEST_REAL_STAGE3 OR USE_TEST_REAL_ALL)
+  list(REMOVE_ITEM SOURCES src/vision/virtual/lane_detector.cpp)
+  list(APPEND SOURCES src/test/real/src/lane_detector_v2.cpp)
+  add_compile_definitions(USE_TEST_LANE_V2)
+  message(STATUS "[TEST] LaneDetector → 伙伴连通域版 (src/test/real/src/lane_detector_v2.cpp)")
+endif()
+
 add_executable(race_controller ${SOURCES})
 ament_target_dependencies(race_controller rclcpp sensor_msgs nav_msgs cyberdog_msg cv_bridge)
 if(protocol_FOUND)
