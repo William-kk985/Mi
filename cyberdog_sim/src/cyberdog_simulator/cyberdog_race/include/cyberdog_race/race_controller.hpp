@@ -89,6 +89,8 @@ private:
     BallDetector ball_detector_;
     Stage4Detector stage4_detector_;
 
+    unsigned rgb_recv_cnt_{0};   // on_rgb 累计收帧数 (2026-08-14 订阅匹配自检用)
+
 #ifdef ENABLE_WEB_STREAMING
     WebStreamer web_streamer_;
 #endif

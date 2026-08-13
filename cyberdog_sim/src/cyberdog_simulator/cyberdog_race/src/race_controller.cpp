@@ -175,11 +175,11 @@ RaceController::RaceController() : Node("race_controller") {
         [this]() { control_loop(); });
 
 #ifdef DEBUG_SENSOR
-    // 订阅匹配自检 (2026-08-13): 每5s打印 /image 匹配到的发布者数,
-    // 黑屏时直接区分「发现失败(0个)」还是「发现OK但无数据(≥1个)」
+    // 订阅匹配自检 (2026-08-14): 每5s落盘 matched pub 与收帧计数,
+    // 黑屏时直接区分「发现失败(pub=0)」还是「发现OK但无数据(pub≥1)」
     create_wall_timer(std::chrono::milliseconds(5000), [this]() {
-        fprintf(stderr, "[RGB] matched pub=%zu\n", sub_rgb_->get_publisher_count());
-        fflush(stderr);
+        RCLCPP_INFO(get_logger(), "[RGB] matched pub=%zu recv=%u",
+                    sub_rgb_->get_publisher_count(), rgb_recv_cnt_);
     });
 #endif
 
@@ -382,6 +382,7 @@ void RaceController::control_loop() {
 // ── 传感器回调 ──
 void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
     try {
+    rgb_recv_cnt_++;
 #ifdef DEBUG_SENSOR
     static int rgb_dbg_ = 0;   // 诊断 on_rgb 是否收到帧 (2026-08-12)
     if (++rgb_dbg_ % 30 == 0)
