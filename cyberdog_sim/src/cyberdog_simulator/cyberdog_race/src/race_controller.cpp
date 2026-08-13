@@ -181,7 +181,8 @@ RaceController::RaceController() : Node("race_controller") {
     // 订阅匹配自检 (2026-08-14): 每2s落盘 matched pub 与收帧计数,
     // 黑屏时直接区分「发现失败(pub=0)」还是「发现OK但无数据(pub≥1)」
     // 2s周期: 用户常在spin后几秒就Ctrl+C, 5s周期一条都打不出
-    create_wall_timer(std::chrono::milliseconds(2000), [this]() {
+    // ★ 必须保存返回的SharedPtr, 否则引用归零timer立即销毁(2026-08-14 修)
+    diag_timer_ = create_wall_timer(std::chrono::milliseconds(2000), [this]() {
         RCLCPP_INFO(get_logger(), "[RGB] matched pub=%zu recv=%u",
                     sub_rgb_->get_publisher_count(), rgb_recv_cnt_);
     });
@@ -407,7 +408,12 @@ void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
     BallResult ball, blue, white;
 #ifdef REAL_DOG
     if (cur_stage_ == 1) {
-        ball = ball_detector_.detect(cv_img->image, BallColor::ORANGE);   // Stage2 找橙球
+        // 1280x960 输入 (2026-08-14): 半分辨率检测省CPU; radius减半→raw距离×2, 修正回真实
+        //   radius 不修正: 标注画面同为半分辨率域, 像素一致
+        static cv::Mat ball_small;
+        cv::resize(cv_img->image, ball_small, cv::Size(), 0.5, 0.5);
+        ball = ball_detector_.detect(ball_small, BallColor::ORANGE);
+        ball.dist_m *= 0.5f;
     } else if (cur_stage_ == 2) {
         // Stage3 巡线: 半分辨率+每2帧1次 (2026-08-13): 640x480全频检测在NX单线程executor
         //   下拖垮Web(实测FPS掉到1), 320x240每2帧≈10Hz检测, 控制够用 Web流畅
@@ -459,7 +465,10 @@ void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
 
     // ── Web 推流（锁外，JPEG编码） ──
 #ifdef ENABLE_WEB_STREAMING
-    web_streamer_.push_frame(cv_img->image);
+    // 1280x960 输入 → 半分辨率推流 (2026-08-14): 省4倍JPEG编码
+    static cv::Mat web_small;
+    cv::resize(cv_img->image, web_small, cv::Size(), 0.5, 0.5);
+    web_streamer_.push_frame(web_small);
     // ★ dark预览流已关闭 (2026-08-14): 用户要求只留相机画面, 省一次全分辨率JPEG编码
 #endif
 

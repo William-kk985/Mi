@@ -39,13 +39,17 @@ fi
 #   通过官方 camera_api 桥接节点 center_cam 发布 /image_center
 #   cam_id: 2=centerleft左眼 3=centerright右眼
 #   实测: BGR+sync=true+640x480 ≈17fps 稳定
-CENTER_CAM_ID=2
-echo "🔴 启动 center 相机 (cam_id=${CENTER_CAM_ID})..."
+CENTER_CAM_ID=0         # 0=ov13b10 13MP普通RGB (2026-08-14: 2/3是鱼眼已否决)
+CENTER_SYNC=false      # ov13b10 不支持sync模式
+CENTER_W=1280
+CENTER_H=960
+echo "🔴 启动 center 相机 (cam_id=${CENTER_CAM_ID} ${CENTER_W}x${CENTER_H})..."
 pkill -f "cyberdog_race/center_cam" 2>/dev/null || true
 pkill -f "camera_test/camera_server" 2>/dev/null || true   # 停 bottom 推流, 释放 VI
 sleep 3
 nohup /SDCARD/race_ws/install/lib/cyberdog_race/center_cam --ros-args \
-    -r __ns:=${NS} -p cam_id:=${CENTER_CAM_ID} -p width:=640 -p height:=480 \
+    -r __ns:=${NS} -p cam_id:=${CENTER_CAM_ID} -p sync:=${CENTER_SYNC} \
+    -p width:=${CENTER_W} -p height:=${CENTER_H} \
     > /tmp/center_cam.log 2>&1 &
 sleep 5
 CAM_PID=$(pgrep -f "cyberdog_race/center_cam" | head -1)
@@ -75,7 +79,8 @@ restart_image() {
     pkill -f "cyberdog_race/center_cam" 2>/dev/null || true
     sleep 4
     nohup /SDCARD/race_ws/install/lib/cyberdog_race/center_cam --ros-args \
-        -r __ns:=${NS} -p cam_id:=${CENTER_CAM_ID} -p width:=640 -p height:=480 \
+        -r __ns:=${NS} -p cam_id:=${CENTER_CAM_ID} -p sync:=${CENTER_SYNC} \
+        -p width:=${CENTER_W} -p height:=${CENTER_H} \
         > /tmp/center_cam.log 2>&1 &
     sleep 5
     # 绑核 2-3: 采集线程独占CPU, buffer回流及时防VI挂

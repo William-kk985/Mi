@@ -117,6 +117,7 @@ private:
 
     rclcpp::TimerBase::SharedPtr timer_;
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr     sub_rgb_;
+    rclcpp::TimerBase::SharedPtr diag_timer_;   // RGB自检timer (2026-08-14 必须保存否则被析构)
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr       sub_imu_;
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr sub_lidar_;
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr     sub_d435_infra1_;

@@ -17,7 +17,6 @@ public:
         int w   = declare_parameter("width", 640);
         int h   = declare_parameter("height", 480);
         bool sync = declare_parameter("sync", true);
-        pub_ = create_publisher<sensor_msgs::msg::Image>("image_center", 10);
 
         int status = 0;
         handle_ = cyberdog::camera::OpenCamera(cam_id_, status, sync);
@@ -25,7 +24,9 @@ public:
             RCLCPP_ERROR(get_logger(), "OpenCamera(%d) FAILED status=%d", cam_id_, status);
             return;
         }
-        RCLCPP_INFO(get_logger(), "OpenCamera(%d) OK status=%d sync=%d", cam_id_, status, (int)sync);
+        // BEST_EFFORT (2026-08-14): 与controller订阅一致, 避免RELIABLE跨实现行为差异
+        pub_ = create_publisher<sensor_msgs::msg::Image>(
+            "image_center", rclcpp::QoS(10).best_effort());
         int r = cyberdog::camera::StartStream(handle_, cyberdog::camera::kImageFormatBGR,
                                               w, h, &CenterCamNode::frame_cb, this);
         RCLCPP_INFO(get_logger(), "StartStream(%dx%d BGR) ret=%d (0=成功)", w, h, r);
