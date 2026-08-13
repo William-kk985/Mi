@@ -95,13 +95,6 @@ static const char* kHtmlPage = R"raw(
       <span class="hdr-right">
         <select class="stream-sel" id="stream-sel" onchange="switchStream()">
           <option value="debug" selected>🔍 标注画面</option>
-          <option value="lidar">📡 LiDAR 雷达</option>
-          <option value="dark">🌑 暗图</option>
-          <option value="track">🗺️ 里程轨迹</option>
-          <option value="telem">📊 遥测仪表</option>
-          <option value="d435">🔆 D430i左红外</option>
-          <option value="infra2">🔆 D430i右红外</option>
-          <option value="depth">🌊 深度图</option>
         </select>
         <button class="btn-exp" onclick="togglePanel('right')" title="放大/还原">⛶</button>
       </span>
@@ -111,9 +104,7 @@ static const char* kHtmlPage = R"raw(
   </div>
 </div>
 <script>
-const streams={debug:'/stream/debug',lidar:'/stream/lidar',dark:'/stream/dark',
-  track:'/stream/track',telem:'/stream/telemetry',d435:'/stream/d435',
-  depth:'/stream/depth',infra2:'/stream/infra2'};
+const streams={debug:'/stream/debug'};
   function switchStream(){
   const sel=document.getElementById('stream-sel');
   const v=sel.value, opt=sel.options[sel.selectedIndex];

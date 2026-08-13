@@ -24,7 +24,7 @@ constexpr float BACK_V      = 0.24f;    // 退回速度 m/s
 constexpr float STEP_H      = 0.17f;    // 步高
 constexpr float ENTER_DIST_M = 0.92f;   // 开场衔接前进 0.92m
 constexpr float SLIDE_DIST_M = 2.8f;    // 每轮侧移 2.8m
-constexpr float FWD_GAP_M    = 0.75f;   // 轮间前进衔接 0.75m (轮4后不前进)
+constexpr float FWD_GAP_M    = 1.0f;    // 轮间前进衔接 1.0m (2026-08-14: 0.75→1.0 用户要求)
 constexpr float BALL_MAX_DIST    = 0.7f;  // 球距≤0.7m 才算找到
 constexpr float IMPACT_DIST      = 0.12f; // 撞击到位: 球距<0.12m (距离闭环)
 constexpr float IMPACT_MAX       = 0.5f;  // 撞击最大冲刺 0.5m (球丢失保护)
@@ -41,6 +41,7 @@ void Stage2Real::init() {
     ball_confirm_    = 0;
     hit_this_round_  = false;
     slide_left_      = 0.0f;
+    slide_yaw_ref_   = sensor_.abs_yaw;
     last_x_          = sensor_.odom_x;
     last_y_          = sensor_.odom_y;
     traveled_        = 0.0f;
@@ -71,14 +72,15 @@ void Stage2Real::run() {
     // ── 进入下一轮侧移 ──
     auto enter_slide = [&]() {
         slide_left_     = SLIDE_DIST_M;
+        slide_yaw_ref_  = sensor_.abs_yaw;   // 锁航向基准 (2026-08-14 漂移补偿)
         traveled_       = 0.0f;
         ball_confirm_   = 0;
         hit_this_round_ = false;
         last_x_ = sensor_.odom_x; last_y_ = sensor_.odom_y;
         phase_ = Phase::SLIDE;
 #ifdef DEBUG_STAGE
-        fprintf(stderr, "[S2Stage] 轮%d %s侧移%.1fm 找球中\n",
-                round_ + 1, slide_dir() > 0 ? "左" : "右", SLIDE_DIST_M);
+        fprintf(stderr, "[S2Stage] 轮%d %s侧移%.1fm 找球中 (航向锁%.2frad)\n",
+                round_ + 1, slide_dir() > 0 ? "左" : "右", SLIDE_DIST_M, slide_yaw_ref_);
         fflush(stderr);
 #endif
     };
@@ -110,8 +112,23 @@ void Stage2Real::run() {
 
     // ═══ SLIDE: 侧移走满 2.8m, 途中找球 ═══
     if (phase_ == Phase::SLIDE) {
-        slide_left_ -= accumulate();
+        // ── 漂移补偿①: 位移投影到期望侧移方向 (2026-08-14) ──
+        //   侧移时存在前进/后退漂移, hypot 会多计; 只计侧移分量才准
+        float dx = sensor_.odom_x - last_x_;
+        float dy = sensor_.odom_y - last_y_;
+        last_x_ = sensor_.odom_x; last_y_ = sensor_.odom_y;
+        float a = sensor_.abs_yaw;
+        // 期望侧移方向单位向量(世界系): dir=+1 为机器人左侧 = 朝向逆时针转90°
+        float side_moved = dx * (-std::sin(a)) * slide_dir()
+                         + dy * ( std::cos(a)) * slide_dir();
+        if (std::abs(side_moved) > 0.25f) side_moved = 0.0f;
+        slide_left_ -= side_moved;
         slide_left_ = std::max(0.0f, slide_left_);
+
+        // ── 漂移补偿②: 锁航向 (侧移时身体会转, yaw反馈拉回) ──
+        float yaw_err = norm_yaw(slide_yaw_ref_ - sensor_.abs_yaw);
+        if (std::abs(yaw_err) < 0.05f) yaw_err = 0.0f;
+        float yaw_cmd = std::max(-0.4f, std::min(0.4f, yaw_err * 0.5f));
 
         // 本轮尚未撞击 → 找球 (连续12帧确认, 防误检)
         if (!hit_this_round_) {
@@ -155,8 +172,8 @@ void Stage2Real::run() {
             return;
         }
 
-        // 侧移速度指令 (vel_des.y, 身体始终朝前不转向)
-        motion_.set_walk_velocity_step(0.0f, SLIDE_V * slide_dir(), 0.0f, STEP_H);
+        // 侧移速度指令 (vel_des.y + yaw航向锁, 身体始终朝前)
+        motion_.set_walk_velocity_step(0.0f, SLIDE_V * slide_dir(), yaw_cmd, STEP_H);
         return;
     }
 

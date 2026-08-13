@@ -460,18 +460,7 @@ void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
     // ── Web 推流（锁外，JPEG编码） ──
 #ifdef ENABLE_WEB_STREAMING
     web_streamer_.push_frame(cv_img->image);
-    // ★ dark预览(曝光调整)降频每2帧: 省一次全分辨率JPEG编码 (2026-08-12)
-    static int dark_cnt = 0;
-    if (++dark_cnt % 2 == 0) {
-        int eo = web_streamer_.exposure_offset();
-        if (eo < 0) {
-            cv::Mat dark;
-            cv_img->image.convertTo(dark, -1, 1.0, eo);
-            web_streamer_.push_dark_frame(dark);
-        } else {
-            web_streamer_.push_dark_frame(cv_img->image);
-        }
-    }
+    // ★ dark预览流已关闭 (2026-08-14): 用户要求只留相机画面, 省一次全分辨率JPEG编码
 #endif
 
 // ── 标注画面生成（供 DEBUG_VISION imshow 和 Web 双流共用） ──
