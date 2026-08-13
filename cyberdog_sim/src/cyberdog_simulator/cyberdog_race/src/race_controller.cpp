@@ -174,6 +174,15 @@ RaceController::RaceController() : Node("race_controller") {
         std::chrono::milliseconds(10),
         [this]() { control_loop(); });
 
+#ifdef DEBUG_SENSOR
+    // 订阅匹配自检 (2026-08-13): 每5s打印 /image 匹配到的发布者数,
+    // 黑屏时直接区分「发现失败(0个)」还是「发现OK但无数据(≥1个)」
+    create_wall_timer(std::chrono::milliseconds(5000), [this]() {
+        fprintf(stderr, "[RGB] matched pub=%zu\n", sub_rgb_->get_publisher_count());
+        fflush(stderr);
+    });
+#endif
+
 #ifdef ENABLE_WEB_STREAMING
     web_streamer_.start(WEB_STREAM_PORT, 8);   // 8客户端 (2026-08-12 4易被刷新占满→503黑屏)
     RCLCPP_INFO(get_logger(), "[WebStreamer] Dual-stream MJPEG on http://0.0.0.0:%d (max 4 clients)", WEB_STREAM_PORT);

@@ -34,9 +34,22 @@ if ss -tln 2>/dev/null | grep -q ':8080 '; then
     sleep 1
 fi
 
-# ── 2. 启动 RGB 推流: camera_service → camera_server 发布 /image (2026-08-13) ──
+# ── 2. 启动 RGB 推流: camera_server 发布 /image (2026-08-13) ──
 # ★ stereo_camera 直读 VI 的采集管线已坏 (no reply from camera processor, 0帧);
 #   camera_server 推流管线正常 (/image bgr8 640x480 ~21fps) → 改用 /image, 不碰 stereo_camera
+# ★ 每次启动强制换新进程 (2026-08-13 黑屏根因): camera_server 运行 ~30分钟后,
+#   新启动的 race_controller 无法被其 DDS 发现(黑屏); "多开几次才好" = 某次0帧
+#   触发了 restart_image 换新进程才恢复。启动前主动换新, 一次就好。
+echo "🔴 重启 camera_server (换新进程防 DDS 发现老化)..."
+pkill -f "camera_test/camera_server" 2>/dev/null || true
+sleep 4
+nohup ros2 run camera_test camera_server --ros-args -r __ns:=${NS} > /tmp/camera_server.log 2>&1 &
+sleep 5
+CAM_PID=$(pgrep -f "camera_test/camera_server" | head -1)
+if [ -n "$CAM_PID" ]; then
+    taskset -pc 2,3 "$CAM_PID" > /dev/null 2>&1 && echo "  ✅ camera_server(pid=$CAM_PID) 已绑核 2-3"
+fi
+
 echo "🔴 启动 RGB 推流 (camera_service → /image)..."
 for attempt in 1 2 3; do
     if timeout 8 ros2 service call ${NS}/camera_service protocol/srv/CameraService \
