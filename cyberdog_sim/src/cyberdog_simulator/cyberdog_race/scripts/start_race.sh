@@ -70,11 +70,25 @@ restart_image() {
     pkill -f "camera_test/camera_server" 2>/dev/null || true
     sleep 4
     nohup ros2 run camera_test camera_server --ros-args -r __ns:=${NS} > /tmp/camera_server.log 2>&1 &
-    sleep 6
+    sleep 5
+    # 绑核 2-3: 采集线程独占CPU, buffer回流及时防VI挂 (2026-08-13 NVIDIA论坛确认)
+    NEWCAM=$(pgrep -f "camera_test/camera_server" | head -1)
+    if [ -n "$NEWCAM" ]; then
+        taskset -pc 2,3 "$NEWCAM" > /dev/null 2>&1 || true
+    fi
     timeout 8 ros2 service call ${NS}/camera_service protocol/srv/CameraService \
         "{command: 9, args: \"\", width: 640, height: 480, fps: 30}" > /dev/null 2>&1
     sleep 4
 }
+
+# ★ taskset 绑核 (2026-08-13 NVIDIA论坛确认): VI "no reply"根因是采集线程抢不到CPU,
+#   buffer回流不及时→VI丢帧10-30分钟后挂; camera_server绑核2-3, 与APP隔离
+CAM_PID=$(pgrep -f "camera_test/camera_server" | head -1)
+if [ -n "$CAM_PID" ]; then
+    taskset -pc 2,3 "$CAM_PID" > /dev/null 2>&1 \
+        && echo "  ✅ camera_server(pid=$CAM_PID) 已绑核 2-3" \
+        || echo "  ⚠ camera_server 绑核失败"
+fi
 
 RGB_FRAMES=$(check_rgb_frames)
 if [ -z "$RGB_FRAMES" ] || [ "$RGB_FRAMES" = "0" ]; then
@@ -117,4 +131,4 @@ echo "   狗将自动站起开始! 请保持场地空旷"
 echo "   Web 可视化: http://192.168.44.1:8080 (有线) 或 http://10.179.102.181:8080 (WiFi)"
 echo "   (同一真实画面+巡线标注)"
 echo ""
-exec /SDCARD/race_ws/install/lib/cyberdog_race/race_controller --ros-args -r __ns:=${NS}
+exec taskset -c 4,5 /SDCARD/race_ws/install/lib/cyberdog_race/race_controller --ros-args -r __ns:=${NS}

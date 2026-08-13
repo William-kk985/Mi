@@ -5,14 +5,23 @@ LaneResult LaneDetector::detect(const cv::Mat& frame) {
     LaneResult result;
     if (frame.empty()) return result;
 
-    // 1. HSV颜色分割
+    // 1. ROI: 只用下面 1/3 寻线 (2026-08-13 相机俯视, 上面2/3远景/干扰不寻线)
+    int roi_y = frame.rows * 2 / 3;
+    cv::Rect roi(0, roi_y, frame.cols, frame.rows - roi_y);
+    cv::Mat sub = frame(roi);
+
+    // 2. HSV颜色分割 (ROI内)
     cv::Mat hsv, mask;
-    cv::cvtColor(frame, hsv, cv::COLOR_BGR2HSV);
+    cv::cvtColor(sub, hsv, cv::COLOR_BGR2HSV);
     cv::inRange(hsv, hsv_low_, hsv_high_, mask);
 
-    // 2. 逐行扫描
+    // 3. 逐行扫描
     std::vector<cv::Point> left_pts, right_pts;
     scan_edges(mask, left_pts, right_pts);
+
+    // 映射回原图坐标 (标注/曲率计算用原图坐标系)
+    for (auto& p : left_pts)  p.y += roi_y;
+    for (auto& p : right_pts) p.y += roi_y;
 
     // 3. 思路1：过滤横向干扰（斜率突变的点）
     filter_lateral(left_pts);
@@ -57,7 +66,8 @@ void LaneDetector::scan_edges(const cv::Mat& binary,
     int rows = binary.rows;
     int cols = binary.cols;
 
-    for (int r = rows - 1; r > rows / 2; r -= 4) {
+    // ROI 已由 detect 裁剪到下面1/3, 扫整个 ROI (2026-08-13)
+    for (int r = rows - 1; r >= 0; r -= 4) {
         const uchar* row = binary.ptr<uchar>(r);
 
         // 左黄线外边缘（黑→黄跳变）

@@ -1,10 +1,11 @@
 #pragma once
 #include "cyberdog_race/stages/stage_base.hpp"
 
-/// 赛段真机版 — 第3赛段: 低头 + 视觉检测 (测试形态, 不前进)
-/// 低头: 201姿态控制 set_body_pitch (原地无步态夹持, 可到~14°, 无需破限)
-/// 视觉: LaneDetector 正常跑(on_rgb /image_rgb), Web 标注看检测效果
-/// ⚠ 测试形态: 原地低头不动, 便于调视觉; 正式巡线待验证 (2026-08-12)
+/// 赛段真机版 — 第3赛段: 低头 + 视觉巡线 (2026-08-13 正式形态)
+/// 低头: 破限(x_effect_scale_pos=+30) + 303 rpy_des[1]=pitch 前进低头 (test17已验证)
+///   ⚠ 破限只在 vx>0 时生效 → 巡线持续前进
+/// 巡线: lane_offset(>0=车偏左) → yaw_cmd=-KP*offset 回中; 丢线→直行
+/// 测试形态(TEST_HOLD=true): 201原地低头不动, 调视觉用
 class Stage3Real : public StageBase {
 public:
     using StageBase::StageBase;
@@ -13,10 +14,12 @@ public:
     [[nodiscard]] bool is_done() override { return done_; }
 
 private:
-    enum class Phase { WAIT_READY, LOW_HOLD };
+    enum class Phase { WAIT_READY, LANE_FOLLOW, DONE };
 
     Phase phase_{Phase::WAIT_READY};
     bool  done_{false};
     bool  loc_ready_{false};   // 定位就绪 (spin后才有数据, 同Stage1)
-    int   pitch_hold_{0};      // 201低头发布计数 (控制循环100Hz, 每3帧≈33Hz保持)
+    int   pitch_hold_{0};      // 201低头发布计数 (测试形态用)
+    float last_x_{0.0f}, last_y_{0.0f};
+    float traveled_{0.0f};     // 巡线累计位移
 };
