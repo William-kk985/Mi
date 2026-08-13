@@ -5,8 +5,8 @@ LaneResult LaneDetector::detect(const cv::Mat& frame) {
     LaneResult result;
     if (frame.empty()) return result;
 
-    // 1. ROI: 只用下面 1/3 寻线 (2026-08-13 相机俯视, 上面2/3远景/干扰不寻线)
-    int roi_y = frame.rows * 2 / 3;
+    // 1. ROI: 只用下面 1/5 寻线 (2026-08-13 相机俯视, 上面4/5远景/干扰不寻线; 1/3→1/5)
+    int roi_y = frame.rows * 4 / 5;
     cv::Rect roi(0, roi_y, frame.cols, frame.rows - roi_y);
     cv::Mat sub = frame(roi);
 
