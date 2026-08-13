@@ -26,8 +26,8 @@ public:
     std::vector<cv::Point> last_right_;
 
 private:
-    cv::Scalar hsv_low_{15, 80, 80};
-    cv::Scalar hsv_high_{35, 255, 255};
+    cv::Scalar hsv_low_{18, 95, 95};     // (2026-08-14 中间值: 正式(15,80,80)与收紧(20,110,110)之间)
+    cv::Scalar hsv_high_{33, 255, 255};  // (2026-08-14 中间值: 35↔32 之间)
 
     float alpha_{0.4f};
     float last_offset_{0.0f};

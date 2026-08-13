@@ -82,7 +82,8 @@ void LaneDetector::scan_stage3_tracks(const cv::Mat& binary,
     if (rows < 40 || cols < 40) return;
 
     // 只看地面区域；开运算去反光碎点，闭运算连接胶带皱褶造成的小断口。
-    const int roi_y = static_cast<int>(rows * 0.42f);
+    // (2026-08-14: 0.42 掩膜范围太大, 改回下 1/3)
+    const int roi_y = static_cast<int>(rows * 2 / 3);
     cv::Mat roi = binary(cv::Rect(0, roi_y, cols, rows - roi_y)).clone();
     cv::morphologyEx(
         roi, roi, cv::MORPH_OPEN,

@@ -482,14 +482,17 @@ void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
     cv::resize(cv_img->image, frame, cv::Size(), 0.5, 0.5);
     cv::Mat hsv, mask;
     cv::cvtColor(frame, hsv, cv::COLOR_BGR2HSV);   // 统一BGR输入
-    cv::inRange(hsv, cv::Scalar(20, 100, 150), cv::Scalar(35, 255, 255), mask);
+    // ★ 与检测器 hsv_low_/hsv_high_ 完全一致 (2026-08-14): 之前标注用(20,100,150)
+    //   比检测器(15,80,80)窄, 边线点画在检测掩膜外, 视觉上"贴合不上"
+    //   (2026-08-14 中间值: 18,95,95 ~ 33,255,255, 与检测器同步)
+    cv::inRange(hsv, cv::Scalar(18, 95, 95), cv::Scalar(33, 255, 255), mask);
     cv::Mat overlay = frame.clone();
     overlay.setTo(cv::Scalar(0, 255, 0), mask);
     cv::addWeighted(frame, 0.7, overlay, 0.3, 0, frame);
 
     // ★ 视觉debug (2026-08-13): ROI框+线点连线, 肉眼验证检测看到了什么
 #ifdef USE_TEST_LANE_V2
-    int roi_y = static_cast<int>(frame.rows * 0.42f);   // 伙伴版ROI (2026-08-14)
+    int roi_y = static_cast<int>(frame.rows * 2 / 3);   // 伙伴版ROI 下1/3 (2026-08-14: 0.42太大→1/3)
 #else
     int roi_y = frame.rows / 2;
 #endif
@@ -500,8 +503,8 @@ void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
     auto& rpts = lane_detector_.last_right_;
     if (lpts.size() > 1) cv::polylines(frame, lpts, false, {255, 0, 0}, 2);   // 蓝=左黄线
     if (rpts.size() > 1) cv::polylines(frame, rpts, false, {0, 0, 255}, 2);   // 红=右黄线
-    for (auto& p : lpts) cv::circle(frame, p, 3, {255, 0, 0}, -1);
-    for (auto& p : rpts) cv::circle(frame, p, 3, {0, 0, 255}, -1);
+    for (auto& p : lpts) cv::circle(frame, p, 2, {255, 0, 0}, -1);
+    for (auto& p : rpts) cv::circle(frame, p, 2, {0, 0, 255}, -1);
     for (size_t li = 0, ri = 0; li < lpts.size() && ri < rpts.size(); ) {
         if (lpts[li].y == rpts[ri].y) {
             cv::circle(frame, {(lpts[li].x + rpts[ri].x) / 2, lpts[li].y}, 3, {0, 255, 255}, -1);

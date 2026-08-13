@@ -3,8 +3,8 @@
 
 /// 测试版 Stage3 — 伙伴连通域寻线算法实验 (2026-08-14)
 /// 视觉: LaneDetector v2 (test/real, 连通域轨迹跟踪 + lookahead 采样)
-///   ⚠ 伙伴版 curvature 是无符号方差, 不能做方向前馈 → 本测试版不用曲率项
-/// 控制: yaw = clamp(-KP*off - 微分限幅, ±YAW_LIM), 丢线保持转向衰减
+/// 控制: 伙伴版 (降速+丢线减速搜索+低通微分, 2026-08-14)
+///   WALK_V=0.26 窄视野降速; 丢线<20帧保持转向衰减, ≥20帧停前进原地搜索
 /// 编译: colcon build --cmake-args -DUSE_TEST_REAL_STAGE3=ON
 /// ⚠ 测试版不污染正式代码目录, 默认编译不包含
 class Stage3RealTest : public StageBase {
@@ -25,4 +25,6 @@ private:
     float traveled_{0.0f};     // 巡线累计位移
     float last_offset_{0.0f};  // 上帧 lane_offset (微分预测项)
     float last_yaw_{0.0f};     // 丢线保持的最后转向 (赛道出画面时继续转拉回)
+    float filtered_d_offset_{0.0f};  // 逐帧偏差变化低通 (伙伴版阻尼)
+    int   lost_frames_{0};           // 连续丢线帧数 (伙伴版搜索状态机)
 };
