@@ -22,4 +22,6 @@ private:
     int   pitch_hold_{0};      // 201低头发布计数 (测试形态用)
     float last_x_{0.0f}, last_y_{0.0f};
     float traveled_{0.0f};     // 巡线累计位移
+    float last_offset_{0.0f};  // 上帧 lane_offset (2026-08-13 微分预测项)
+    float last_yaw_{0.0f};     // 丢线保持的最后转向 (2026-08-13 赛道出画面时继续转拉回)
 };
