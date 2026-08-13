@@ -28,6 +28,7 @@ private:
     int   turn_settle_{0};     // 转向停稳确认帧 (2026-08-12 提高转向精度)
     int   wait_frames_{0};     // 扫描停2秒计数
     int   adjust_frames_{0};   // ADJUST 修正帧计数/超时保护 (2026-08-13)
+    int   ball_confirm_{0};    // 球连续确认帧数 (2026-08-13 防误检)
     float turn_base_yaw_{0.0f};   // 进入转向时的朝向 (相对当前转)
     float fwd_ref_yaw_{0.0f};     // 前进段目标朝向 (回正基准)
     float start_yaw_{0.0f};       // 赛段初始朝向

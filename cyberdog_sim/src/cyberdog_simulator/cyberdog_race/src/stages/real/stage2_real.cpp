@@ -31,8 +31,11 @@ constexpr float SCAN1_DEG   = +45.0f;   // 扫描位1: 左转 45°
 constexpr float SCAN2_DEG   = -90.0f;   // 扫描位2: 右转 90°
 constexpr float BACK_DEG    = +45.0f;   // 回正: 左转 45°
 constexpr int   SCAN_WAIT_FRAMES = 200; // 每角度停 2 秒 (100Hz)
-constexpr float SCAN_POKE_DIST   = 0.2f; // 找到球 前进 0.2m
+constexpr float SCAN_POKE_DIST   = 0.2f; // 撞击后退回 0.2m
 constexpr float BALL_MAX_DIST    = 0.7f; // 橙色球距离 ≤0.7m 才算找到 (2026-08-12: 0.8→0.7)
+constexpr float IMPACT_DIST      = 0.12f; // 撞击到位: 球距<0.12m (2026-08-13 距离闭环)
+constexpr float IMPACT_MAX       = 0.5f;  // 撞击最大冲刺 0.5m (球到脚下/丢失保护)
+constexpr int   SCAN_CONFIRM_FRAMES = 12; // 球连续确认12帧(~0.12s)才算数, 防误检 (2026-08-13)
 constexpr float TURN_SPEED = 0.45f;    // 转向速度 (实测 yaw=0.6 实际≈2rad/s, 0.3太慢, 2026-08-12 定0.45≈1.5rad/s)
 constexpr float TURN_DONE_ERR      = 0.04f;  // 转向完成误差 (2026-08-12: 0.05→0.04 + 停稳确认)
 constexpr float TURN_SLOW_ERR      = 0.25f;  // 末期减速误差阈值, <0.25rad 半速 (2026-08-12 新增)
@@ -203,56 +206,69 @@ void Stage2Real::run() {
     if (phase_ == Phase::SCAN1_WAIT || phase_ == Phase::SCAN2_WAIT) {
         pos_hold();   // 位置保持: 踏步会后退, 后退>2cm自动顶回 (2026-08-13)
         bool is_scan1 = (phase_ == Phase::SCAN1_WAIT);
-        if (sensor_.ball_found && sensor_.ball_dist <= BALL_MAX_DIST) {   // 球距≤0.8m 才算
-            phase_ = is_scan1 ? Phase::SCAN1_ACT : Phase::SCAN2_ACT;
-            last_x_ = sensor_.odom_x; last_y_ = sensor_.odom_y;
-            traveled_ = 0.0f;
+        if (sensor_.ball_found && sensor_.ball_dist <= BALL_MAX_DIST) {
+            // 连续确认12帧才触发撞击 (2026-08-13): 误检单帧闪动不算, 真球持续存在必然确认成功
+            if (++ball_confirm_ >= SCAN_CONFIRM_FRAMES) {
+                ball_confirm_ = 0;
+                phase_ = is_scan1 ? Phase::SCAN1_ACT : Phase::SCAN2_ACT;
+                last_x_ = sensor_.odom_x; last_y_ = sensor_.odom_y;
+                traveled_ = 0.0f;
 #ifdef DEBUG_STAGE
-            fprintf(stderr, "[S2Stage] 扫描位%d 发现橙色球(dist=%.2fm≤%.1f)! 前进%.1fm\n",
-                    is_scan1 ? 1 : 2, sensor_.ball_dist, BALL_MAX_DIST, SCAN_POKE_DIST);
-            fflush(stderr);
+                fprintf(stderr, "[S2Stage] 扫描位%d 确认球(dist=%.2fm), 朝球冲击\n",
+                        is_scan1 ? 1 : 2, sensor_.ball_dist);
+                fflush(stderr);
 #endif
-        } else if (++wait_frames_ >= SCAN_WAIT_FRAMES) {   // 2秒无球 → 下一位
-            if (is_scan1) {
-                phase_ = Phase::SCAN2_TURN;
-                turn_guard_    = 0;
-                turn_base_yaw_ = sensor_.abs_yaw;
-            } else if (round_ < 3) {
-                phase_ = Phase::TURN3;                       // 回正左45°
-                turn_guard_    = 0;
-                turn_base_yaw_ = sensor_.abs_yaw;
-            } else {
-                phase_ = Phase::DONE;                        // 轮4: 扫描完直接结束
             }
+        } else {
+            ball_confirm_ = 0;
+            if (++wait_frames_ >= SCAN_WAIT_FRAMES) {   // 2秒无球 → 下一位
+                if (is_scan1) {
+                    phase_ = Phase::SCAN2_TURN;
+                    turn_guard_    = 0;
+                    turn_base_yaw_ = sensor_.abs_yaw;
+                } else if (round_ < 3) {
+                    phase_ = Phase::TURN3;                       // 回正左45°
+                    turn_guard_    = 0;
+                    turn_base_yaw_ = sensor_.abs_yaw;
+                } else {
+                    phase_ = Phase::DONE;                        // 轮4: 扫描完直接结束
+                }
 #ifdef DEBUG_STAGE
-            fprintf(stderr, "[S2Stage] 轮%d 扫描位%d 2秒无球, %s\n",
-                    round_ + 1, is_scan1 ? 1 : 2,
-                    is_scan1 ? "右转90°" : (round_ < 3 ? "回正左45°" : "结束"));
-            fflush(stderr);
+                fprintf(stderr, "[S2Stage] 轮%d 扫描位%d 2秒无球, %s\n",
+                        round_ + 1, is_scan1 ? 1 : 2,
+                        is_scan1 ? "右转90°" : (round_ < 3 ? "回正左45°" : "结束"));
+                fflush(stderr);
 #endif
+            }
         }
         return;
     }
 
-    // ── 找到球: 前进 0.2m ──
+    // ── 朝球冲击: 距离闭环, 球距<0.12m 到位; 球丢失保持方向; 0.5m保护 ──
     if (phase_ == Phase::SCAN1_ACT || phase_ == Phase::SCAN2_ACT) {
         bool is_scan1 = (phase_ == Phase::SCAN1_ACT);
         float moved = std::hypot(sensor_.odom_x - last_x_, sensor_.odom_y - last_y_);
         last_x_ = sensor_.odom_x; last_y_ = sensor_.odom_y;
         if (moved > 0.25f) moved = 0.0f;
         traveled_ += moved;
-        if (traveled_ >= SCAN_POKE_DIST) {
+
+        // 到位: 球距<0.12m → 退回; 保护: 冲了0.5m还没到(球被身体挡住/丢失) → 强停退回 (2026-08-13)
+        bool reached = sensor_.ball_found && sensor_.ball_dist > 0.01f &&
+                       sensor_.ball_dist < IMPACT_DIST;
+        if (reached || traveled_ >= IMPACT_MAX) {
             motion_.stop();
             phase_ = is_scan1 ? Phase::SCAN1_BACK : Phase::SCAN2_BACK;
             last_x_ = sensor_.odom_x; last_y_ = sensor_.odom_y;
             traveled_ = 0.0f;
 #ifdef DEBUG_STAGE
-            fprintf(stderr, "[S2Stage] 前进%.1fm完成, 退回\n", SCAN_POKE_DIST);
+            fprintf(stderr, "[S2Stage] 撞击完成%s, 退回\n",
+                    reached ? "(球距<0.12m)" : "(0.5m保护)");
             fflush(stderr);
 #endif
         } else {
-            // 朝球方向引导冲击 (2026-08-13): ball_x(-1左~1右), 球在右→负yaw右转
-            float ball_yaw = std::max(-0.25f, std::min(0.25f, -sensor_.ball_x * 0.5f));
+            // 朝球方向引导冲击: ball_x(-1左~1右), 球丢失时保持原方向继续
+            float bx = sensor_.ball_found ? sensor_.ball_x : 0.0f;
+            float ball_yaw = std::max(-0.25f, std::min(0.25f, -bx * 0.5f));
             motion_.set_walk_velocity_step(IMPACT_V, 0.0f, ball_yaw, STEP_H);
         }
         return;
