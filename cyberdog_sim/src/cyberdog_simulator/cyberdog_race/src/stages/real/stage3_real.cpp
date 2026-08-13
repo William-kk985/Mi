@@ -15,8 +15,8 @@
 namespace {
 constexpr float WALK_V   = 0.30f;    // 巡线前进速度 m/s
 constexpr float PITCH    = 0.32f;    // 低头 0.32 rad (~18°) (2026-08-13: 0.38太低调回0.32)
-constexpr float KP_VIS   = 0.5f;     // 视觉巡线增益 (offset→yaw)
-constexpr float YAW_LIM  = 0.5f;     // 巡线 yaw 限幅
+constexpr float KP_VIS   = 1.0f;     // 视觉巡线增益 (offset→yaw) (2026-08-13: 0.5→1.0 转弯力度不够)
+constexpr float YAW_LIM  = 0.8f;     // 巡线 yaw 限幅 (2026-08-13: 0.5→0.8)
 constexpr float FWD_DIST = 3.0f;     // 巡线总距离 m (2026-08-13 待实测调整)
 constexpr double SCALE_HACK    = 30.0;   // 破限: x_effect_scale_pos=+30 (前进中放大pitch限位)
 constexpr double SCALE_RESTORE = -0.55;  // 复原默认值
