@@ -21,6 +21,7 @@ namespace {
 
 // ═══ Stage2 动作参数 (四轮S形, 2026-08-13 重构) ═══
 constexpr float WALK_V      = 0.30f;    // 前进速度 m/s
+constexpr float IMPACT_V    = 0.45f;    // 撞击前进速度 (2026-08-13: 比WALK_V更猛, 朝球冲击)
 constexpr float STEP_H      = 0.17f;    // 步高
 constexpr float ENTER_DIST_M = 0.92f;   // 衔接: Stage1结束后 前进0.92m (2026-08-13)
 constexpr float TURN_MAIN   = 90.0f;    // 转 90° (方向按动作)
@@ -250,7 +251,9 @@ void Stage2Real::run() {
             fflush(stderr);
 #endif
         } else {
-            motion_.set_walk_velocity_step(WALK_V, 0.0f, 0.0f, STEP_H);
+            // 朝球方向引导冲击 (2026-08-13): ball_x(-1左~1右), 球在右→负yaw右转
+            float ball_yaw = std::max(-0.25f, std::min(0.25f, -sensor_.ball_x * 0.5f));
+            motion_.set_walk_velocity_step(IMPACT_V, 0.0f, ball_yaw, STEP_H);
         }
         return;
     }
@@ -264,11 +267,8 @@ void Stage2Real::run() {
         traveled_ += moved;
         if (traveled_ >= SCAN_POKE_DIST) {
             motion_.stop();
-            if (is_scan1) {
-                phase_ = Phase::SCAN2_TURN;
-                turn_guard_    = 0;
-                turn_base_yaw_ = sensor_.abs_yaw;
-            } else if (round_ < 3) {
+            // 已撞击 → 跳过剩余扫描, 直接回正/结束 (2026-08-13 用户要求: 撞到就不扫了)
+            if (round_ < 3) {
                 phase_ = Phase::TURN3;                       // 回正
                 turn_guard_    = 0;
                 turn_base_yaw_ = sensor_.abs_yaw;
@@ -276,8 +276,8 @@ void Stage2Real::run() {
                 phase_ = Phase::DONE;                        // 轮4结束
             }
 #ifdef DEBUG_STAGE
-            fprintf(stderr, "[S2Stage] 退回完成, %s\n",
-                    is_scan1 ? "右转90°" : (round_ < 3 ? "回正左45°" : "结束"));
+            fprintf(stderr, "[S2Stage] 退回完成, 已撞击 → %s\n",
+                    round_ < 3 ? "回正左45°(跳过剩余扫描)" : "结束");
             fflush(stderr);
 #endif
         } else {
