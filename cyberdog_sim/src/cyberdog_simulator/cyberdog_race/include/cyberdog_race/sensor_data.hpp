@@ -1,9 +1,16 @@
 #pragma once
 
+#include <cstdint>
 #include <vector>
 
 // 传感器数据共享结构，由主循环填充并由各赛段只读访问
 struct SensorData {
+    // 帧同步与有效标志（Stage4Real 用于等待新视觉帧和传感器就绪）
+    std::uint64_t vision_seq{0};
+    bool  rgb_valid{false};
+    bool  imu_valid{false};
+    bool  odom_valid{false};
+
     // 视觉结果（视觉线程写，主线程读）
     float lane_offset{0.0f};    // 黄线中心偏差，正=偏右
     float lane_curvature{0.0f}; // 弯曲程度（斜率标准差）
@@ -21,6 +28,29 @@ struct SensorData {
     float white_ball_x{0.0f};    // 白球x坐标（归一化）
     float white_ball_dist{0.0f};
     bool  white_ball_found{false};
+
+    // Stage4 深隧寻珍多目标
+    bool  football_found{false};
+    float football_x{0.0f};
+    float football_dist{0.0f};
+
+    bool  limbar_found{false};
+    float limbar_x{0.0f};
+    float limbar_dist{0.0f};
+
+    bool  coke_found{false};
+    float coke_x{0.0f};
+    float coke_dist{0.0f};
+
+    bool  obstacle_found{false};
+    float obstacle_x{0.0f};
+    float obstacle_dist{0.0f};
+
+    // Stage4 区域分隔黄线（实/虚判断，用于借道绕行决策）
+    bool  divider_found{false};
+    float divider_x{0.0f};
+    float divider_dist{0.0f};
+    bool  divider_is_dashed{false};
 
     // IMU
     float yaw{0.0f};           // 当前偏航角（rad）
