@@ -9,14 +9,17 @@ namespace {
 constexpr float kPi = static_cast<float>(M_PI);
 
 // 赛道图尺寸。转弯时保留少量余量，避免四足踩到独木桥外沿。
+// 图纸主路径前四段为 400、400、300、400 cm。转弯前预留约 15 cm，
+// 避免四足踩到桥外沿；第五段 150 cm，末端预留 50 cm 用于转向和跳下。
 constexpr float kSection1Distance = 3.85f;
 constexpr float kSection2Distance = 3.85f;
 constexpr float kSection3Distance = 2.85f;
 constexpr float kSection4Distance = 3.85f;
-constexpr float kSection5Distance = 1.00f;  // 在末端前约50厘米处停止。
+constexpr float kSection5Distance = 1.00f;
 
 constexpr float kFlatSpeed = 0.16f;
 constexpr float kSlopeSpeed = 0.12f;
+constexpr float kSlopeLateralSpeed = 0.02f;  // 后四段左高右低桥：向左微调
 constexpr float kStepHeight = 0.10f;
 constexpr float kBodyHeight = 0.25f;
 
@@ -206,9 +209,13 @@ bool Stage5Real::update_walk() {
 
     const float yaw_error = norm_yaw(target_yaw_ - sensor_.abs_yaw);
     const float yaw_cmd = clamp(1.10f * yaw_error, -0.28f, 0.28f);
-    const float nominal_speed = desired_roll_ == 0.0f ? kFlatSpeed : kSlopeSpeed;
+    // 第一段是水平桥，不使用斜桥的降速补偿；第二至第五段才降速。
+    const float nominal_speed = state_ == State::WALK_SECTION_1
+        ? kFlatSpeed : kSlopeSpeed;
     const float speed = remaining < 0.30f ? std::min(nominal_speed, 0.08f) : nominal_speed;
-    motion_.set_walk_velocity_step(speed, 0.0f, yaw_cmd, kStepHeight);
+    const float lateral_speed = state_ == State::WALK_SECTION_1
+        ? 0.0f : kSlopeLateralSpeed;
+    motion_.set_walk_velocity_step(speed, lateral_speed, yaw_cmd, kStepHeight);
     return false;
 }
 
@@ -251,4 +258,3 @@ float Stage5Real::projected_distance() const {
     const float dy = sensor_.odom_y - segment_start_y_;
     return dx * std::cos(target_yaw_) + dy * std::sin(target_yaw_);
 }
-
