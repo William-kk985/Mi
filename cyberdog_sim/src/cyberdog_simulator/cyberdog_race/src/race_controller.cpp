@@ -148,6 +148,7 @@ RaceController::RaceController() : Node("race_controller") {
     stages_[0] = std::make_unique<Stage1Real>(motion_, sensor_);
     stages_[1] = std::make_unique<Stage2Real>(motion_, sensor_);
     stages_[2] = std::make_unique<Stage3Real>(motion_, sensor_);  // 破限低头前进 (2026-08-12)
+    stages_[4] = std::make_unique<Stage5Real>(motion_, sensor_);
 #ifdef USE_TEST_REAL_STAGE3
     stages_[2] = std::make_unique<Stage3RealTest>(motion_, sensor_);  // 伙伴算法实验 (2026-08-14)
 #endif
