@@ -40,6 +40,7 @@
 #include "cyberdog_race/stages/real/stage1_real.hpp"  // 真机第1赛段 石径探路 (2026-08-11)
 #include "cyberdog_race/stages/real/stage2_real.hpp"  // 真机第2赛段 (2026-08-12)
 #include "cyberdog_race/stages/real/stage3_real.hpp"  // 真机第3赛段 破限低头前进 (2026-08-12)
+#include "cyberdog_race/stages/real/stage5_real.hpp"  // 真机第5赛段
 #ifdef USE_TEST_REAL_STAGE3
 #include "stage3_real_test.hpp"  // 测试版Stage3: 伙伴算法实验 (2026-08-14)
 #endif
