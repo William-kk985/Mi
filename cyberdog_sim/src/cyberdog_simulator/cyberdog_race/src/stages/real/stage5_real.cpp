@@ -11,21 +11,23 @@ constexpr float kPi = static_cast<float>(M_PI);
 // 赛道图尺寸。转弯时保留少量余量，避免四足踩到独木桥外沿。
 // 图纸主路径前四段为 400、400、300、400 cm。转弯前预留约 15 cm，
 // 避免四足踩到桥外沿；第五段 150 cm，末端预留 50 cm 用于转向和跳下。
-constexpr float kSection1Distance = 3.85f;
-constexpr float kSection2Distance = 3.85f;
-constexpr float kSection3Distance = 2.85f;
-constexpr float kSection4Distance = 3.85f;
-constexpr float kSection5Distance = 1.00f;
+// 真机测试显示第一段在桥头前约 0.5 m 就触发转弯，增加直行余量。
+constexpr float kSection1Distance = 4.70f; 
+constexpr float kSection2Distance = 3.40f;
+constexpr float kSection3Distance = 3.70f;
+constexpr float kSection4Distance = 3.70f;
+constexpr float kSection5Distance = 2.00f;
 
 constexpr float kFlatSpeed = 0.16f;
 constexpr float kSlopeSpeed = 0.12f;
-constexpr float kSlopeLateralSpeed = 0.02f;  // 后四段左高右低桥：向左微调
+constexpr float kSlopeLateralSpeed = 0.0f;  // 后四段左高右低桥：向左微调
 constexpr float kStepHeight = 0.10f;
+constexpr float kBridgeEntryStepHeight = 0.20f;  // 刚上第一段桥时抬高步高
 constexpr float kBodyHeight = 0.25f;
 
 // 第二至第五段左高右低。图纸约为50厘米横向跨度、10厘米高差，
 // atan(0.10 / 0.50)约等于0.20弧度。
-constexpr float kSlopeRoll = 0.20f;
+constexpr float kSlopeRoll = 0.0f;
 
 constexpr float kYawTolerance = 0.045f;
 constexpr int kTurnStableFrames = 15;
@@ -33,6 +35,7 @@ constexpr int kPrepareFrames = 80;
 constexpr int kJumpSettleFrames = 180;
 constexpr int kWalkTimeoutFrames = 6000;
 constexpr int kTurnTimeoutFrames = 1200;
+constexpr int kBridgeEntryStepFrames = 600;  // 约 6 秒（控制循环约 100 Hz）
 
 float clamp(float value, float low, float high) {
     return std::max(low, std::min(high, value));
@@ -42,28 +45,61 @@ float clamp(float value, float low, float high) {
 
 void Stage5Real::init() {
     done_ = false;
-    state_ = State::WALK_SECTION_1;
+    state_ = State::WAIT_FOR_SENSORS;
     next_state_ = State::WALK_SECTION_1;
-    start_yaw_ = sensor_.abs_yaw;
     desired_roll_ = 0.0f;
     stable_frames_ = 0;
     state_frames_ = 0;
+    localization_initialized_ = false;
 
-    motion_.locomotion();
+    motion_.stop();
     motion_.set_body_params_lcm(0.0f, 0.0f, kBodyHeight);
-    begin_walk(State::TURN_LEFT, kSection1Distance, 0.0f, false);
 
     std::fprintf(stderr,
-        "[Stage5Real] init odom=(%.3f, %.3f), yaw=%.3f\n",
-        sensor_.odom_x, sensor_.odom_y, start_yaw_);
+        "[Stage5Real] waiting for localization (odom=(%.3f, %.3f), yaw=%.3f)\n",
+        sensor_.odom_x, sensor_.odom_y, sensor_.abs_yaw);
 }
 
 void Stage5Real::run() {
     if (done_) return;
 
+    // init() runs before the LCM spin loop receives localization. Do not use
+    // the default zero pose as the first segment's heading.
+    if (!localization_initialized_) {
+        motion_.stop();
+
+        // Match Stage1Real's existing startup convention: a non-zero yaw or
+        // odometry value means the first localization sample has arrived.
+        if (sensor_.abs_yaw == 0.0f &&
+            sensor_.odom_x == 0.0f && sensor_.odom_y == 0.0f) {
+            state_ = State::WAIT_FOR_SENSORS;
+            return;
+        }
+
+        localization_initialized_ = true;
+        start_yaw_ = sensor_.abs_yaw;
+        segment_start_x_ = sensor_.odom_x;
+        segment_start_y_ = sensor_.odom_y;
+        state_ = State::WALK_SECTION_1;
+        state_frames_ = 0;
+
+        motion_.locomotion();
+        motion_.set_body_params_lcm(0.0f, 0.0f, kBodyHeight);
+        begin_walk(State::TURN_LEFT, kSection1Distance, 0.0f, false);
+
+        std::fprintf(stderr,
+            "[Stage5Real] localization ready: odom=(%.3f, %.3f), yaw=%.3f\n",
+            sensor_.odom_x, sensor_.odom_y, start_yaw_);
+        return;
+    }
+
     ++state_frames_;
 
     switch (state_) {
+    case State::WAIT_FOR_SENSORS:
+        motion_.stop();
+        break;
+
     case State::WALK_SECTION_1:
         if (update_walk()) begin_turn(State::WALK_SECTION_2, kPi / 2.0f);
         break;
@@ -169,6 +205,10 @@ float Stage5Real::get_desired_roll() const {
 }
 
 float Stage5Real::get_desired_step_height() const {
+    if (state_ == State::WALK_SECTION_1 &&
+        state_frames_ <= kBridgeEntryStepFrames) {
+        return kBridgeEntryStepHeight;
+    }
     return kStepHeight;
 }
 
@@ -194,6 +234,12 @@ void Stage5Real::begin_walk(
 }
 
 bool Stage5Real::update_walk() {
+    // 第一段是水平桥：持续清除上一动作可能留下的横滚，且不做横向补偿。
+    if (state_ == State::WALK_SECTION_1 && state_frames_ % 20 == 0) {
+        desired_roll_ = 0.0f;
+        motion_.set_body_params_lcm(0.0f, 0.0f, kBodyHeight);
+    }
+
     const float remaining = target_distance_ - projected_distance();
     if (remaining <= 0.0f) {
         motion_.stop();
@@ -215,7 +261,10 @@ bool Stage5Real::update_walk() {
     const float speed = remaining < 0.30f ? std::min(nominal_speed, 0.08f) : nominal_speed;
     const float lateral_speed = state_ == State::WALK_SECTION_1
         ? 0.0f : kSlopeLateralSpeed;
-    motion_.set_walk_velocity_step(speed, lateral_speed, yaw_cmd, kStepHeight);
+    const float step_height = (state_ == State::WALK_SECTION_1 &&
+                               state_frames_ <= kBridgeEntryStepFrames)
+        ? kBridgeEntryStepHeight : kStepHeight;
+    motion_.set_walk_velocity_step(speed, lateral_speed, yaw_cmd, step_height);
     return false;
 }
 
