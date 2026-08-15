@@ -1,5 +1,7 @@
 #pragma once
 #include <opencv2/opencv.hpp>
+#include <opencv2/dnn.hpp>
+#include <string>
 
 struct Stage4Result {
     // 限高杆（灰色横杆，蹲下通过）
@@ -27,12 +29,29 @@ struct Stage4Result {
     bool  obstacle_found{false};
     float obstacle_cx{0.0f};
     float obstacle_dist{0.0f};
+
+    // 区域分隔黄线（实/虚判断，用于借道决策）
+    bool  divider_found{false};
+    float divider_cx{0.0f};
+    float divider_dist{0.0f};
+    bool  divider_is_dashed{false};
 };
 
 class Stage4Detector {
 public:
     Stage4Detector() = default;
     Stage4Result detect(const cv::Mat& frame);
+
+    // ── 模型接入（用户提供 ONNX 模型后填路径） ──
+    // 调用 set_xxx_model(路径) 加载；路径为空则不加载，回退到颜色检测。
+    // 模型格式：YOLOv5/v8 ONNX，后处理自适应 v5(有obj)/v8(无obj)。
+    // target_class_id：目标类别在模型类别表中的索引。
+    //   - 单类模型（只训练了目标本身）填 0
+    //   - 多类模型需查训练时 data.yaml 的 names 顺序确定索引
+    void set_coke_model(const std::string& path, int target_class_id = 0);
+    void set_football_model(const std::string& path, int target_class_id = 0);
+    bool coke_model_ready()     const { return coke_model_loaded_; }
+    bool football_model_ready() const { return football_model_loaded_; }
 
 private:
     static constexpr float FOCAL_LEN   = 402.0f;
@@ -51,10 +70,58 @@ private:
         cv::Point2f center;
     };
 
+    // 区域分隔黄线检测结果
+    struct DividerResult {
+        bool  found{false};
+        float cx{0.0f};            // 画面x归一化 [-1,1]
+        float dist{0.0f};          // 估计距离 (m)
+        bool  is_dashed{false};    // true=虚线可借道, false=实线
+    };
+
     std::vector<CircleResult> find_all_circles(const cv::Mat& gray, int min_r=10, int max_r=100);
     bool is_orange(const cv::Mat& hsv, const cv::Point2f& center, float radius);
     CircleResult find_limbar(const cv::Mat& hsv);    // 限高杆：灰色横向矩形
-    CircleResult find_coke(const cv::Mat& hsv);      // 可乐瓶：黑色圆柱
-    CircleResult find_football(const cv::Mat& hsv);  // 足球：白色圆球
+    CircleResult find_coke(const cv::Mat& hsv);      // 可乐瓶：黑色圆柱（颜色检测回退路径）
+    CircleResult find_football(const cv::Mat& hsv);  // 足球：白色圆球（颜色检测回退路径）
     CircleResult find_obstacle(const cv::Mat& hsv);  // 障碍物：蓝色方块
+    DividerResult find_divider_line(const cv::Mat& hsv); // 区域分隔黄线：HSV+跳变计数判实虚
+
+    // ── 通用 YOLO ONNX 推理（v5/v8 自适应后处理） ──
+    // net: 已加载的 DNN 网络；frame_bgr: 原图；input_size: 模型输入边长
+    // conf/nms: 置信度与 NMS 阈值；target_class_id: 目标类别索引
+    // real_size: 目标实际尺寸(m)，用 bbox 高度做单目测距
+    CircleResult detect_yolo(const cv::dnn::Net& net, const cv::Mat& frame_bgr,
+                             int input_size, float conf_thresh, float nms_thresh,
+                             int target_class_id, float real_size);
+
+    // ── 模型推理封装（调 detect_yolo） ──
+    CircleResult find_coke_by_model(const cv::Mat& frame_bgr);
+    CircleResult find_football_by_model(const cv::Mat& frame_bgr);
+
+    // ── 可乐模型参数 ──
+    // 标签名 "c"（来自训练 data.yaml）。若模型为单类，target_class_id=0；
+    // 若多类，按 data.yaml 的 names 顺序填索引。
+    static constexpr int   kCokeInputSize   = 640;
+    static constexpr float kCokeConfThresh  = 0.45f;
+    static constexpr float kCokeNmsThresh   = 0.45f;
+    static constexpr float kCokeRealHeight  = 0.30f;   // 可乐瓶实际高度(m)
+
+    // ── 足球模型参数 ──
+    // 标签名 "soccer"（来自训练 data.yaml）。
+    static constexpr int   kFootballInputSize  = 640;
+    static constexpr float kFootballConfThresh = 0.45f;
+    static constexpr float kFootballNmsThresh  = 0.45f;
+    static constexpr float kFootballRealSize   = 0.22f;  // 足球直径(m)
+
+    // 可乐模型状态
+    std::string   coke_model_path_;
+    cv::dnn::Net  coke_net_;
+    bool          coke_model_loaded_{false};
+    int           coke_target_class_id_{0};
+
+    // 足球模型状态
+    std::string   football_model_path_;
+    cv::dnn::Net  football_net_;
+    bool          football_model_loaded_{false};
+    int           football_target_class_id_{0};
 };
