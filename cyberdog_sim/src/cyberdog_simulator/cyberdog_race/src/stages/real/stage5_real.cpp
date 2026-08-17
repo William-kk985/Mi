@@ -20,14 +20,14 @@ constexpr float kSection5Distance = 2.00f;
 
 constexpr float kFlatSpeed = 0.16f;
 constexpr float kSlopeSpeed = 0.12f;
-constexpr float kSlopeLateralSpeed = 0.0f;  // 后四段左高右低桥：向左微调
+constexpr float kSlopeLateralSpeed = 0.005f;  // 后四段左高右低桥：向左微调
 constexpr float kStepHeight = 0.10f;
 constexpr float kBridgeEntryStepHeight = 0.20f;  // 刚上第一段桥时抬高步高
 constexpr float kBodyHeight = 0.25f;
 
 // 第二至第五段左高右低。图纸约为50厘米横向跨度、10厘米高差，
 // atan(0.10 / 0.50)约等于0.20弧度。
-constexpr float kSlopeRoll = 0.0f;
+constexpr float kSlopeRoll = 0.063f;
 
 constexpr float kYawTolerance = 0.045f;
 constexpr int kTurnStableFrames = 15;
