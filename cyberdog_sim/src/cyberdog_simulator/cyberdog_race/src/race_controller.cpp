@@ -1,5 +1,11 @@
 #include "cyberdog_race/race_controller.hpp"
 #include <thread>
+#include <cstring>   // (2026-08-16) external_imu 原始包 memcpy
+#include <cmath>     // (2026-08-16) atan2/fabs/M_PI
+#include <cstdint>   // (2026-08-16) uint32_t/uint8_t
+
+// LCM 原始包 C 回调桥前向声明 (2026-08-16): 底层 lcm_subscribe + getUnderlyingLCM
+static void lcm_external_imu_handler(const lcm_recv_buf_t*, const char*, void*);
 
 // ============================================================
 // 调试模式说明（修改 debug_config.hpp 后重新 build）：
@@ -65,6 +71,12 @@ RaceController::RaceController() : Node("race_controller") {
         TOPIC_BMS, 10,
         [this](std_msgs::msg::Float32MultiArray::SharedPtr msg) { on_bms(msg); });
 
+    // RT板腿里程计+融合IMU姿态 (2026-08-15): 航向反馈源, 46.6Hz
+    // 实测: 静止10s yaw漂移仅0.03°, 远好于SLAM abs_yaw的转向滞后
+    sub_odom_out_ = create_subscription<nav_msgs::msg::Odometry>(
+        TOPIC_ODOM_OUT, qos_be,
+        [this](nav_msgs::msg::Odometry::SharedPtr msg) { on_odom_out(msg); });
+
     // TODO: 触摸紧急停止 — 需要 protocol::msg::TouchStatus（从真狗 bridges 包获取）
     // touch_status topic 格式: Header header + int32 touch_state + uint64 timestamp
     // touch_state: 0x01=单击 0x03=双击 0x07=长按
@@ -124,6 +136,8 @@ RaceController::RaceController() : Node("race_controller") {
         rclcpp::sleep_for(std::chrono::milliseconds(500));
         // ⚠ 启动保持水平，不低头（-0.26 是低头测试遗留，真机启动就低头会出事故）
         motion_.set_pitch(0.0f);
+        // 破限参数统一复位 (2026-08-14): 防上次 Stage3 破限 hack 残留影响 Stage1/2 侧移/转向限幅
+        motion_.set_user_param_double_lcm("x_effect_scale_pos", -0.55);
         RCLCPP_INFO(get_logger(), "Motion init OK");
     } catch (const std::exception& e) {
         RCLCPP_ERROR(get_logger(), "Motion init FAILED: %s", e.what());
@@ -148,10 +162,38 @@ RaceController::RaceController() : Node("race_controller") {
     stages_[0] = std::make_unique<Stage1Real>(motion_, sensor_);
     stages_[1] = std::make_unique<Stage2Real>(motion_, sensor_);
     stages_[2] = std::make_unique<Stage3Real>(motion_, sensor_);  // 破限低头前进 (2026-08-12)
+#ifdef USE_TEST_REAL_STAGE2
+    stages_[1] = std::make_unique<Stage2RealTest>(motion_, sensor_);  // 旧侧移扫球逻辑 (2026-08-15)
+#endif
 #ifdef USE_TEST_REAL_STAGE3
     stages_[2] = std::make_unique<Stage3RealTest>(motion_, sensor_);  // 伙伴算法实验 (2026-08-14)
 #endif
-    if (stages_[cur_stage_]) stages_[cur_stage_]->init();  // 从哪段开始就 init 哪段 (2026-08-12)
+    // Stage4 真机识别目标后通过官方 TTS 播报 (2026-08-16 伙伴逻辑接入)
+    motion_.attach_tts_pub(this);
+    // Stage4 多目标检测模型；真机路径与 /SDCARD/Mi 部署目录一致 (模型未部署则回退颜色检测)
+#ifdef REAL_DOG
+    if (cur_stage_ >= 3) {   // (2026-08-17 修复123趴下: 28MB×2的ONNX解析很慢, 123模式启动时无条件加载把启动/主循环拖死)
+        stage4_detector_.set_coke_model(
+            "/SDCARD/Mi/cyberdog_sim/src/cyberdog_simulator/cyberdog_race/models/cola.onnx", 0);
+        stage4_detector_.set_football_model(
+            "/SDCARD/Mi/cyberdog_sim/src/cyberdog_simulator/cyberdog_race/models/soccer.onnx", 1);
+    }
+#else
+    stage4_detector_.set_coke_model("");
+    stage4_detector_.set_football_model("");
+#endif
+
+    stages_[3] = std::make_unique<Stage4Real>(motion_, sensor_);
+    stages_[4] = std::make_unique<Stage5Real>(motion_, sensor_);
+    stages_[5] = nullptr;
+    if (stages_[cur_stage_]) {
+        if (cur_stage_ == 3) {
+            std::lock_guard<std::mutex> lock(sensor_mutex_);
+            stages_[cur_stage_]->init();
+        } else {
+            stages_[cur_stage_]->init();
+        }
+    }  // 从哪段开始就 init 哪段 (2026-08-12)
 #endif
 
     if (lcm_sub_.good()) {
@@ -160,6 +202,8 @@ RaceController::RaceController() : Node("race_controller") {
                            &RaceController::on_global_to_robot, this);
         lcm_sub_.subscribe(LCM_STATE_ESTIMATOR,
                            &RaceController::on_state_estimator, this);
+        // external_imu 原始订阅 (2026-08-16): 官方未公开struct, 回调内按实测偏移解码姿态四元数
+        lcm_subscribe(lcm_sub_.getUnderlyingLCM(), "external_imu", &lcm_external_imu_handler, this);
         RCLCPP_INFO(get_logger(), "[RealDog] LCM odom: %s, state: %s",
                     LCM_ODOM_CHANNEL, LCM_STATE_ESTIMATOR);
 #else
@@ -342,13 +386,34 @@ void RaceController::control_loop() {
     if (cur_stage_ >= 6) return;
     if (!stages_[cur_stage_]) return;  // Web模式跳过运动，无赛段
 
-    stages_[cur_stage_]->run();
+    // Stage4 需要与视觉回调互斥 (2026-08-16 伙伴逻辑)
+    bool done = false;
+    if (cur_stage_ == 3) {
+        std::lock_guard<std::mutex> lock(sensor_mutex_);
+        try {   // (2026-08-17 排查趴下: 异常要打出来, 不能静默杀死control_loop)
+            stages_[cur_stage_]->run();
+            done = stages_[cur_stage_]->is_done();
+        } catch (const std::exception& e) {
+            fprintf(stderr, "[Main] ⚠ control_loop 异常: %s\n", e.what());
+            fflush(stderr);
+            timer_->cancel();
+            return;
+        } catch (...) {
+            fprintf(stderr, "[Main] ⚠ control_loop 未知异常\n");
+            fflush(stderr);
+            timer_->cancel();
+            return;
+        }
+    } else {
+        stages_[cur_stage_]->run();
+        done = stages_[cur_stage_]->is_done();
+    }
 
     // 统一下发参数（不再需要赛段-specific 分支）
     apply_stage_params();
 
     // 赛段切换
-    if (stages_[cur_stage_]->is_done()) {
+    if (done) {
 #ifdef DEBUG_STAGE
         RCLCPP_INFO(get_logger(), "[Stage] %d done", cur_stage_ + 1);
 #endif
@@ -381,7 +446,28 @@ void RaceController::control_loop() {
             if (cur_stage_ == 2) lane_detector_.set_mode(LaneMode::RELAXED);
             else lane_detector_.set_mode(LaneMode::STRICT);
             if (cur_stage_ == 5) ball_detector_.reset_filter();
-            stages_[cur_stage_]->init();
+            if (cur_stage_ == 3) {
+#ifdef REAL_DOG
+                // (2026-08-17 修复Stage4不识别可乐/足球: 1234连跑起步cur_stage_=0<3,
+                //  构造时模型未加载→Stage4全程HSV颜色回退不识别; 切Stage4时补加载)
+                if (!stage4_detector_.coke_model_ready()) {
+                    stage4_detector_.set_coke_model(
+                        "/SDCARD/Mi/cyberdog_sim/src/cyberdog_simulator/cyberdog_race/models/cola.onnx", 0);
+                }
+                if (!stage4_detector_.football_model_ready()) {
+                    stage4_detector_.set_football_model(
+                        "/SDCARD/Mi/cyberdog_sim/src/cyberdog_simulator/cyberdog_race/models/soccer.onnx", 1);
+                }
+                fprintf(stderr, "[Main] Stage4模型: coke=%d football=%d\n",
+                        stage4_detector_.coke_model_ready() ? 1 : 0,
+                        stage4_detector_.football_model_ready() ? 1 : 0);
+                fflush(stderr);
+#endif
+                std::lock_guard<std::mutex> lock(sensor_mutex_);
+                stages_[cur_stage_]->init();
+            } else {
+                stages_[cur_stage_]->init();
+            }
         } else {
             RCLCPP_INFO(get_logger(), "All stages complete!");
         }
@@ -390,6 +476,9 @@ void RaceController::control_loop() {
 }
 
 // ── 传感器回调 ──
+// ★ 球距定标系数 (2026-08-16): 实测1m标定得0.20但效果不好, 用户要求改回偏大方向: 0.7
+//   (0.5旧经验 → 0.20实测 → 0.7 用户拍板)
+static constexpr float BALL_DIST_SCALE = 0.7f;
 void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
     try {
     rgb_recv_cnt_++;
@@ -409,12 +498,13 @@ void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
 #ifdef REAL_DOG
     if (cur_stage_ == 1) {
         // 1280x960 输入 (2026-08-14): 半分辨率检测省CPU; radius不修正(标注同域)
-        //   ★ 距离修正: 1280x960 视野比旧 640x480 广, 同距球更小 → raw距离偏大
-        //     系数=真实距离/显示距离, 实测不准就调这个
+        //   ★ 距离修正: gc02m1 视野/焦距与 old 640x480 假设不同 → raw距离有偏差
+        //     定标法: 球放正好1m, 看日志 [S2Stage] 确认球 dist=x → BALL_DIST_SCALE = 1.0/x
+        //     当前 0.5 为经验值, 实测不准就按定标值替换
         static cv::Mat ball_small;
         cv::resize(cv_img->image, ball_small, cv::Size(), 0.5, 0.5);
         ball = ball_detector_.detect(ball_small, BallColor::ORANGE);
-        ball.dist_m *= 0.5f;
+        ball.dist_m *= BALL_DIST_SCALE;
     } else if (cur_stage_ == 2) {
         // Stage3 巡线: 半分辨率+每2帧1次 (2026-08-13): 640x480全频检测在NX单线程executor
         //   下拖垮Web(实测FPS掉到1), 320x240每2帧≈10Hz检测, 控制够用 Web流畅
@@ -436,16 +526,39 @@ void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
 #endif
     Stage4Result s4_result;
     if (cur_stage_ == 3) {
-        s4_result = stage4_detector_.detect(cv_img->image);
+        // (2026-08-17 降频: ONNX六类检测重, 每帧跑会把单线程executor拖垮→control_loop饿死→狗趴下)
+        static int s4_cnt = 0;
+        if (++s4_cnt % 2 == 0) {
+            s4_result = stage4_detector_.detect(cv_img->image);
+        } else {
+            static Stage4Result last_s4;
+            s4_result = last_s4;
+        }
+        // (2026-08-17 诊断日志: 排查可乐/足球不识别)
+        static int s4_dbg = 0;
+        if (++s4_dbg % 30 == 0) {
+            fprintf(stderr, "[S4VIS] cokeM=%d fbM=%d | coke=%d conf=%.2f d=%.2f | fb=%d conf=%.2f d=%.2f | lim=%d d=%.2f | orange=%d d=%.2f\n",
+                    stage4_detector_.coke_model_ready() ? 1 : 0,
+                    stage4_detector_.football_model_ready() ? 1 : 0,
+                    s4_result.coke_found ? 1 : 0, s4_result.coke_conf, s4_result.coke_dist,
+                    s4_result.football_found ? 1 : 0, s4_result.football_conf, s4_result.football_dist,
+                    s4_result.limbar_found ? 1 : 0, s4_result.limbar_dist,
+                    s4_result.ball_found ? 1 : 0, s4_result.ball_dist);
+            fflush(stderr);
+        }
     }
 
     // ── 写入共享数据（锁内，<0.01ms） ──
     {
         std::lock_guard<std::mutex> lock(sensor_mutex_);
+        sensor_.vision_seq++;
+        sensor_.rgb_valid = true;
         sensor_.lane_offset       = lane.offset;
         sensor_.lane_curvature    = lane.curvature;
         sensor_.lane_valid        = lane.valid;
         sensor_.lane_both_sides   = lane.both_sides;
+        sensor_.lane_yaw          = lane.yaw;
+        sensor_.lane_line_x       = lane.line_x;
         sensor_.ball_found        = ball.found;
         sensor_.ball_x            = ball.cx;
         sensor_.ball_dist         = ball.dist_m;
@@ -455,6 +568,24 @@ void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
         sensor_.white_ball_found  = white.found;
         sensor_.white_ball_x      = white.cx;
         sensor_.white_ball_dist   = white.dist_m;
+        // Stage4 多目标结果写入 (2026-08-16 伙伴逻辑; 橙球仍用 ball_* 我们的检测)
+        sensor_.football_found    = s4_result.football_found;
+        sensor_.football_x        = s4_result.football_cx;
+        sensor_.football_dist     = s4_result.football_dist;
+        sensor_.limbar_found      = s4_result.limbar_found;
+        sensor_.limbar_x          = s4_result.limbar_cx;
+        sensor_.limbar_dist       = s4_result.limbar_dist;
+        sensor_.coke_found        = s4_result.coke_found;
+        sensor_.coke_x            = s4_result.coke_cx;
+        sensor_.coke_dist         = s4_result.coke_dist;
+        sensor_.obstacle_found    = s4_result.obstacle_found;
+        sensor_.obstacle_x        = s4_result.obstacle_cx;
+        sensor_.obstacle_dist     = s4_result.obstacle_dist;
+        sensor_.divider_found     = s4_result.divider_found;
+        sensor_.divider_x         = s4_result.divider_cx;
+        sensor_.divider_dist      = s4_result.divider_dist;
+        sensor_.divider_is_dashed = s4_result.divider_is_dashed;
+#ifndef REAL_DOG
         // NOTE: vision_result 由本回调线程写入，由 stage4::run()（timer线程）读取，
         // 无锁访问。Stage4Result 是多字段 struct，理论上存在数据竞争，但 run() 为低频
         // 检查（~5Hz），实际使用中先到先得即可，不影响控制决策正确性。
@@ -462,6 +593,7 @@ void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
             auto s4 = static_cast<Stage4*>(stages_[3].get());
             s4->vision_result = s4_result;
         }
+#endif
     }
 
     // ── Web 推流（锁外，JPEG编码） ──
@@ -479,51 +611,7 @@ void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
     //   单线程executor下拖垮Web(FPS掉到1); Web输出本来就是320x240, 画质无损
     cv::Mat frame;
     cv::resize(cv_img->image, frame, cv::Size(), 0.5, 0.5);
-    cv::Mat hsv, mask;
-    cv::cvtColor(frame, hsv, cv::COLOR_BGR2HSV);   // 统一BGR输入
-    // ★ 与检测器 hsv_low_/hsv_high_ 完全一致 (2026-08-14): 之前标注用(20,100,150)
-    //   比检测器(15,80,80)窄, 边线点画在检测掩膜外, 视觉上"贴合不上"
-    //   (2026-08-14 中间值: 18,95,95 ~ 33,255,255, 与检测器同步)
-    cv::inRange(hsv, cv::Scalar(18, 95, 95), cv::Scalar(33, 255, 255), mask);
-    cv::Mat overlay = frame.clone();
-    overlay.setTo(cv::Scalar(0, 255, 0), mask);
-    cv::addWeighted(frame, 0.7, overlay, 0.3, 0, frame);
-
-    // ★ 视觉debug (2026-08-13): ROI框+线点连线, 肉眼验证检测看到了什么
-#ifdef USE_TEST_LANE_V2
-    int roi_y = static_cast<int>(frame.rows * 2 / 3);   // 伙伴版ROI 下1/3 (2026-08-14: 0.42太大→1/3)
-#else
-    int roi_y = frame.rows / 2;
-#endif
-    cv::rectangle(frame, {0, roi_y}, {frame.cols, frame.rows}, {0, 255, 255}, 1);
-    cv::putText(frame, "ROI", {4, roi_y + 14}, cv::FONT_HERSHEY_SIMPLEX, 0.45, {0, 255, 255}, 1);
-
-    auto& lpts = lane_detector_.last_left_;
-    auto& rpts = lane_detector_.last_right_;
-    if (lpts.size() > 1) cv::polylines(frame, lpts, false, {255, 0, 0}, 2);   // 蓝=左黄线
-    if (rpts.size() > 1) cv::polylines(frame, rpts, false, {0, 0, 255}, 2);   // 红=右黄线
-    for (auto& p : lpts) cv::circle(frame, p, 2, {255, 0, 0}, -1);
-    for (auto& p : rpts) cv::circle(frame, p, 2, {0, 0, 255}, -1);
-    for (size_t li = 0, ri = 0; li < lpts.size() && ri < rpts.size(); ) {
-        if (lpts[li].y == rpts[ri].y) {
-            cv::circle(frame, {(lpts[li].x + rpts[ri].x) / 2, lpts[li].y}, 3, {0, 255, 255}, -1);
-            li++; ri++;
-        } else if (lpts[li].y > rpts[ri].y) { li++; } else { ri++; }
-    }
-
-    if (lane.valid && lane.lane_width > 0) {
-        if (lpts.empty() && !rpts.empty()) {
-            for (auto& p : rpts) {
-                int est_x = static_cast<int>(p.x - lane.lane_width);
-                if (est_x >= 0) cv::circle(frame, {est_x, p.y}, 3, {255, 0, 255}, -1);
-            }
-        } else if (rpts.empty() && !lpts.empty()) {
-            for (auto& p : lpts) {
-                int est_x = static_cast<int>(p.x + lane.lane_width);
-                if (est_x < frame.cols) cv::circle(frame, {est_x, p.y}, 3, {255, 0, 255}, -1);
-            }
-        }
-    }
+    // (2026-08-17 用户: 寻线可视化/ROI不要了, 黄色高亮也删, 画面只留目标框)
 
     if (ball.found) {
         int bx = static_cast<int>((ball.cx + 1.0f) / 2.0f * frame.cols);
@@ -533,20 +621,21 @@ void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
                     {bx + 5, by - 5}, cv::FONT_HERSHEY_SIMPLEX, 0.5, {0, 165, 255}, 1);
     }
 
-    cv::line(frame, {frame.cols/2, 0}, {frame.cols/2, frame.rows}, {255, 255, 255}, 1);
-    // ★ 检测到的道路中心(红竖线+箭头) vs 车中线(白竖线): 箭头方向=狗认为线在哪边
-    if (lane.valid) {
-        int cx = frame.cols / 2;
-        int road_x = static_cast<int>(cx * (1.0f + lane.offset));
-        cv::line(frame, {road_x, roi_y}, {road_x, frame.rows}, {0, 0, 255}, 2);
-        cv::arrowedLine(frame, {cx, roi_y - 8}, {road_x, roi_y - 8}, {0, 0, 255}, 2, 8, 0, 0.3);
+    // ★ 转向方向箭头 (2026-08-15): 底部红箭头=实际yaw指令, 指左=左转 指右=右转, 长度∝|yaw|
+    {
+        float cyaw = 0.0f;
+        {
+            std::lock_guard<std::mutex> lock(sensor_mutex_);
+            cyaw = sensor_.cmd_yaw;
+        }
+        const int ax = frame.cols / 2;
+        const int ay = frame.rows - 24;
+        const int len = std::max(6, std::min(80, static_cast<int>(std::abs(cyaw) * 120.0f)));
+        const int dir = cyaw >= 0.0f ? -1 : 1;   // 正yaw=左转 → 箭头指向画面左(-x)
+        cv::arrowedLine(frame, {ax, ay}, {ax + dir * len, ay}, {0, 0, 255}, 3, 8, 0, 0.35);
+        cv::putText(frame, cv::format("yaw_cmd=%.2f", cyaw), {ax + 8, ay - 6},
+                    cv::FONT_HERSHEY_SIMPLEX, 0.5, {0, 0, 255}, 2);
     }
-    const char* side = (lane.offset > 0.03f) ? "carL->turnR" :
-                       (lane.offset < -0.03f) ? "carR->turnL" : "mid";
-    cv::putText(frame, cv::format("S%d off=%.2f %s curv=%.1f L=%d R=%d v=%d",
-                cur_stage_+1, lane.offset, side, lane.curvature,
-                (int)lpts.size(), (int)rpts.size(), (int)lane.valid),
-            {10, 30}, cv::FONT_HERSHEY_SIMPLEX, 0.5, {0, 255, 255}, 2);
     // 快照 odom 字段用于显示（避免与回调线程数据竞争）
     float dox, doy, dyaw;
     {
@@ -556,28 +645,57 @@ void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
     cv::putText(frame, cv::format("odom x=%.3f y=%.3f yaw=%.3f", dox, doy, dyaw),
             {10, 58}, cv::FONT_HERSHEY_SIMPLEX, 0.65, {0, 255, 255}, 2);
 
-    if (cur_stage_ == 3 && stages_[3]) {
-        auto s4 = static_cast<Stage4*>(stages_[3].get());
-        auto& r = s4->vision_result;
-        if (r.football_found) {
-            int fx = static_cast<int>((r.football_cx + 1.0f) / 2.0f * frame.cols);
-            int fy = frame.rows / 2;
-            cv::circle(frame, {fx, fy}, 20, {255, 255, 255}, 2);
-            cv::line(frame, {fx, 0}, {fx, frame.rows}, {255, 255, 255}, 1);
-            cv::putText(frame, cv::format("football d=%.2fm", r.football_dist),
-                        {fx + 5, fy - 25}, cv::FONT_HERSHEY_SIMPLEX, 0.55, {255, 255, 255}, 2);
-        }
-        int line_y = 86;
-        auto draw_status = [&](bool found, float dist, const std::string& label, cv::Scalar color) {
-            cv::putText(frame, cv::format("%s:%s d=%.2f", label.c_str(), found ? "Y" : "N", dist),
-                        {10, line_y}, cv::FONT_HERSHEY_SIMPLEX, 0.5,
-                        found ? color : cv::Scalar(100, 100, 100), 1);
-            line_y += 22;
+    // ★ Stage4 多目标标注 (2026-08-17 用户: 可乐/足球/限高杆/橙球可视化都要看到)
+    //   旧代码从仿真Stage4的vision_result读, 真机stages_[3]是Stage4Real→static_cast错类型UB, 改用本帧s4_result
+    if (cur_stage_ == 3) {
+        // (2026-08-17) python回传真实框 → 画矩形(标注画面为0.5缩放, box坐标÷2)
+        auto draw_s4 = [&](bool found, float cx, float dist, const cv::Rect& box,
+                           float conf, const cv::Scalar& col, const char* tag, int row) {
+            if (!found) return;
+            if (box.width > 0 && box.height > 0) {
+                cv::Rect b(box.x / 2, box.y / 2, box.width / 2, box.height / 2);
+                cv::rectangle(frame, b, col, 2);
+                cv::putText(frame, cv::format("%s %.2f d=%.2fm", tag, conf, dist),
+                            {b.x, std::max(12, b.y - 5)}, cv::FONT_HERSHEY_SIMPLEX, 0.5, col, 2);
+                return;
+            }
+            // 无框(本地颜色检测目标) → 十字+距离
+            int px = (int)((cx + 1.0f) / 2.0f * frame.cols);
+            int py = frame.rows - 40 - row * 34;
+            cv::circle(frame, {px, py}, 16, col, 2);
+            cv::line(frame, {px - 22, py}, {px + 22, py}, col, 2);
+            cv::line(frame, {px, py - 22}, {px, py + 22}, col, 2);
+            cv::putText(frame, cv::format("%s d=%.2fm", tag, dist),
+                        {px + 20, py - 6}, cv::FONT_HERSHEY_SIMPLEX, 0.5, col, 2);
         };
-        draw_status(r.football_found, r.football_dist, "football", {255, 255, 255});
-        draw_status(r.limbar_found,   r.limbar_dist,   "limbar",   {180, 180, 180});
-        draw_status(r.coke_found,     r.coke_dist,     "coke",     {80,  80,  80 });
-        draw_status(r.obstacle_found, r.obstacle_dist, "obstacle", {255, 128, 0  });
+        draw_s4(s4_result.coke_found,     s4_result.coke_cx,     s4_result.coke_dist,
+                s4_result.coke_box,       s4_result.coke_conf,   {0, 255, 0},   "COKE",   0);
+        draw_s4(s4_result.football_found, s4_result.football_cx, s4_result.football_dist,
+                s4_result.football_box,   s4_result.football_conf, {255, 255, 255}, "FBALL", 1);
+        draw_s4(s4_result.limbar_found,   s4_result.limbar_cx,   s4_result.limbar_dist,
+                s4_result.limbar_box,     0.0f, {0, 0, 255},   "LIMBAR", 2);
+        // 橙球: 画真实圆 (2026-08-17 用户: 不要十字, 圈出来)
+        if (s4_result.ball_found && s4_result.ball_radius > 0.0f) {
+            cv::Point bc(static_cast<int>(s4_result.ball_center.x / 2),
+                         static_cast<int>(s4_result.ball_center.y / 2));
+            const int br = static_cast<int>(s4_result.ball_radius / 2);
+            cv::circle(frame, bc, br, {0, 165, 255}, 2);
+            cv::putText(frame, cv::format("ORANGE d=%.2fm", s4_result.ball_dist),
+                        {bc.x - 40, std::max(12, bc.y - br - 6)},
+                        cv::FONT_HERSHEY_SIMPLEX, 0.5, {0, 165, 255}, 2);
+        } else {
+            draw_s4(s4_result.ball_found, s4_result.ball_cx, s4_result.ball_dist,
+                    cv::Rect(), 0.0f, {0, 165, 255}, "ORANGE", 3);
+        }
+        draw_s4(s4_result.obstacle_found, s4_result.obstacle_cx, s4_result.obstacle_dist,
+                s4_result.obstacle_box, 0.0f, {255, 0, 0},   "BLOCK",  4);
+        cv::putText(frame, cv::format("S4 cokeM=%d fbM=%d | C=%d F=%d L=%d O=%d B=%d",
+                    stage4_detector_.coke_model_ready() ? 1 : 0,
+                    stage4_detector_.football_model_ready() ? 1 : 0,
+                    s4_result.coke_found ? 1 : 0, s4_result.football_found ? 1 : 0,
+                    s4_result.limbar_found ? 1 : 0, s4_result.obstacle_found ? 1 : 0,
+                    s4_result.ball_found ? 1 : 0),
+            {10, frame.rows - 18}, cv::FONT_HERSHEY_SIMPLEX, 0.55, {0, 255, 255}, 2);
     }
 
 #ifdef DEBUG_VISION
@@ -756,6 +874,49 @@ void RaceController::on_global_to_robot(const lcm::ReceiveBuffer*,
     sensor_.abs_yaw = msg->rpy[2];      // 地图坐标系绝对朝向（供绝对转向, 2026-08-07）
     sensor_.pitch_map = msg->rpy[1];    // 地图坐标系俯仰（供抬头/姿态验证, 2026-08-08）
     sensor_.roll_map = msg->rpy[0];     // 地图坐标系横滚/侧倾（供身躯倾斜验证, 2026-08-08）
+
+    // ── abs_yaw 一阶低通 (2026-08-16): 石径上VIO yaw抖±8°→回正蛇形, 滤波后回正更顺 ──
+    //   α=0.06 @50Hz → τ≈0.33s; 转向段仍用原始 abs_yaw 防滞后
+    if (!sensor_.abs_yaw_lp_init) {
+        sensor_.abs_yaw_lp = sensor_.abs_yaw;
+        sensor_.abs_yaw_lp_init = true;
+    } else {
+        float d = sensor_.abs_yaw - sensor_.abs_yaw_lp;
+        while (d >  static_cast<float>(M_PI)) d -= 2.0f * static_cast<float>(M_PI);
+        while (d < -static_cast<float>(M_PI)) d += 2.0f * static_cast<float>(M_PI);
+        sensor_.abs_yaw_lp += d * 0.06f;
+    }
+}
+
+// ── external_imu 原始包解码 (2026-08-16): 官方未公开struct, 实测100字节 ──
+//   偏移 8~23 = 姿态四元数 [x,y,z,w] 大端float (静止实测归一化≈1.0001)
+//   归一化校验防偏移猜错; yaw_imu 仅作短时相对量(与地图系有固定偏置, 无碍)
+//   LCM 的 subscribeFunction 需要类型化消息 → 底层 lcm_subscribe + getUnderlyingLCM 原始回调桥
+static void lcm_external_imu_handler(const lcm_recv_buf_t* rbuf, const char*, void* ctx) {
+    if (!rbuf) return;
+    lcm::ReceiveBuffer rb;
+    rb.data = rbuf->data;
+    rb.data_size = rbuf->data_size;
+    static_cast<RaceController*>(ctx)->on_external_imu(&rb, std::string());
+}
+
+void RaceController::on_external_imu(const lcm::ReceiveBuffer* rbuf, const std::string&) {
+    if (!rbuf || rbuf->data_size < 24) return;
+    const uint8_t* d = reinterpret_cast<const uint8_t*>(rbuf->data);
+    float q[4];
+    for (int i = 0; i < 4; ++i) {
+        uint32_t u = (static_cast<uint32_t>(d[8 + 4 * i]) << 24) |
+                     (static_cast<uint32_t>(d[9 + 4 * i]) << 16) |
+                     (static_cast<uint32_t>(d[10 + 4 * i]) << 8) |
+                     static_cast<uint32_t>(d[11 + 4 * i]);
+        std::memcpy(&q[i], &u, 4);
+    }
+    const float n = q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3];
+    if (std::fabs(n - 1.0f) > 0.1f) return;   // 非单位四元数 → 偏移错误, 丢弃
+    const float x = q[0], y = q[1], z = q[2], w = q[3];
+    std::lock_guard<std::mutex> lock(sensor_mutex_);
+    sensor_.yaw_imu = std::atan2(2.0f * (w * z + x * y), 1.0f - 2.0f * (y * y + z * z));
+    sensor_.imu_yaw_ready = true;
 }
 
 // ── 真机 LCM 状态估计回调（state_estimator，备选 body_height 来源） ──
@@ -765,6 +926,20 @@ void RaceController::on_state_estimator(const lcm::ReceiveBuffer*,
     std::lock_guard<std::mutex> lock(sensor_mutex_);
     // 如果 global_to_robot.xyz[2] 不够精确，可用 state_estimator.p[2] 覆盖
     sensor_.body_height = msg->p[2];
+}
+
+// ── 真机 RT板腿里程计航向 (odom_out, 2026-08-15) ──
+//   motion_bridge 发布: 四元数姿态 = 腿部运动学+板上IMU融合, 46.6Hz
+//   实测静止漂移0.03°/10s; 坐标系=腿里程计累计系(与SLAM abs_yaw不同源, 只用增量)
+void RaceController::on_odom_out(nav_msgs::msg::Odometry::SharedPtr msg) {
+    std::lock_guard<std::mutex> lock(sensor_mutex_);
+    const auto& q = msg->pose.pose.orientation;
+    sensor_.yaw_odom = std::atan2(2.0 * (q.w * q.z + q.x * q.y),
+                                  1.0 - 2.0 * (q.y * q.y + q.z * q.z));
+    sensor_.odom_yaw_ready = true;
+    // 同源建系 (2026-08-16): odom位置与航向出自同一估计器, 点位导航用它零偏置矛盾
+    sensor_.odom_pos_x = static_cast<float>(msg->pose.pose.position.x);
+    sensor_.odom_pos_y = static_cast<float>(msg->pose.pose.position.y);
 }
 
 // ── 真机 BMS 电池监控（低电量自动保护） ──

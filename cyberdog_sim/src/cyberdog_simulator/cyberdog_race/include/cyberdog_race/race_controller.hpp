@@ -40,6 +40,11 @@
 #include "cyberdog_race/stages/real/stage1_real.hpp"  // 真机第1赛段 石径探路 (2026-08-11)
 #include "cyberdog_race/stages/real/stage2_real.hpp"  // 真机第2赛段 (2026-08-12)
 #include "cyberdog_race/stages/real/stage3_real.hpp"  // 真机第3赛段 破限低头前进 (2026-08-12)
+#include "cyberdog_race/stages/real/stage4_real.hpp"  // 真机第4赛段 (2026-08-16 伙伴逻辑接入)
+#include "cyberdog_race/stages/real/stage5_real.hpp"  // 真机第5赛段 (2026-08-16 伙伴逻辑接入)
+#ifdef USE_TEST_REAL_STAGE2
+#include "stage2_real_test.hpp"  // 测试版Stage2: 旧侧移扫球逻辑 (2026-08-15 新流程启用后迁移)
+#endif
 #ifdef USE_TEST_REAL_STAGE3
 #include "stage3_real_test.hpp"  // 测试版Stage3: 伙伴算法实验 (2026-08-14)
 #endif
@@ -60,6 +65,7 @@ public:
     RaceController();
     ~RaceController();
     MotionCtrl& get_motion() { return motion_; }
+    void on_external_imu(const lcm::ReceiveBuffer*, const std::string&);  // (2026-08-16) 原始包解码quat, public供静态回调桥调用
 
 private:
     void on_rgb(sensor_msgs::msg::Image::SharedPtr msg);
@@ -81,6 +87,7 @@ private:
                             const localization_lcmt* msg);
     void on_state_estimator(const lcm::ReceiveBuffer*, const std::string&,
                             const state_estimator_lcmt* msg);
+    void on_odom_out(nav_msgs::msg::Odometry::SharedPtr msg);  // RT板腿里程计航向 (2026-08-15)
     void control_loop();
     void apply_stage_params();
 
@@ -130,6 +137,7 @@ private:
 #endif
     // rclcpp::Subscription<protocol::msg::TouchStatus>::SharedPtr sub_touch_; // TODO: 需bridges包
     rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr sub_bms_;
+    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr sub_odom_out_;  // (2026-08-15)
     // rclcpp::Subscription<protocol::msg::HeadTofPayload>::SharedPtr sub_head_tof_;  // TODO: 需bridges包
     // rclcpp::Subscription<protocol::msg::RearTofPayload>::SharedPtr sub_rear_tof_;  // TODO: 需bridges包
     rclcpp::Publisher<cyberdog_msg::msg::YamlParam>::SharedPtr   yaml_pub_;

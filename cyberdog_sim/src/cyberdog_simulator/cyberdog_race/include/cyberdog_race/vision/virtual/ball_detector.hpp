@@ -19,9 +19,10 @@ public:
     void reset_filter() { dist_filtered_ = 0.0f; }  // 切换赛段时重置
 
 private:
-    // (2026-08-14 折中: S≥130近处球反光边缘漏检; 放宽靠圆度过滤防误检)
-    cv::Scalar orange_low_{6, 90, 80};
-    cv::Scalar orange_high_{22, 255, 255};
+    // (2026-08-15 实测样张校准): 球HSV H=5~8 S=85~192 V=136~255
+    //   H上限22会混入黄线(H≥15)→误检, 收紧到12; H下限6砍边缘→3; S下限80兜反光边缘
+    cv::Scalar orange_low_{3, 80, 80};
+    cv::Scalar orange_high_{12, 255, 255};
     cv::Scalar blue_low_{95, 80, 80};
     cv::Scalar blue_high_{125, 255, 255};
     cv::Scalar white_low_{0, 0, 180};

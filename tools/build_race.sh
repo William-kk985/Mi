@@ -36,11 +36,19 @@ bash "$PKG_DIR/scripts/sync_to_nx.sh"
 echo "   ✅ 源码同步完成 (含 scripts/ 启动脚本)"
 
 # ── 3. NX 编译 (aarch64, 必须在 NX 上) ──
-echo "③ NX 编译 cyberdog_race (约 3-5 分钟)..."
+#    全力模式 (2026-08-16): -j4 并行; 内存不足被杀 → 自动降级 -j2 → -j1
+echo "③ NX 编译 cyberdog_race (-j4 全力, 自动降级)..."
 ssh "$NX_HOST" 'source /etc/mi/ros2_env.conf 2>/dev/null; cd /SDCARD/race_ws && \
     export AMENT_PREFIX_PATH="/opt/ros2/cyberdog:/opt/ros2/galactic" && \
     export PYTHONPATH="/opt/ros2/cyberdog/lib/python3.6/site-packages:/opt/ros2/galactic/lib/python3.6/site-packages" && \
-    colcon build --merge-install --packages-select cyberdog_race 2>&1 | tail -25'
+    RC=1; for J in 4 2 1; do \
+      echo "═══ 编译 MAKEFLAGS=-j$J ═══"; \
+      MAKEFLAGS=-j$J colcon build --merge-install --packages-select cyberdog_race --executor sequential > /tmp/build_out.log 2>&1; RC=$?; \
+      tail -8 /tmp/build_out.log; \
+      if [ $RC -eq 0 ]; then echo "✅ 编译成功 (-j$J)"; break; fi; \
+      if grep -qE "Terminated|Killed" /tmp/build_out.log; then echo "⚠ 内存不足被杀, 降级重试..."; continue; fi; \
+      echo "❌ 编译错误(代码问题), 详见 /tmp/build_out.log"; break; \
+    done; exit $RC'
 echo "   ✅ 编译完成"
 
 echo ""

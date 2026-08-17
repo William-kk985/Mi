@@ -21,9 +21,9 @@
 // 赛段调试模式（都不定义 = 正式比赛从第1段跑完整6段）
 // ============================================================
 
-// #define DEBUG_SINGLE_STAGE 3   // 只跑 Stage3 (2026-08-13)
+// #define DEBUG_SINGLE_STAGE 3   // 只跑 Stage3, 结束后停止不切换 (2026-08-15 巡线拍照调试)
 // #define DEBUG_START_STAGE  4
-#define DEBUG_END_STAGE    2     // 只跑 Stage1+2, 到 Stage2 结束停止 (2026-08-14 侧移扫球测试)
+#define DEBUG_END_STAGE    3     // 只跑 Stage1+2+3, 到 Stage3 结束停止 (2026-08-16 123一起跑)
 
 // 调试开关：禁用撞球，只观察视觉效果
 // #define DEBUG_NO_HIT
@@ -80,7 +80,7 @@
 // ⚠ D430i 无 RGB 彩色输出，只有红外+深度！
 #ifdef REAL_DOG
   #ifdef USE_CENTER_CAM
-    #define TOPIC_RGB_CAMERA       ROBOT_NS "/image_center"        // center ov9782 双目 (2026-08-14: 视角好, center_cam节点17fps)
+    #define TOPIC_RGB_CAMERA       ROBOT_NS "/image_center"        // gc02m1彩色鼻区相机 (2026-08-14定稿: cam_id=1 30fps)
   #else
     #define TOPIC_RGB_CAMERA       ROBOT_NS "/image"               // bottom camera_server推流 (备用)
   #endif
@@ -94,6 +94,7 @@
   #define TOPIC_TOF_HEAD         ROBOT_NS "/head_tof_payload"            // 头TOF×2 8x8高程 ✅
   #define TOPIC_TOF_REAR         ROBOT_NS "/rear_tof_payload"            // 尾TOF×2 8x8高程 ✅
   #define TOPIC_ULTRASONIC       ROBOT_NS "/ultrasonic_payload"          // 超声 Range ✅
+  #define TOPIC_ODOM_OUT         ROBOT_NS "/odom_out"                    // RT板腿里程计+融合IMU姿态 46.6Hz (2026-08-15 航向反馈源)
   // LCM 通道（真狗可走LCM global_to_robot，也可用ROS2 odom_out替代）
   #define LCM_ODOM_CHANNEL    "global_to_robot"
   #define LCM_STATE_ESTIMATOR "state_estimator"

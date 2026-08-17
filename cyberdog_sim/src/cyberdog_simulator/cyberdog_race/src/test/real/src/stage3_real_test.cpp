@@ -17,9 +17,10 @@
 namespace {
 constexpr float WALK_V   = 0.26f;    // 实拍窄视野下适当降速，给单边曲线识别留出修正时间
 constexpr float LOST_V   = 0.10f;    // 短暂丢线时低速搜索，禁止盲目前冲
-constexpr float PITCH    = 0.32f;    // 低头 0.32 rad (~18°)
+constexpr float PITCH    = 0.14f;    // 低头量 0.14 rad (~8°) (2026-08-14: 0.25→0.14 太多改小, 201正值=低头)
 constexpr float KP_VIS   = 0.85f;
 constexpr float KD_VIS   = 0.08f;    // 对滤波后的逐帧偏差变化做阻尼，不再乘固定100Hz
+constexpr float KP_LINE  = 2.5f;    // 单线沿线趋势: yaw=-KP_LINE*线漂移dx (2026-08-14)
 constexpr float YAW_LIM  = 0.65f;
 constexpr float FWD_DIST = 3.0f;     // 巡线总距离 m
 constexpr double SCALE_HACK    = 30.0;   // 破限: x_effect_scale_pos=+30 (前进中放大pitch限位)
@@ -37,6 +38,8 @@ void Stage3RealTest::init() {
     last_yaw_ = 0.0f;
     filtered_d_offset_ = 0.0f;
     lost_frames_ = 0;
+    single_locked_ = false;
+    lock_line_x_ = 0.0f;
     phase_     = Phase::WAIT_READY;
 
     // ── 站起 (与 Stage1 同款已验证序列) ──
@@ -64,13 +67,14 @@ void Stage3RealTest::run() {
             last_x_   = sensor_.odom_x;
             last_y_   = sensor_.odom_y;
             traveled_ = 0.0f;
+            // 破限只用于正式巡线(前进中303低头); 原地201低头不需要 (2026-08-14)
             if (!TEST_HOLD) {
-                motion_.set_user_param_double_lcm("x_effect_scale_pos", SCALE_HACK);  // 破限(前进中生效)
+                motion_.set_user_param_double_lcm("x_effect_scale_pos", SCALE_HACK);
             }
 #ifdef DEBUG_STAGE
             fprintf(stderr, "[S3T] 定位就绪 odom=(%.2f,%.2f), %s\n",
                     sensor_.odom_x, sensor_.odom_y,
-                    TEST_HOLD ? "201原地低头" : "破限低头巡线开始(伙伴算法)");
+                    TEST_HOLD ? "201原地低头(test17同款)" : "破限低头巡线开始(伙伴算法)");
             fflush(stderr);
 #endif
         } else {
@@ -88,14 +92,36 @@ void Stage3RealTest::run() {
     // ── ② 低头巡线 / 原地测试 ──
     if (phase_ == Phase::LANE_FOLLOW) {
         if (TEST_HOLD) {
-            // 201原地低头 (测试形态): 每3帧≈33Hz持续发布, 不发303
+            // 201原地低头 (2026-08-14 上机验证: 正值=低头, 与303同向)
+            //   每3帧≈33Hz持续发布, 不发303
             if (++pitch_hold_ % 3 == 0)
                 motion_.set_body_pitch(PITCH);
+            // 计算控制量写 cmd_yaw 仅供Web转向箭头显示 (2026-08-15: 原地不发运动, 与正式逻辑同算法)
+            {
+                float show_yaw = 0.0f;
+                if (sensor_.lane_valid) {
+                    if (sensor_.lane_both_sides) {
+                        show_yaw = std::max(-YAW_LIM, std::min(YAW_LIM, -KP_VIS * sensor_.lane_offset));
+                        single_locked_ = false;
+                    } else {
+                        if (!single_locked_) {
+                            single_locked_ = true;
+                            lock_line_x_ = sensor_.lane_line_x;
+                        }
+                        show_yaw = std::max(-YAW_LIM, std::min(YAW_LIM,
+                                              -KP_LINE * (sensor_.lane_line_x - lock_line_x_)));
+                    }
+                } else {
+                    single_locked_ = false;
+                }
+                sensor_.cmd_yaw = show_yaw;
+            }
 #ifdef DEBUG_SENSOR
             static int dbg_ = 0;
             if (++dbg_ % 10 == 0) {
-                fprintf(stderr, "[S3T] pitch_map=%.1f° off=%.2f valid=%d | 原地低头\n",
+                fprintf(stderr, "[S3T] pitch_map=%.1f° off=%.2f yaw=%.2f both=%d valid=%d | 201原地低头\n",
                         sensor_.pitch_map * 180.0f / M_PI, sensor_.lane_offset,
+                        sensor_.lane_yaw, (int)sensor_.lane_both_sides,
                         (int)sensor_.lane_valid);
                 fflush(stderr);
             }
@@ -125,15 +151,32 @@ void Stage3RealTest::run() {
         float yaw_cmd = 0.0f;
         float forward_v = WALK_V;
         if (sensor_.lane_valid) {
-            float off = sensor_.lane_offset;
-            const float raw_delta = off - last_offset_;
-            filtered_d_offset_ = 0.25f * raw_delta + 0.75f * filtered_d_offset_;
-            last_offset_ = off;
-            yaw_cmd = std::max(-YAW_LIM, std::min(YAW_LIM,
-                                -KP_VIS * off - KD_VIS * filtered_d_offset_));
-            last_yaw_ = yaw_cmd;
             lost_frames_ = 0;
+            if (sensor_.lane_both_sides) {
+                // ── 两线: 走两条线中间 (offset回中) ──
+                single_locked_ = false;
+                float off = sensor_.lane_offset;
+                const float raw_delta = off - last_offset_;
+                filtered_d_offset_ = 0.25f * raw_delta + 0.75f * filtered_d_offset_;
+                last_offset_ = off;
+                yaw_cmd = std::max(-YAW_LIM, std::min(YAW_LIM,
+                                    -KP_VIS * off - KD_VIS * filtered_d_offset_));
+            } else {
+                // ── 单线: 沿线趋势走 (2026-08-14 用户要求) ──
+                //   原理: 锁定线的横向位置, 线不动=平行沿线直行;
+                //         线向右漂(dx>0)说明路往右弯 → 右转跟随
+                //   ⚠ 不能用斜率拟合: 透视下直线也是斜的, 会持续把狗拉向线
+                if (!single_locked_) {
+                    single_locked_ = true;
+                    lock_line_x_ = sensor_.lane_line_x;
+                }
+                const float dx = sensor_.lane_line_x - lock_line_x_;
+                yaw_cmd = std::max(-YAW_LIM, std::min(YAW_LIM, -KP_LINE * dx));
+                filtered_d_offset_ *= 0.8f;
+            }
+            last_yaw_ = yaw_cmd;
         } else {
+            single_locked_ = false;
             ++lost_frames_;
             forward_v = LOST_V;
             // 短暂丢线保持最后修正方向；长时间丢线后停止前进并缓慢原地搜索。
@@ -147,6 +190,7 @@ void Stage3RealTest::run() {
             yaw_cmd = last_yaw_;
             filtered_d_offset_ *= 0.8f;
         }
+        sensor_.cmd_yaw = yaw_cmd;   // 供Web转向箭头显示 (2026-08-15)
         motion_.set_walk_velocity_pitch(forward_v, 0.0f, yaw_cmd, PITCH);
 #ifdef DEBUG_SENSOR
         static int dbg2_ = 0;

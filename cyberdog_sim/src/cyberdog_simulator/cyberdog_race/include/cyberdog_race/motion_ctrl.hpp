@@ -8,6 +8,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <cyberdog_msg/msg/yaml_param.hpp>
 #ifdef REAL_DOG
+#include <protocol/msg/audio_play_extend.hpp>
 #include <protocol/msg/motion_servo_cmd.hpp>
 #include <protocol/srv/motion_result_cmd.hpp>
 #endif
@@ -20,6 +21,11 @@ enum class LocoMode : int8_t {
     JUMP_3D       = 16,  // 离线轨迹跳跃
     POSE_CTRL     = 21,  // 位控姿态模式（rpy_des 控制 roll/pitch/yaw）
     FORCE_JUMP    = 22,  // 力控跳跃
+};
+
+// Stage4Real currently needs only the slow walking profile.
+enum class ServoGait : int8_t {
+    SLOW = 0,
 };
 
 class MotionCtrl {
@@ -142,7 +148,11 @@ public:
     void attach_motion_servo_pub(rclcpp::Node* node);
     // 挂载 MotionResultCmd 服务客户端（跳跃/站立/趴下官方动作）
     void attach_motion_result_client(rclcpp::Node* node);
+    // 挂载官方语音播报发布器（topic="speech_play_extend"）
+    void attach_tts_pub(rclcpp::Node* node);
 #endif
+    // 语音播报：真机发送在线 TTS，仿真模式为 no-op
+    void speak(const std::string& text);
 
     // 步高原始值直通（无 clamp，走 LCM robot_control_cmd 7671）——test8 方式：起步前设一次
     // 仿真控制器解码 (int)%1000*1e-3，疑似期望毫米/打包格式；0.20米会被 (int) 截成 0
@@ -156,6 +166,10 @@ public:
     void stop();         // 停止（发零速）
     void jump();         // kJump3d (mode=16), 离线轨迹跳跃
     void force_jump();   // kForceJump (mode=22), 力控跳跃
+    // Stage4 compatibility over the existing locomotion interface.
+    void select_gait(ServoGait gait);
+    bool gait_ready() const;
+    bool servo_fault() const;
     void send_lcm_mode(int mode, int gait_id = 0);
 
     // TODO: 添加 robot_control_response 订阅以检查模式切换是否成功
@@ -192,6 +206,8 @@ private:
     rclcpp::Client<protocol::srv::MotionResultCmd>::SharedPtr motion_result_client_;
     // yaml_parameter 发布器（赛段姿态参数）
     rclcpp::Publisher<cyberdog_msg::msg::YamlParam>::SharedPtr yaml_pub_;
+    // 官方语音播报发布器
+    rclcpp::Publisher<protocol::msg::AudioPlayExtend>::SharedPtr tts_pub_;
 #endif
 
     // ═══ TODO: 电机温度监控（需 danger_states_lcmt.hpp，lcm-gen -x 生成） ═══

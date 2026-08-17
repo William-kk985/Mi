@@ -4,33 +4,42 @@
 #include <cmath>
 
 // ═══════════════════════════════════════════════════════════
-// Stage3Real 真机版 — 第3赛段: 低头 + 视觉巡线 (2026-08-13 正式形态)
-// 低头: 破限(x_effect_scale_pos=+30) + 303 rpy_des[1]=pitch 前进低头 (test17已验证)
-//   ⚠ 破限只在 vx>0 时生效 → 巡线持续前进; 201原地低头真机不生效(勿用)
-// 巡线: lane_offset(>0=车偏左) → yaw_cmd=-KP*offset 回中; 丢线→直行
-// 测试形态(TEST_HOLD=true): 201原地低头不动, 调视觉用
-// 真机约定: 正值=低头 (2026-08-08 舵机方向确认)
+// Stage3Real 真机版 — 第3赛段: 写死路径 (2026-08-15 用户指定, 替代视觉巡线)
+// 路径(相对转向+前进): 右转30°前0.3m → 右转50°前0.2m → 右转10°前2m
+//                      → 左转50°前0.3m → 左转30°前0.8m
+// 转向: abs_yaw 闭环(右转=负yaw); 前进: odom 距离闭环 + 航向锁
 // ═══════════════════════════════════════════════════════════
 
 namespace {
-constexpr float WALK_V   = 0.30f;    // 巡线前进速度 m/s
-constexpr float PITCH    = 0.32f;    // 低头 0.32 rad (~18°) (2026-08-13: 0.38太低调回0.32)
-constexpr float KP_VIS   = 1.0f;     // 视觉巡线增益 (offset→yaw) (2026-08-13: 0.5→1.0 转弯力度不够)
-constexpr float KD_VIS   = 0.15f;    // 微分预测增益 (2026-08-13: 0.5实测尖峰±0.8抽方向→0.15)
-constexpr float KD_LIM   = 0.25f;    // 微分项单独限幅 (2026-08-13: 防检测噪声×100放大盖过KP主项)
-constexpr float KC_CURV  = 0.20f;    // 曲率前馈 (2026-08-13: 弯道提前转, 直行问题根因是看不到弯道)
-constexpr float YAW_LIM  = 0.8f;     // 巡线 yaw 限幅 (2026-08-13: 0.5→0.8)
-constexpr float FWD_DIST = 3.0f;     // 巡线总距离 m (2026-08-13 待实测调整)
-constexpr double SCALE_HACK    = 30.0;   // 破限: x_effect_scale_pos=+30 (前进中放大pitch限位)
-constexpr double SCALE_RESTORE = -0.55;  // 复原默认值
-constexpr bool   TEST_HOLD = false; // true=201原地低头测试 false=正式巡线
+struct PathStep {
+    float turn_deg;   // 相对转向角度(正=左转 负=右转)
+    float fwd_m;      // 前进距离
+};
+constexpr PathStep PATH[] = {
+    { -30.0f, 0.5f },   // ① 右转30° 前0.5m (2026-08-17 用户: 0.3→0.5)
+    { -60.0f, 0.4f },   // ② 右转60° 前0.4m (2026-08-17 用户: 50°→60°)
+    {   5.0f, 1.8f },   // ③ 左转5° 前1.8m (2026-08-18 用户: 长直线走之前左转5°)
+    { +50.0f, 0.8f },   // ④ 左转50° 前0.8m (2026-08-17 用户: 0.5→0.8)
+    { +40.0f, 0.8f },   // ⑤ 左转40° 前0.8m (2026-08-17 用户: 30°→40°多转10°)
+    { +88.0f, 0.0f },   // ⑥ 左转88° 结束 (2026-08-17 用户追加)
+};
+constexpr int   PATH_N      = 6;   // (2026-08-17 5→6: 末尾加左转88°)
+constexpr float WALK_V      = 0.30f;   // 前进速度 m/s
+constexpr float TURN_V      = 0.50f;   // 转向速度 rad/s
+constexpr float TURN_DONE   = 0.02f;   // 转向到位误差 rad (2026-08-18 0.04→0.02: 对齐Stage2, 原2.3°太松→每步欠转1-1.4°累积角度偏)
+constexpr int   TURN_SETTLE = 30;      // 转到位停稳帧数 0.3s
+constexpr float PITCH_S3    = 0.14f;   // 走路低头 ~8° (2026-08-15)
 }  // namespace
 
 void Stage3Real::init() {
     done_      = false;
-    loc_ready_ = false;
-    pitch_hold_ = 0;
+    step_idx_  = 0;
+    target_yaw_ = 0.0f;
+    turn_settle_ = 0;
     traveled_   = 0.0f;
+    turn_guard_ = 0;
+    drift_rate_ = 0.0f;
+    last_yaw_err_ = 0.0f;
     phase_     = Phase::WAIT_READY;
 
     // ── 站起 (与 Stage1 同款已验证序列) ──
@@ -44,9 +53,8 @@ void Stage3Real::init() {
     fflush(stderr);
 #endif
     RCLCPP_INFO(rclcpp::get_logger("stage3_real"),
-                "[Stage3Real] init: %s (低头%.2frad 速度%.2fm/s 巡线%.1fm)",
-                TEST_HOLD ? "201原地低头测试形态" : "破限低头前进+视觉巡线",
-                PITCH, WALK_V, FWD_DIST);
+                "[Stage3Real] init: 写死路径 %d 步 (右30+右50+右10+左50+左30)",
+                PATH_N);
 }
 
 void Stage3Real::run() {
@@ -55,17 +63,14 @@ void Stage3Real::run() {
     // ── ① 等定位就绪 (init 在 spin 前, 回调没跑 absYaw 恒0, 同Stage1) ──
     if (phase_ == Phase::WAIT_READY) {
         if (sensor_.abs_yaw != 0.0f || sensor_.odom_x != 0.0f) {
-            phase_    = Phase::LANE_FOLLOW;
-            last_x_   = sensor_.odom_x;
-            last_y_   = sensor_.odom_y;
-            traveled_ = 0.0f;
-            if (!TEST_HOLD) {
-                motion_.set_user_param_double_lcm("x_effect_scale_pos", SCALE_HACK);  // 破限(前进中生效)
-            }
+            step_idx_   = 0;
+            target_yaw_ = norm_yaw(sensor_.abs_yaw + PATH[0].turn_deg * M_PI / 180.0f);
+            turn_settle_ = 0;
+            phase_ = Phase::TURN;
 #ifdef DEBUG_STAGE
-            fprintf(stderr, "[S3Stage] 定位就绪 odom=(%.2f,%.2f), %s\n",
-                    sensor_.odom_x, sensor_.odom_y,
-                    TEST_HOLD ? "201原地低头" : "破限低头巡线开始");
+            fprintf(stderr, "[S3Stage] 定位就绪 absYaw=%.2f, 第1步: %s转%.0f°前%.1fm\n",
+                    sensor_.abs_yaw,
+                    PATH[0].turn_deg >= 0 ? "左" : "右", std::abs(PATH[0].turn_deg), PATH[0].fwd_m);
             fflush(stderr);
 #endif
         } else {
@@ -80,75 +85,111 @@ void Stage3Real::run() {
         }
     }
 
-    // ── ② 低头巡线 / 原地测试 ──
-    if (phase_ == Phase::LANE_FOLLOW) {
-        if (TEST_HOLD) {
-            // 201原地低头 (测试形态): 每3帧≈33Hz持续发布, 不发303
-            if (++pitch_hold_ % 3 == 0)
-                motion_.set_body_pitch(PITCH);
-#ifdef DEBUG_SENSOR
-            static int dbg_ = 0;
-            if (++dbg_ % 10 == 0) {
-                fprintf(stderr, "[S3S] pitch_map=%.1f° off=%.2f curv=%.0f valid=%d | 原地低头\n",
-                        sensor_.pitch_map * 180.0f / M_PI, sensor_.lane_offset,
-                        sensor_.lane_curvature, (int)sensor_.lane_valid);
+    // ── ② 路径步: 先原地转相对角, 再前进 ──
+    if (phase_ == Phase::TURN) {
+        const float err = norm_yaw(target_yaw_ - sensor_.abs_yaw);
+        if (std::abs(err) < TURN_DONE) {
+            motion_.set_walk_velocity_pitch(0.0f, 0.0f, 0.0f, PITCH_S3);
+            if (++turn_settle_ >= TURN_SETTLE) {   // 停稳0.3s
+                // ── 停稳复核 (2026-08-16 与 Stage2 对齐): 停稳后残余误差仍大 → 低速补转 ──
+                // (2026-08-18 0.05→0.025: 原2.9°才补转太松, 0.02-0.05残余直接放过累积偏)
+                if (std::abs(err) > 0.025f && turn_guard_ < 60) {
+                    ++turn_guard_;
+                    const float spd = std::max(-0.30f, std::min(0.30f, err * 2.0f));
+                    motion_.set_walk_velocity_pitch(0.0f, 0.0f, spd, PITCH_S3);
+                    return;
+                }
+                turn_guard_ = 0;
+                turn_settle_ = 0;
+                // 记本前进步起点与朝向（侧向漂移闭环用）
+                step_start_x_ = last_x_ = sensor_.odom_x;
+                step_start_y_ = last_y_ = sensor_.odom_y;
+                step_cos_ = std::cos(target_yaw_);
+                step_sin_ = std::sin(target_yaw_);
+                traveled_ = 0.0f;
+                last_yaw_err_ = 0.0f;
+                phase_ = Phase::FWD;
+#ifdef DEBUG_STAGE
+                fprintf(stderr, "[S3Stage] 第%d步转到位, 前进%.1fm\n",
+                        step_idx_ + 1, PATH[step_idx_].fwd_m);
                 fflush(stderr);
-            }
 #endif
+            }
             return;
         }
+        turn_settle_ = 0;
+        float yv = std::max(-TURN_V, std::min(TURN_V, err * 1.2f));
+        motion_.set_walk_velocity_pitch(0.0f, 0.0f, yv, PITCH_S3);
+        return;
+    }
 
-        // ── 正式巡线: 破限低头前进 + 视觉回中 ──
+    if (phase_ == Phase::FWD) {
         float moved = std::hypot(sensor_.odom_x - last_x_, sensor_.odom_y - last_y_);
         last_x_ = sensor_.odom_x;
         last_y_ = sensor_.odom_y;
         if (moved > 0.25f) moved = 0.0f;
         traveled_ += moved;
 
-        if (traveled_ >= FWD_DIST) {
-            motion_.set_user_param_double_lcm("x_effect_scale_pos", SCALE_RESTORE);  // 复原
+        if (traveled_ >= PATH[step_idx_].fwd_m) {
             motion_.stop();
-            phase_ = Phase::DONE;
+            if (++step_idx_ >= PATH_N) {
+                // (2026-08-17 切换摔修复: 走完先抬平停稳0.5s再DONE,
+                //  否则Stage4 init时狗还低头+303停发→servo退出→gamepad命令轰炸→摔)
+                phase_ = Phase::SETTLE;
+                turn_settle_ = 0;
 #ifdef DEBUG_STAGE
-            fprintf(stderr, "[S3Stage] 巡线%.1fm完成, 复原破限, DONE\n", traveled_);
-            fflush(stderr);
+                fprintf(stderr, "[S3Stage] 全部%d步完成, 收尾抬平停稳\n", PATH_N);
+                fflush(stderr);
 #endif
+            } else {
+                target_yaw_ = norm_yaw(target_yaw_ + PATH[step_idx_].turn_deg * M_PI / 180.0f);
+                turn_settle_ = 0;
+                phase_ = Phase::TURN;
+#ifdef DEBUG_STAGE
+                fprintf(stderr, "[S3Stage] 第%d步: %s转%.0f°前%.1fm\n",
+                        step_idx_ + 1,
+                        PATH[step_idx_].turn_deg >= 0 ? "左" : "右",
+                        std::abs(PATH[step_idx_].turn_deg), PATH[step_idx_].fwd_m);
+                fflush(stderr);
+#endif
+            }
             return;
         }
 
-        // 视觉回中 + 微分预测 + 丢线保持 (2026-08-13): offset>0(车偏左)→右转(负yaw)
-        //   微分项: 偏移在增大就提前加大转向, 没矫正过来冲出去也缓一缓
-        //   丢线保持: 赛道出画面后按最后方向继续转(衰减), 把赛道拉回画面 (低头视角关键!)
-        float yaw_cmd = 0.0f;
-        float d_off = 0.0f;
-        if (sensor_.lane_valid) {
-            float off = sensor_.lane_offset;
-            d_off = (off - last_offset_) * 100.0f;   // 100Hz差分≈变化速率
-            last_offset_ = off;
-            float kd_term = std::max(-KD_LIM, std::min(KD_LIM, KD_VIS * d_off));
-            // 曲率前馈: curv>0=右弯→负yaw右转, 弯道在远处就提前打方向
-            yaw_cmd = std::max(-YAW_LIM, std::min(YAW_LIM,
-                                -KP_VIS * off - kd_term - KC_CURV * sensor_.lane_curvature));
-            last_yaw_ = yaw_cmd;
-        } else {
-            // 丢线: 保持最后转向并逐帧衰减(~1.5s衰减完), 把赛道拉回画面
-            last_yaw_ *= 0.85f;
-            if (std::abs(last_yaw_) < 0.03f) last_yaw_ = 0.0f;
-            yaw_cmd = last_yaw_;
-            last_offset_ = 0.0f;
-        }
-        motion_.set_walk_velocity_pitch(WALK_V, 0.0f, yaw_cmd, PITCH);
+        // 前进 + 航向锁(锁本步目标航向) + 侧向漂移闭环
+        // (2026-08-17 去掉漂移率前馈: VIO yaw抖±2°被前馈×1.5放大 → 长直线左右摆)
+        // (2026-08-18 死区 0.03→0.015: 长距离前进(1.8m)实测漂2.3°, 收紧多修正)
+        float yaw_err = norm_yaw(target_yaw_ - sensor_.abs_yaw);
+        if (std::abs(yaw_err) < 0.015f) yaw_err = 0.0f;
+        const float yaw_cmd = std::max(-0.5f, std::min(0.5f, yaw_err * 0.8f));
+        // 侧向漂移闭环: 偏离本步直线越远 → 横向速度拉回
+        const float dev_lat = (sensor_.odom_x - step_start_x_) * (-step_sin_) +
+                              (sensor_.odom_y - step_start_y_) * step_cos_;
+        const float vy_lock = std::max(-0.15f, std::min(0.15f, -dev_lat * 0.6f));
+        motion_.set_walk_velocity_pitch(WALK_V, vy_lock, yaw_cmd, PITCH_S3);
 #ifdef DEBUG_SENSOR
         static int dbg2_ = 0;
         if (++dbg2_ % 10 == 0) {
-            fprintf(stderr, "[S3S] %.1f/%.1fm pitch_map=%.1f° off=%.2f curv=%.1f d=%.2f valid=%d yaw=%.2f\n",
-                    traveled_, FWD_DIST, sensor_.pitch_map * 180.0f / M_PI,
-                    sensor_.lane_offset, sensor_.lane_curvature, d_off,
-                    (int)sensor_.lane_valid, yaw_cmd);
+            fprintf(stderr, "[S3S] 第%d步 %.2f/%.2fm absYaw=%.2f yaw=%.2f\n",
+                    step_idx_ + 1, traveled_, PATH[step_idx_].fwd_m,
+                    sensor_.abs_yaw, yaw_cmd);
             fflush(stderr);
         }
 #endif
         return;
+    }
+
+    if (phase_ == Phase::SETTLE) {
+        // 303静止抬平 (2026-08-17: 保持伺服模式不丢, 身体回正, 再DONE)
+        motion_.set_walk_velocity_pitch(0.0f, 0.0f, 0.0f, 0.0f);
+        if (++turn_settle_ >= 50) {
+            phase_ = Phase::DONE;
+            done_ = true;
+#ifdef DEBUG_STAGE
+            fprintf(stderr, "[S3Stage] 收尾完成, DONE\n");
+            fflush(stderr);
+#endif
+        }
     }
 
     if (phase_ == Phase::DONE) done_ = true;

@@ -114,8 +114,8 @@ set(SOURCES
   src/stages/real/stage1_real.cpp
   src/stages/real/stage2_real.cpp
   src/stages/real/stage3_real.cpp
-  # src/stages/real/stage4_real.cpp
-  # src/stages/real/stage5_real.cpp
+  src/stages/real/stage4_real.cpp
+  src/stages/real/stage5_real.cpp
   # src/stages/real/stage6_real.cpp
 )
 

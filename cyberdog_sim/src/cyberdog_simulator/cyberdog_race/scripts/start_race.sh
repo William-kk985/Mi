@@ -34,13 +34,12 @@ if ss -tln 2>/dev/null | grep -q ':8080 '; then
     sleep 1
 fi
 
-# ── 2. 启动 RGB 推流: center 相机 (2026-08-14) ──
-# bottom 相机(camera_server)位置不好, 换 center 模组 ov9782 双目视角
+# ── 2. 启动 RGB 推流: gc02m1 彩色相机 (2026-08-14 定稿) ──
 #   通过官方 camera_api 桥接节点 center_cam 发布 /image_center
-#   cam_id: 2=centerleft左眼 3=centerright右眼
-#   实测: BGR+sync=true+640x480 ≈17fps 稳定
-CENTER_CAM_ID=0         # 0=ov13b10 13MP普通RGB (2026-08-14: 2/3是鱼眼已否决)
-CENTER_SYNC=false      # ov13b10 不支持sync模式
+#   cam_id=1: gc02m1(bottomright) 低饱和彩色, 即网络资料所述"独立1MP RGB鼻区相机"
+#   实测: sync=true/false 均30fps; 1280x960/1600x1200/1280x720 全支持
+CENTER_CAM_ID=1         # 1=gc02m1 2MP彩色 (ov13b10=0已弃用: 视角差)
+CENTER_SYNC=false      # gc02m1 两种sync均出图, false最稳
 CENTER_W=1280
 CENTER_H=960
 echo "🔴 启动 center 相机 (cam_id=${CENTER_CAM_ID} ${CENTER_W}x${CENTER_H})..."
@@ -135,10 +134,26 @@ sleep 1
     done
 ) &
 
+# ── 3.5 本地python推理服务 (2026-08-17): 可乐/足球ONNX新opset,
+#    C++侧OpenCV4.1.1加载不了 → 由NX本地python(4.12)推理, unix socket回填 ──
+if pgrep -f "s4_detect_server.py" > /dev/null 2>&1; then
+    echo "🧠 本地推理服务已在运行"
+else
+    nohup python3 /SDCARD/race_ws/src/cyberdog_race/scripts/s4_detect_server.py \
+        > /tmp/s4_detect.log 2>&1 &
+    sleep 6   # 等模型加载 (28MB×2)
+    if pgrep -f "s4_detect_server.py" > /dev/null 2>&1; then
+        echo "🧠 本地推理服务已启动 (日志 /tmp/s4_detect.log)"
+        tail -3 /tmp/s4_detect.log
+    else
+        echo "⚠️ 本地推理服务启动失败, 见 /tmp/s4_detect.log"
+    fi
+fi
+
 # ── 4. 启动比赛 ──
 echo "🚀 启动比赛 (Stage1: 前进6m 巡线 + IMU 90°转弯)"
 echo "   狗将自动站起开始! 请保持场地空旷"
 echo "   Web 可视化: http://192.168.44.1:8080 (有线) 或 http://10.179.102.181:8080 (WiFi)"
 echo "   (同一真实画面+巡线标注)"
 echo ""
-exec taskset -c 4,5 /SDCARD/race_ws/install/lib/cyberdog_race/race_controller --ros-args -r __ns:=${NS}
+exec taskset -c 4,5 /SDCARD/race_ws/install/lib/cyberdog_race/race_controller --ros-args -r __ns:=${NS} 2>&1 | tee /tmp/race_run.log

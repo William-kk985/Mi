@@ -150,6 +150,27 @@ void MotionCtrl::attach_yaml_pub(rclcpp::Publisher<cyberdog_msg::msg::YamlParam>
     yaml_pub_ = pub;
 }
 
+void MotionCtrl::attach_tts_pub(rclcpp::Node* node) {
+    tts_pub_ = node->create_publisher<protocol::msg::AudioPlayExtend>(
+        "speech_play_extend", rclcpp::QoS(10));
+    RCLCPP_INFO(node->get_logger(), "[MotionCtrl] speech_play_extend 发布器已挂载");
+}
+#endif  // REAL_DOG
+
+void MotionCtrl::speak(const std::string& text) {
+#ifdef REAL_DOG
+    if (!tts_pub_) return;
+    protocol::msg::AudioPlayExtend msg;
+    msg.module_name = "cyberdog_race";
+    msg.is_online = true;
+    msg.text = text;
+    tts_pub_->publish(msg);
+#else
+    (void)text;
+#endif
+}
+
+#ifdef REAL_DOG
 // ── 下发身躯参数（des_roll_pitch_height） ──
 // ⚠ 赛段机制：真机走路时 roll/pitch/身高 靠 yaml_parameter 参数保持（非伺服命令，不会被 303 冲掉）
 //   与 race_controller apply_stage_params 同款：kind=3, vecxd_value=[roll, pitch, height]
@@ -547,6 +568,24 @@ void MotionCtrl::lie_down() {
 #endif
 }
 void MotionCtrl::recovery()   { gpad_.b = 1; pub_gamepad(); gpad_.b = 0; }
+
+void MotionCtrl::select_gait(ServoGait gait) {
+    (void)gait;
+    locomotion();
+}
+
+bool MotionCtrl::gait_ready() const {
+#ifdef REAL_DOG
+    return static_cast<bool>(motion_servo_pub_);
+#else
+    return true;
+#endif
+}
+
+bool MotionCtrl::servo_fault() const {
+    // No servo-status subscription exists in MotionCtrl yet.
+    return false;
+}
 
 void MotionCtrl::stop() {
     gpad_.y                   = 1;

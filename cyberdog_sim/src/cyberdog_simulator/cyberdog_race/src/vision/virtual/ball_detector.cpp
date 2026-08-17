@@ -21,7 +21,10 @@ BallResult BallDetector::find_ball(const cv::Mat& frame,
     cv::cvtColor(frame, hsv, cv::COLOR_BGR2HSV);
     cv::inRange(hsv, low, high, mask);
 
-    cv::erode(mask,  mask, cv::Mat(), cv::Point(-1,-1), 2);
+    // (2026-08-15): 近球反光高光洞大, 先闭运算补洞再轻腐蚀(2→1), 防近球被拆碎
+    cv::morphologyEx(mask, mask, cv::MORPH_CLOSE,
+                     cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(9, 9)));
+    cv::erode(mask,  mask, cv::Mat(), cv::Point(-1,-1), 1);
     cv::dilate(mask, mask, cv::Mat(), cv::Point(-1,-1), 2);
 
     std::vector<std::vector<cv::Point>> contours;
@@ -47,9 +50,13 @@ BallResult BallDetector::find_ball(const cv::Mat& frame,
             double area = cv::contourArea(contours[i]);
             if (area < 100) continue;
             // ★ 圆度过滤 (2026-08-14): 黄线/横线是长条, 圆度低→滤掉防误检
+            //   (2026-08-15): 近球占画面大时轮廓被裁/高光洞→圆度崩, 放宽到0.30;
+            //   长条黄线圆度~0.05-0.2 仍会被滤掉, 不会误检
+            const double ratio = area / (double)(frame.cols * frame.rows);
+            const double min_circ = ratio > 0.10f ? 0.30f : 0.55f;
             double perimeter = cv::arcLength(contours[i], true);
             double circularity = 4 * M_PI * area / (perimeter * perimeter);
-            if (circularity < 0.55f) continue;
+            if (circularity < min_circ) continue;
             if (area > max_area) { max_area = area; max_idx = i; }
         }
         if (max_area < 100) return result;

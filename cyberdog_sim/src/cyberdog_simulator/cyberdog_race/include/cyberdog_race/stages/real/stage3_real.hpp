@@ -1,11 +1,10 @@
 #pragma once
 #include "cyberdog_race/stages/stage_base.hpp"
 
-/// 赛段真机版 — 第3赛段: 低头 + 视觉巡线 (2026-08-13 正式形态)
-/// 低头: 破限(x_effect_scale_pos=+30) + 303 rpy_des[1]=pitch 前进低头 (test17已验证)
-///   ⚠ 破限只在 vx>0 时生效 → 巡线持续前进
-/// 巡线: lane_offset(>0=车偏左) → yaw_cmd=-KP*offset 回中; 丢线→直行
-/// 测试形态(TEST_HOLD=true): 201原地低头不动, 调视觉用
+/// 赛段真机版 — 第3赛段: 写死路径 (2026-08-15 用户指定)
+/// 路径(相对转向+前进): 右转30°前0.3m → 右转50°前0.2m → 右转10°前2m
+///                      → 左转50°前0.3m → 左转30°前0.8m
+/// 转向: abs_yaw 闭环(右转=负); 前进: odom 距离 + 航向锁
 class Stage3Real : public StageBase {
 public:
     using StageBase::StageBase;
@@ -14,14 +13,21 @@ public:
     [[nodiscard]] bool is_done() override { return done_; }
 
 private:
-    enum class Phase { WAIT_READY, LANE_FOLLOW, DONE };
+    // SETTLE: (2026-08-17) 走完收尾——303静止抬平0.5s再DONE, 防Stage3→4切换摔
+    enum class Phase { WAIT_READY, TURN, FWD, SETTLE, DONE };
 
     Phase phase_{Phase::WAIT_READY};
     bool  done_{false};
-    bool  loc_ready_{false};   // 定位就绪 (spin后才有数据, 同Stage1)
-    int   pitch_hold_{0};      // 201低头发布计数 (测试形态用)
+    int   step_idx_{0};       // 当前路径步 0~4
+    float target_yaw_{0.0f};  // 本步转向目标(绝对)
+    int   turn_settle_{0};    // 转到位停稳帧数
     float last_x_{0.0f}, last_y_{0.0f};
-    float traveled_{0.0f};     // 巡线累计位移
-    float last_offset_{0.0f};  // 上帧 lane_offset (2026-08-13 微分预测项)
-    float last_yaw_{0.0f};     // 丢线保持的最后转向 (2026-08-13 赛道出画面时继续转拉回)
+    float traveled_{0.0f};    // 本步前进累计
+
+    // ── 矫正项 (2026-08-16 与 Stage2 对齐) ──
+    int   turn_guard_{0};                 // 停稳复核补转计数(最多60帧)
+    float drift_rate_{0.0f};              // yaw 漂移率前馈低通(rad/s)
+    float last_yaw_err_{0.0f};            // 上帧航向误差(算漂移率)
+    float step_start_x_{0.0f}, step_start_y_{0.0f};  // 本前进步起点(odom)
+    float step_cos_{1.0f}, step_sin_{0.0f};          // 本前进步朝向(航向锁目标)
 };

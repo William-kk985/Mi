@@ -6,6 +6,7 @@ struct LaneResult {
     float yaw{0.0f};
     float curvature{0.0f};
     float lane_width{0.0f};
+    float line_x{0.0f};   // (2026-08-17 伙伴新版race_controller用: 单线近端x 归一化[-1,1])
     bool  valid{false};
     bool  both_sides{false};
 };

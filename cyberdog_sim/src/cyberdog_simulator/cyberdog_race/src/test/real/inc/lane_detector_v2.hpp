@@ -6,6 +6,7 @@ struct LaneResult {
     float yaw{0.0f};
     float curvature{0.0f};
     float lane_width{0.0f};
+    float line_x{0.0f};   // 单线近端x位置(归一化[-1,1], 仅单线时有效) (2026-08-14)
     bool  valid{false};
     bool  both_sides{false};
 };
@@ -62,7 +63,7 @@ private:
     void scan_edges(const cv::Mat& binary,
                     std::vector<cv::Point>& left,
                     std::vector<cv::Point>& right);
-    void scan_stage3_tracks(const cv::Mat& binary,
+    void scan_stage3_tracks(const cv::Mat& binary, const cv::Mat& frame,
                             std::vector<cv::Point>& left,
                             std::vector<cv::Point>& right);
     void filter_lateral(std::vector<cv::Point>& pts);

@@ -27,4 +27,6 @@ private:
     float last_yaw_{0.0f};     // 丢线保持的最后转向 (赛道出画面时继续转拉回)
     float filtered_d_offset_{0.0f};  // 逐帧偏差变化低通 (伙伴版阻尼)
     int   lost_frames_{0};           // 连续丢线帧数 (伙伴版搜索状态机)
+    bool  single_locked_{false};     // 单线模式: 已锁线位置 (2026-08-14 沿线趋势走)
+    float lock_line_x_{0.0f};        // 锁定的线横向位置(归一化) (2026-08-14)
 };
