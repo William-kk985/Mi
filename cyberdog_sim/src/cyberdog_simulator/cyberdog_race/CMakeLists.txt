@@ -116,7 +116,7 @@ set(SOURCES
   src/stages/real/stage3_real.cpp
   src/stages/real/stage4_real.cpp
   src/stages/real/stage5_real.cpp
-  # src/stages/real/stage6_real.cpp
+  src/stages/real/stage6_real.cpp
 )
 
 # ── 真机赛段测试替换（追加到 SOURCES） ──

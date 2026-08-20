@@ -25,24 +25,33 @@ import numpy as np
 import cv2
 import onnxruntime as ort
 
-BASE = "/SDCARD/Mi/cyberdog_sim/src/cyberdog_simulator/cyberdog_race/models"
+BASE = "/SDCARD/race_ws/src/cyberdog_race/models"
 SOCK_PATH = "/tmp/s4_detect.sock"
 INPUT = 640
 FOCAL = 402.0
 
-# name: (model_path, conf, nms, real_size_m, target_class_id)  cls=-1=取最大类(多类模型类别索引未知时)
+# name: (model_path, conf, nms, real_size_m, target_class_id)
+# (2026-08-20 伙伴新模型, 文件名与训练内容相反已纠正:
+#   cola.onnx  = 原 soccer2, 单类 c=可乐, cls=0, conf=0.80
+#   soccer.onnx = 原 cola2, 双类, 类1 ball=足球, cls=1, conf=0.70
+#  阈值按视频分数分布: 可乐真命中0.9+/误检≤0.78; 足球真命中0.95+/误检≤0.67)
 MODELS = {
-    "coke": (os.path.join(BASE, "cola.onnx"),   0.45, 0.45, 0.30, 0),
-    "fb":   (os.path.join(BASE, "soccer.onnx"), 0.45, 0.45, 0.22, -1),
+    "coke": (os.path.join(BASE, "cola.onnx"),   0.80, 0.45, 0.30, 0),
+    "fb":   (os.path.join(BASE, "soccer.onnx"), 0.70, 0.45, 0.22, 1),
 }
 
 
 def yolo(sess, img_bgr, conf, nms, cls, real):
-    """onnxruntime 推理; 返回 (cx, dist, conf, x, y, w, h) 或 None"""
+    """onnxruntime 推理; letterbox 640 输入(与训练一致); 返回 (cx, dist, conf, x, y, w, h) 或 None"""
     H, W = img_bgr.shape[:2]
     rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-    blob = cv2.resize(rgb, (INPUT, INPUT))
-    blob = blob.transpose(2, 0, 1).astype(np.float32) / 255.0
+    r = INPUT / max(H, W)
+    nh, nw = int(round(H * r)), int(round(W * r))
+    img2 = cv2.resize(rgb, (nw, nh))
+    canvas = np.full((INPUT, INPUT, 3), 114, np.uint8)
+    pad_x, pad_y = (INPUT - nw) // 2, (INPUT - nh) // 2
+    canvas[pad_y:pad_y + nh, pad_x:pad_x + nw] = img2
+    blob = canvas.transpose(2, 0, 1).astype(np.float32) / 255.0
     blob = blob[None, ...]
     out = sess.run(None, {sess.get_inputs()[0].name: blob})[0]
 
@@ -58,7 +67,6 @@ def yolo(sess, img_bgr, conf, nms, cls, real):
 
     has_obj = det.shape[1] >= 6
     off = 5 if has_obj else 4
-    sx, sy = W / INPUT, H / INPUT
 
     boxes, confs = [], []
     for row in det:
@@ -68,7 +76,11 @@ def yolo(sess, img_bgr, conf, nms, cls, real):
         max_score = float(scores[max_id])
         if (cls >= 0 and max_id != cls) or max_score < conf:
             continue
-        cx, cy, w, h = row[0] * sx, row[1] * sy, row[2] * sx, row[3] * sy
+        # (2026-08-20 修复: 模型输出是640画布像素坐标, letterbox后需减pad再除以缩放)
+        cx = (row[0] - pad_x) / r
+        cy = (row[1] - pad_y) / r
+        w = row[2] / r
+        h = row[3] / r
         boxes.append([int(cx - w / 2), int(cy - h / 2), int(w), int(h)])
         confs.append(max_score)
 

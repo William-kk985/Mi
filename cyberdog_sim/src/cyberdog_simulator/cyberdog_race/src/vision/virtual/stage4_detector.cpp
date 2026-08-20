@@ -126,11 +126,10 @@ bool Stage4Detector::is_orange(const cv::Mat& hsv,
 Stage4Detector::CircleResult Stage4Detector::find_limbar(const cv::Mat& hsv) {
     CircleResult result;
     cv::Mat mask_red_low, mask_red_high, mask;
-    // (2026-08-20 用户框选定稿: H[0,8]∪[160,180] S[25,120] V[55,160];
-    //  实测杆 H中位175/S中位76/V中位79 暗紫红低饱和, S上限排掉高饱和红色干扰物)
-    cv::inRange(hsv, cv::Scalar(0, 25, 55), cv::Scalar(8, 120, 160), mask_red_low);
-    cv::inRange(hsv, cv::Scalar(160, 25, 55), cv::Scalar(180, 120, 160), mask_red_high);
-    cv::bitwise_or(mask_red_low, mask_red_high, mask);
+    // (2026-08-20 官方赛场贴边定稿: H主峰178-179 S中位143 V中位198亮红;
+    //  去V上限(176会漏75%亮红杆); 去H低段[0,5]→橙球(H中位10 p5=0)深红边缘被误判限高杆)
+    cv::inRange(hsv, cv::Scalar(160, 25, 55), cv::Scalar(180, 185, 255), mask_red_low);
+    cv::bitwise_or(mask_red_low, mask_red_low, mask);
     cv::morphologyEx(mask, mask, cv::MORPH_CLOSE,
                      cv::getStructuringElement(cv::MORPH_RECT, cv::Size(31, 9)));
     cv::erode(mask,  mask, cv::Mat(), cv::Point(-1,-1), 1);
@@ -213,8 +212,9 @@ Stage4Detector::CircleResult Stage4Detector::find_limbar(const cv::Mat& hsv) {
 Stage4Detector::CircleResult Stage4Detector::find_coke(const cv::Mat& hsv) {
     CircleResult result;
     cv::Mat mask;
-    // (2026-08-20 用户框选定稿: V<85 S<45; 原V<70漏瓶身中位72, 加S上限排蓝色背景)
-    cv::inRange(hsv, cv::Scalar(0, 0, 0), cv::Scalar(180, 45, 85), mask);
+    // (2026-08-20 用户贴边框选定稿: 可乐本体 H中位103/S中位37/V中位75 蓝黑瓶身;
+    //  H[95,115] S[20,60] V[55,190], 之前按'黑色'抓全错)
+    cv::inRange(hsv, cv::Scalar(95, 20, 55), cv::Scalar(115, 60, 190), mask);
     cv::erode(mask,  mask, cv::Mat(), cv::Point(-1,-1), 2);
     cv::dilate(mask, mask, cv::Mat(), cv::Point(-1,-1), 2);
 
@@ -231,14 +231,14 @@ Stage4Detector::CircleResult Stage4Detector::find_coke(const cv::Mat& hsv) {
     if (max_area < 500) return result;  // 面积过滤
 
     cv::Rect bbox = cv::boundingRect(contours[max_idx]);
-    // (2026-08-20 用户: 加形状限制防海报/阴影误报)
-    //   立着的类长方体: 高宽比≥1.8 (原1.2太松, 海报深色竖条全过)
-    if (bbox.height < bbox.width * 1.8f) return result;
-    //   宽度15~150px (排除窄阴影条/过宽色块)
-    if (bbox.width < 15 || bbox.width > 150) return result;
-    //   外接矩形填充率≥0.45 (排除不规则阴影)
+    // (2026-08-20 用户贴边定稿: 可乐178x358 高宽比2.0; 放宽防后段变大丢失)
+    //   高宽比≥1.5
+    if (bbox.height < bbox.width * 1.5f) return result;
+    //   宽度30~350px (后段走近可乐轮廓宽超300)
+    if (bbox.width < 30 || bbox.width > 350) return result;
+    //   外接矩形填充率≥0.40
     const double fill = max_area / (static_cast<double>(bbox.width) * bbox.height);
-    if (fill < 0.45) return result;
+    if (fill < 0.40) return result;
 
     result.found = true;
     result.cx    = (bbox.x + bbox.width/2.0f - hsv.cols/2.0f) / (hsv.cols/2.0f);
@@ -252,8 +252,9 @@ Stage4Detector::CircleResult Stage4Detector::find_coke(const cv::Mat& hsv) {
 Stage4Detector::CircleResult Stage4Detector::find_football(const cv::Mat& hsv) {
     CircleResult result;
     cv::Mat mask;
-    // (2026-08-20 用户框选定稿: V>140 S<30; 原V>160漏球面中位159, S<60太宽抓灰地面反光)
-    cv::inRange(hsv, cv::Scalar(0, 0, 140), cv::Scalar(180, 30, 255), mask);
+    // (2026-08-20 用户贴边框选: 足球白+蓝花纹 白区S中位9/V254, 蓝纹S p95=54;
+    //  S上限30→60覆盖蓝纹防轮廓碎; V>140保持)
+    cv::inRange(hsv, cv::Scalar(0, 0, 140), cv::Scalar(180, 60, 255), mask);
     cv::erode(mask,  mask, cv::Mat(), cv::Point(-1,-1), 2);
     cv::dilate(mask, mask, cv::Mat(), cv::Point(-1,-1), 2);
 
@@ -267,13 +268,14 @@ Stage4Detector::CircleResult Stage4Detector::find_football(const cv::Mat& hsv) {
         // 圆度检测，过滤墙壁等非圆形白色区域
         double perimeter = cv::arcLength(c, true);
         double circularity = 4 * M_PI * area / (perimeter * perimeter);
-        if (circularity < 0.7f) continue;  // 不够圆跳过
+        if (circularity < 0.6f) continue;  // (2026-08-20 0.7→0.6: 手机视频足球+白网连体圆度0.65)
 
         cv::Point2f center;
         float radius;
         cv::minEnclosingCircle(c, center, radius);
 
         // (2026-08-18 黑白相间: 圆内黑色(V<90)像素比例>4% → 黑白球体, 过滤纯白墙/板)
+        // (2026-08-20 4%→1.5%: 亮光场景黑花纹被冲淡, 实测0.013)
         cv::Mat black_mask;
         cv::inRange(hsv, cv::Scalar(0, 0, 0), cv::Scalar(180, 255, 90), black_mask);
         cv::Mat circ = cv::Mat::zeros(hsv.size(), CV_8UC1);
@@ -282,7 +284,7 @@ Stage4Detector::CircleResult Stage4Detector::find_football(const cv::Mat& hsv) {
         cv::bitwise_and(black_mask, circ, black_in_circ);
         const double black_cnt = cv::countNonZero(black_in_circ);
         const double circ_px = CV_PI * (radius * 0.85f) * (radius * 0.85f);
-        if (circ_px > 1.0 && black_cnt / circ_px < 0.04) continue;
+        if (circ_px > 1.0 && black_cnt / circ_px < 0.015) continue;
 
         float r = std::sqrt(static_cast<float>(area) / M_PI);
 
@@ -296,11 +298,12 @@ Stage4Detector::CircleResult Stage4Detector::find_football(const cv::Mat& hsv) {
 }
 
 // 障碍物：淡蓝色方块（圆度低）
-// (2026-08-18 用户: 蓝色块是淡蓝色→S≥40仍判不过→S≥25; V 60→70 淡蓝偏亮)
+// (2026-08-20 官方赛场二次贴边定稿: H中位101(p5=100~p95=102) S中位173(p5=138) V中位254(p5=216)
+//  高饱和亮蓝; 收紧 H[99,106] S[135,200] V[200,255])
 Stage4Detector::CircleResult Stage4Detector::find_obstacle(const cv::Mat& hsv) {
     CircleResult result;
     cv::Mat mask;
-    cv::inRange(hsv, cv::Scalar(95, 25, 70), cv::Scalar(125, 255, 255), mask);
+    cv::inRange(hsv, cv::Scalar(99, 135, 200), cv::Scalar(106, 200, 255), mask);
     cv::erode(mask,  mask, cv::Mat(), cv::Point(-1,-1), 2);
     cv::dilate(mask, mask, cv::Mat(), cv::Point(-1,-1), 2);
 
@@ -314,8 +317,9 @@ Stage4Detector::CircleResult Stage4Detector::find_obstacle(const cv::Mat& hsv) {
         double area = cv::contourArea(c);
         if (area < 500) continue;
         cv::Rect bbox = cv::boundingRect(c);
-        // (2026-08-20 视频验证: 墙上海报/招牌全被误判, 障碍物在地面→只认画面中下部)
-        if (bbox.y < hsv.rows * 0.30f) continue;
+        // (2026-08-20 视频验证: 墙上海报/招牌误报→只认地面上的障碍物)
+        // (2026-08-20 修复: 用轮廓中心y判断, 大障碍物顶部超过0.30线也会被顶点判断误杀)
+        if ((bbox.y + bbox.height / 2.0) < hsv.rows * 0.30f) continue;
         if (bbox.width < hsv.cols * 0.08f || bbox.height < hsv.rows * 0.08f) continue;
         double perimeter = cv::arcLength(c, true);
         double circularity = 4 * M_PI * area / (perimeter * perimeter);

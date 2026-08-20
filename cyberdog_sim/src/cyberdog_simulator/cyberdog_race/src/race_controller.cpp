@@ -170,13 +170,13 @@ RaceController::RaceController() : Node("race_controller") {
 #endif
     // Stage4 真机识别目标后通过官方 TTS 播报 (2026-08-16 伙伴逻辑接入)
     motion_.attach_tts_pub(this);
-    // Stage4 多目标检测模型；真机路径与 /SDCARD/Mi 部署目录一致 (模型未部署则回退颜色检测)
+    // Stage4 多目标检测模型；真机路径与 /SDCARD/race_ws 工作区一致 (模型未部署则回退颜色检测)
 #ifdef REAL_DOG
     if (cur_stage_ >= 3) {   // (2026-08-17 修复123趴下: 28MB×2的ONNX解析很慢, 123模式启动时无条件加载把启动/主循环拖死)
         stage4_detector_.set_coke_model(
-            "/SDCARD/Mi/cyberdog_sim/src/cyberdog_simulator/cyberdog_race/models/cola.onnx", 0);
+            "/SDCARD/race_ws/src/cyberdog_race/models/cola.onnx", 0);
         stage4_detector_.set_football_model(
-            "/SDCARD/Mi/cyberdog_sim/src/cyberdog_simulator/cyberdog_race/models/soccer.onnx", 1);
+            "/SDCARD/race_ws/src/cyberdog_race/models/soccer.onnx", 1);
     }
 #else
     stage4_detector_.set_coke_model("");
@@ -185,7 +185,7 @@ RaceController::RaceController() : Node("race_controller") {
 
     stages_[3] = std::make_unique<Stage4Real>(motion_, sensor_);
     stages_[4] = std::make_unique<Stage5Real>(motion_, sensor_);
-    stages_[5] = nullptr;
+    stages_[5] = std::make_unique<Stage6Real>(motion_, sensor_);   // (2026-08-20 伙伴 Stage6 实机版融合)
     if (stages_[cur_stage_]) {
         if (cur_stage_ == 3) {
             std::lock_guard<std::mutex> lock(sensor_mutex_);
@@ -452,11 +452,11 @@ void RaceController::control_loop() {
                 //  构造时模型未加载→Stage4全程HSV颜色回退不识别; 切Stage4时补加载)
                 if (!stage4_detector_.coke_model_ready()) {
                     stage4_detector_.set_coke_model(
-                        "/SDCARD/Mi/cyberdog_sim/src/cyberdog_simulator/cyberdog_race/models/cola.onnx", 0);
+                        "/SDCARD/race_ws/src/cyberdog_race/models/cola.onnx", 0);
                 }
                 if (!stage4_detector_.football_model_ready()) {
                     stage4_detector_.set_football_model(
-                        "/SDCARD/Mi/cyberdog_sim/src/cyberdog_simulator/cyberdog_race/models/soccer.onnx", 1);
+                        "/SDCARD/race_ws/src/cyberdog_race/models/soccer.onnx", 1);
                 }
                 fprintf(stderr, "[Main] Stage4模型: coke=%d football=%d\n",
                         stage4_detector_.coke_model_ready() ? 1 : 0,

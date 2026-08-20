@@ -4,13 +4,14 @@
 #include "cyberdog_race/stages/stage_base.hpp"
 
 // 动作类型 (文件级, 供 cpp 定义动作序列)
-enum class S2Kind { FWD, SLIDE_L, SLIDE_R, TURN_R90, TURN_L90, TURN_180 };
-struct S2Step { S2Kind kind; float dist; };   // TURN 步 dist 忽略
+enum class S2Kind { FWD, SLIDE_L, SLIDE_R, TURN_R90, TURN_L90, TURN_180, TURN_ABS };
+struct S2Step { S2Kind kind; float dist; };   // TURN 步 dist 忽略; TURN_ABS 用 dist=角度(度, 正=左转)
 
 /// 真机第2赛段 (2026-08-15 用户重定流程)
-/// 流程: 前进0.92 → 左移0.3 → 右转90° → 左移3 → 左移0.1回 → 转180° →
-///       前进1 → 右移0.1回 → 左移3 → 前进1 → 右移3 → 右移0.1回 →
-///       前进1 → 左移3 → 右转90° → 前进3 → DONE
+/// 每个左移/前进步出发前统一左转2° (2026-08-18 用户: 抵消越走越右偏; 3°太多/1°不转→折中2°)
+/// 流程: 前进0.95 → 左移0.3 → 右转90° → 左移2.8 → 转180° → 左移2.8 →
+///       前进1.2 → 右移2.7 → 左移0.15 → 前进1.12 → 左移2.8 → 右转90° → 左转4° → 前进3.3 →
+///       前进0.1 → 左转90° → 前进0.5 → 右转90° → 前进0.6 → DONE
 /// 移动中找正前方球撞击: 全场最多4球, 撞过的球位置防重, 撞击后原路退回
 class Stage2Real : public StageBase {
 public:
@@ -51,6 +52,8 @@ private:
     float drift_rate_{0.0f};    // 航向漂移率估计 rad/s (2026-08-16 yaw前馈, 跨步保留; 不加位置积分防SLAM放大)
     float last_yaw_err_{0.0f};  // 上一帧航向误差 (漂移率估计用)
     float fwd_integ_{0.0f};     // SLIDE步前向积分 (2026-08-16 闭环自动学习横移角偏, 平地SLAM可信)
+    float last_dev_fwd_{0.0f};      // 上一帧dev_fwd (2026-08-18 撞击后odom假跳检测: 单帧跳>0.1m沿用上帧)
+    float post_impact_guard_{0.0f}; // 撞击回点后保护剩余里程 (2026-08-18: 前0.5m内vx_lock限幅±0.05防左前冲)
 
     int   impact_lost_{0};      // 冲击中连续丢球帧数
     float impact_goal_{0.0f};   // 冲击兜底距离 = 确认球距

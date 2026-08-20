@@ -42,6 +42,7 @@
 #include "cyberdog_race/stages/real/stage3_real.hpp"  // 真机第3赛段 破限低头前进 (2026-08-12)
 #include "cyberdog_race/stages/real/stage4_real.hpp"  // 真机第4赛段 (2026-08-16 伙伴逻辑接入)
 #include "cyberdog_race/stages/real/stage5_real.hpp"  // 真机第5赛段 (2026-08-16 伙伴逻辑接入)
+#include "cyberdog_race/stages/real/stage6_real.hpp"  // 真机第6赛段 (2026-08-20 伙伴逻辑接入)
 #ifdef USE_TEST_REAL_STAGE2
 #include "stage2_real_test.hpp"  // 测试版Stage2: 旧侧移扫球逻辑 (2026-08-15 新流程启用后迁移)
 #endif

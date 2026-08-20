@@ -5,9 +5,10 @@
 
 // ═══════════════════════════════════════════════════════════
 // Stage3Real 真机版 — 第3赛段: 写死路径 (2026-08-15 用户指定, 替代视觉巡线)
-// 路径(相对转向+前进): 右转30°前0.3m → 右转50°前0.2m → 右转10°前2m
-//                      → 左转50°前0.3m → 左转30°前0.8m
+// 路径(相对转向+前进): 右转30°前0.5m → 右转50°前0.6m → 右转7°前1.8m
+//                      → 左转50°前0.8m → 左转40°前0.8m → 左转91°
 // 转向: abs_yaw 闭环(右转=负yaw); 前进: odom 距离闭环 + 航向锁
+// 踏步保护 (2026-08-18 用户): odom卡死时指令里程兜底 + 转向5s超时
 // ═══════════════════════════════════════════════════════════
 
 namespace {
@@ -16,14 +17,15 @@ struct PathStep {
     float fwd_m;      // 前进距离
 };
 constexpr PathStep PATH[] = {
+    {  0.0f, 0.6f },   // ⓿ 直行0.6m (2026-08-21 用户: Stage2最后一步前进0.6m移交Stage3当第一步)
     { -30.0f, 0.5f },   // ① 右转30° 前0.5m (2026-08-17 用户: 0.3→0.5)
-    { -60.0f, 0.4f },   // ② 右转60° 前0.4m (2026-08-17 用户: 50°→60°)
-    {   5.0f, 1.8f },   // ③ 左转5° 前1.8m (2026-08-18 用户: 长直线走之前左转5°)
+    { -50.0f, 0.6f },   // ② 右转50° 前0.6m (2026-08-18 用户: 0.4→0.6; 60°→50°少转10°)
+    {  -7.0f, 1.8f },   // ③ 右转7° 前1.8m (2026-08-18 用户: 长直线前改右转7°)
     { +50.0f, 0.8f },   // ④ 左转50° 前0.8m (2026-08-17 用户: 0.5→0.8)
     { +40.0f, 0.8f },   // ⑤ 左转40° 前0.8m (2026-08-17 用户: 30°→40°多转10°)
-    { +88.0f, 0.0f },   // ⑥ 左转88° 结束 (2026-08-17 用户追加)
+    { +91.0f, 0.0f },   // ⑥ 左转91° 结束 (2026-08-18 用户: 88°→91°)
 };
-constexpr int   PATH_N      = 6;   // (2026-08-17 5→6: 末尾加左转88°)
+constexpr int   PATH_N      = 7;   // (2026-08-21 6→7: 头部加直行0.6m衔接Stage2)
 constexpr float WALK_V      = 0.30f;   // 前进速度 m/s
 constexpr float TURN_V      = 0.50f;   // 转向速度 rad/s
 constexpr float TURN_DONE   = 0.02f;   // 转向到位误差 rad (2026-08-18 0.04→0.02: 对齐Stage2, 原2.3°太松→每步欠转1-1.4°累积角度偏)
@@ -40,6 +42,8 @@ void Stage3Real::init() {
     turn_guard_ = 0;
     drift_rate_ = 0.0f;
     last_yaw_err_ = 0.0f;
+    cmd_travel_ = 0.0f;    // (2026-08-18 踏步保护)
+    turn_total_ = 0;
     phase_     = Phase::WAIT_READY;
 
     // ── 站起 (与 Stage1 同款已验证序列) ──
@@ -53,7 +57,7 @@ void Stage3Real::init() {
     fflush(stderr);
 #endif
     RCLCPP_INFO(rclcpp::get_logger("stage3_real"),
-                "[Stage3Real] init: 写死路径 %d 步 (右30+右50+右10+左50+左30)",
+                "[Stage3Real] init: 写死路径 %d 步 (直行0.6+右30+右50+右7+左50+左40+左91)",
                 PATH_N);
 }
 
@@ -66,6 +70,7 @@ void Stage3Real::run() {
             step_idx_   = 0;
             target_yaw_ = norm_yaw(sensor_.abs_yaw + PATH[0].turn_deg * M_PI / 180.0f);
             turn_settle_ = 0;
+            turn_total_ = 0;   // (2026-08-18 踏步保护)
             phase_ = Phase::TURN;
 #ifdef DEBUG_STAGE
             fprintf(stderr, "[S3Stage] 定位就绪 absYaw=%.2f, 第1步: %s转%.0f°前%.1fm\n",
@@ -88,6 +93,25 @@ void Stage3Real::run() {
     // ── ② 路径步: 先原地转相对角, 再前进 ──
     if (phase_ == Phase::TURN) {
         const float err = norm_yaw(target_yaw_ - sensor_.abs_yaw);
+        // ── 转向超时保护 (2026-08-18 用户: 原地踏步保护): 5秒转不完强制进FWD, 防踏步死循环 ──
+        if (++turn_total_ > 500) {
+            turn_guard_ = 0;
+            step_start_x_ = last_x_ = sensor_.odom_x;
+            step_start_y_ = last_y_ = sensor_.odom_y;
+            step_cos_ = std::cos(target_yaw_);
+            step_sin_ = std::sin(target_yaw_);
+            traveled_ = 0.0f;
+            cmd_travel_ = 0.0f;
+            last_yaw_err_ = 0.0f;
+            turn_settle_ = 0;
+            phase_ = Phase::FWD;
+#ifdef DEBUG_STAGE
+            fprintf(stderr, "[S3Stage] ⚠ 第%d步转向超时5s, 强制前进 (absYaw=%.2f 目标=%.2f)\n",
+                    step_idx_ + 1, sensor_.abs_yaw, target_yaw_);
+            fflush(stderr);
+#endif
+            return;
+        }
         if (std::abs(err) < TURN_DONE) {
             motion_.set_walk_velocity_pitch(0.0f, 0.0f, 0.0f, PITCH_S3);
             if (++turn_settle_ >= TURN_SETTLE) {   // 停稳0.3s
@@ -107,6 +131,7 @@ void Stage3Real::run() {
                 step_cos_ = std::cos(target_yaw_);
                 step_sin_ = std::sin(target_yaw_);
                 traveled_ = 0.0f;
+                cmd_travel_ = 0.0f;    // (2026-08-18 踏步保护)
                 last_yaw_err_ = 0.0f;
                 phase_ = Phase::FWD;
 #ifdef DEBUG_STAGE
@@ -129,8 +154,11 @@ void Stage3Real::run() {
         last_y_ = sensor_.odom_y;
         if (moved > 0.25f) moved = 0.0f;
         traveled_ += moved;
+        // ── 原地踏步保护 (2026-08-18 用户): odom卡死/打滑时按指令里程兜底, 防一直踏步不结束 ──
+        cmd_travel_ += WALK_V * 0.01f;
+        const float eff = std::max(traveled_, cmd_travel_ - 0.20f);   // 指令领先odom>0.2m才起兜底
 
-        if (traveled_ >= PATH[step_idx_].fwd_m) {
+        if (eff >= PATH[step_idx_].fwd_m) {
             motion_.stop();
             if (++step_idx_ >= PATH_N) {
                 // (2026-08-17 切换摔修复: 走完先抬平停稳0.5s再DONE,
@@ -144,6 +172,8 @@ void Stage3Real::run() {
             } else {
                 target_yaw_ = norm_yaw(target_yaw_ + PATH[step_idx_].turn_deg * M_PI / 180.0f);
                 turn_settle_ = 0;
+                turn_total_ = 0;   // (2026-08-18 踏步保护)
+                cmd_travel_ = 0.0f;
                 phase_ = Phase::TURN;
 #ifdef DEBUG_STAGE
                 fprintf(stderr, "[S3Stage] 第%d步: %s转%.0f°前%.1fm\n",

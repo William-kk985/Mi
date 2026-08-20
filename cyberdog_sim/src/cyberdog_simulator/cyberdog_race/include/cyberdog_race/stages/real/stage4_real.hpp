@@ -40,7 +40,7 @@ private:
     // (2026-08-18 用户: 三轮起步前进 0.8m/1m/1m; 先第1轮0.8m, 第2轮1m)
     static constexpr float kFwdDist[kMaxRounds] = {0.8f, 1.0f, 1.0f};
     static constexpr float kLaneDist  = 3.5f;      // 通道单程3.5m (2026-08-18 用户: 2.8→3.5)
-    static constexpr float kLaneDistBack[kMaxRounds] = {3.0f, 2.8f, 3.5f}; // 回程按轮次 (2026-08-18 用户: 轮1回程3m 轮2回程2.8m 轮3保持3.5)
+    static constexpr float kLaneDistBack[kMaxRounds] = {3.0f, 2.6f, 3.5f}; // 回程按轮次 (2026-08-20 用户: 轮1=3.0 轮2=2.6 轮3=3.5)
 
     // 运动参数
     static constexpr float kWalkSpeed = 0.30f;
@@ -97,6 +97,8 @@ private:
         TURN_BACK,      // 掉头180°
         LANE_BACK,      // 回程2.8m：只处理限高杆
         TURN_R_OUT,     // 右转90°回 entry 朝向（进下一轮）
+        TURN_L_FINAL,   // (2026-08-20) 第3轮回程后左转90°离场
+        FWD_FINAL,      // (2026-08-20) 离场前进3m
         RECOVERING,
         DONE
     } state_{State::WAIT_FOR_SENSORS};

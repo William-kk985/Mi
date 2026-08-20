@@ -29,6 +29,8 @@ const char* Stage4Real::state_name(State s) {
         case State::TURN_BACK:        return "TURN_BACK";
         case State::LANE_BACK:        return "LANE_BACK";
         case State::TURN_R_OUT:       return "TURN_R_OUT";
+        case State::TURN_L_FINAL:     return "TURN_L_FINAL";
+        case State::FWD_FINAL:        return "FWD_FINAL";
         case State::RECOVERING:       return "RECOVERING";
         case State::DONE:             return "DONE";
     }
@@ -300,39 +302,10 @@ void Stage4Real::lane_out() {
                     sensor_.limbar_dist, sensor_.limbar_x); fflush(stderr);
 #endif
         }
-        // 可乐/足球 ≤0.8m 且未贴脸 → 撞击
-        if (sensor_.coke_found && sensor_.coke_dist > kKnockMinDist
-            && sensor_.coke_dist <= kKnockTriggerDist) {
-            if (!tts_coke_) { motion_.speak("识别到可乐瓶"); tts_coke_ = true; }
-#ifdef DEBUG_STAGE
-            fprintf(stderr, "[S4] 去程可乐 dist=%.2fm x=%.2f → 撞击\n",
-                    sensor_.coke_dist, sensor_.coke_x); fflush(stderr);
-#endif
-            knock_cx_ = sensor_.coke_x;
-            sub_state_ = 0; state_frames_ = 0;
-            state_ = State::KNOCK;
-            return;
-        }
-        if (sensor_.football_found && sensor_.football_dist > kKnockMinDist
-            && sensor_.football_dist <= kKnockTriggerDist) {
-            if (!tts_football_) { motion_.speak("识别到足球"); tts_football_ = true; }
-#ifdef DEBUG_STAGE
-            fprintf(stderr, "[S4] 去程足球 dist=%.2fm x=%.2f → 撞击\n",
-                    sensor_.football_dist, sensor_.football_x); fflush(stderr);
-#endif
-            knock_cx_ = sensor_.football_x;
-            sub_state_ = 0; state_frames_ = 0;
-            state_ = State::KNOCK;
-            return;
-        }
-        // 橙色球 (2026-08-18 用户: 识别到且距离≤1m才播报; 不撞击)
-        if (sensor_.ball_found && sensor_.ball_dist > 0.0f
-            && sensor_.ball_dist < 1.0f) {
-            if (!tts_ball_) { motion_.speak("识别到橙色球"); tts_ball_ = true; }
-        }
+        // (2026-08-18 用户: 可乐/足球/橙球只在通道末端停点识别, 走动中不识别不撞击不播报)
         // 蓝色方块 (2026-08-18 用户: 伙伴写了识别, 我们补播报; 绕行待定)
         if (sensor_.obstacle_found) {
-            if (!tts_obstacle_) { motion_.speak("识别到障碍物"); tts_obstacle_ = true; }
+            if (!tts_obstacle_) { motion_.speak("识别到不可跨越障碍物"); tts_obstacle_ = true; }
         }
     } else {
         // 视觉超时：减速慢走（不平白停死）
@@ -422,13 +395,16 @@ void Stage4Real::knock() {
 // 回程 2.8m：只处理限高杆
 // ═══════════════════════════════════════════════════════════════
 void Stage4Real::lane_back() {
-    if (travelled_since_ref_ >= kLaneDist) {
+    const float back_dist = kLaneDistBack[round_count_];   // (2026-08-18 回程按轮次: 轮1=3.0 轮2=2.6 轮3=3.5)
+    if (travelled_since_ref_ >= back_dist) {
         lane_pitch_restore();   // (2026-08-18 离开2.8m段恢复限位)
         motion_.stop();
 #ifdef DEBUG_STAGE
-        fprintf(stderr, "[S4] 回程走满%.2fm → 右转出通道\n", travelled_since_ref_); fflush(stderr);
+        fprintf(stderr, "[S4] 回程走满%.2fm → %s\n", travelled_since_ref_,
+                (round_count_ + 1 >= kMaxRounds) ? "左转离场" : "右转出通道"); fflush(stderr);
 #endif
-        state_ = State::TURN_R_OUT;
+        // (2026-08-20 用户: 第3轮回程后左转前进3m离场, 不再右转出通道)
+        state_ = (round_count_ + 1 >= kMaxRounds) ? State::TURN_L_FINAL : State::TURN_R_OUT;
         sub_state_ = 0; state_frames_ = 0;
         return;
     }
@@ -444,20 +420,16 @@ void Stage4Real::lane_back() {
                 sensor_.limbar_dist, sensor_.limbar_x); fflush(stderr);
 #endif
     }
-    // 回程也播报橙色球 (2026-08-18 用户: 距离≤1m才播报)
-    if (age <= kVisionTimeout && sensor_.ball_found
-        && sensor_.ball_dist > 0.0f && sensor_.ball_dist < 1.0f) {
-        if (!tts_ball_) { motion_.speak("识别到橙色球"); tts_ball_ = true; }
-    }
+    // (2026-08-18 用户: 橙球只在停点识别, 回程走动中不播报)
     // 回程蓝色方块播报 (2026-08-18)
     if (age <= kVisionTimeout && sensor_.obstacle_found) {
-        if (!tts_obstacle_) { motion_.speak("识别到障碍物"); tts_obstacle_ = true; }
+        if (!tts_obstacle_) { motion_.speak("识别到不可跨越障碍物"); tts_obstacle_ = true; }
     }
     if (age > kVisionTimeout) {
-        walk_low(kLaneDist, back_yaw_, kLowSpeed);
+        walk_low(back_dist, back_yaw_, kLowSpeed);
         return;
     }
-    walk_low(kLaneDist, back_yaw_, kWalkSpeed);
+    walk_low(back_dist, back_yaw_, kWalkSpeed);
 }
 
 // ═══════════════════════════════════════════════════════════════// 识别停点 (2026-08-17 用户: 静止5秒播报可乐/足球/橙球, 再走完剩余0.3m)
@@ -627,6 +599,26 @@ void Stage4Real::run() {
                 tts_limbar_ = tts_coke_ = tts_football_ = tts_ball_ = tts_obstacle_ = false;
                 scan_done_out_ = false;   // (2026-08-18 回程停点已删, 只去程停)
                 state_ = State::FWD_1M;
+            }
+            return;
+        }
+        case State::TURN_L_FINAL: {   // (2026-08-20 第3轮回程后: 左转90°离场)
+            if (turn_to_yaw(norm_yaw(back_yaw_ + 1.5708f))) {
+                ref_x_ = last_odom_x_ = sensor_.odom_x;
+                ref_y_ = last_odom_y_ = sensor_.odom_y;
+                travelled_since_ref_ = 0.0f;
+                state_frames_ = 0; sub_state_ = 0;
+                state_ = State::FWD_FINAL;
+#ifdef DEBUG_STAGE
+                fprintf(stderr, "[S4] 左转完成, 离场前进3m\n"); fflush(stderr);
+#endif
+            }
+            return;
+        }
+        case State::FWD_FINAL: {   // (2026-08-20 离场前进3m → DONE)
+            if (walk_distance(3.0f, norm_yaw(back_yaw_ + 1.5708f), kWalkSpeed)) {
+                motion_.stop();
+                finish();
             }
             return;
         }

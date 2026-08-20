@@ -12,7 +12,7 @@
 
 namespace {
 
-constexpr float STEP_H        = 0.35f;   // 步高 0.35 (2026-08-18 0.30→0.35: 用户要求步高再提高)
+constexpr float STEP_H        = 0.17f;   // 步高 0.17 (2026-08-20 0.35→0.17: 真机通道换 LCM set_step_height, README建议0.10~0.15, 0.20会不稳; 0.17试跑)
 constexpr float WALK_V        = 0.18f;   // 正常前进速度 m/s (2026-08-18 0.20→0.18: 用户要求速度减慢)
 constexpr float RUSH_V        = 0.40f;   // 卡住冲刺速度 (2026-08-20 0.45→0.40 冲刺柔和化)
 constexpr float BONUS_SWING   = 0.06f;   // 步幅增益 cmpc_bonus_swing 默认0.05 (2026-08-18 0.10→0.06: 用户要求步幅大减弱)
@@ -59,7 +59,10 @@ void Stage1Real::init() {
     fflush(stderr);
 #endif
 
-    motion_.set_walk_velocity_step(0.0f, 0.0f, 0.0f, STEP_H);  // 预热原地踏步(步高0.17)
+    motion_.set_walk_velocity_step(0.0f, 0.0f, 0.0f, STEP_H);  // 预热原地踏步
+    // ★ 真机步高正确通道 (2026-08-20): motion_servo_cmd.step_height 真机忽略!
+    //   必须走 LCM robot_control_cmd(7671) set_step_height(打包毫米, 起步前设一次)
+    motion_.set_step_height(STEP_H, STEP_H);
     motion_.set_body_pitch(-0.10f);                          // 201正值=低头 → -0.10=轻微抬头 (2026-08-14上机确认)
 
     // ── 一步走远点 (2026-08-14) ──

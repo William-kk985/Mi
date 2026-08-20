@@ -2,9 +2,10 @@
 #include "cyberdog_race/stages/stage_base.hpp"
 
 /// 赛段真机版 — 第3赛段: 写死路径 (2026-08-15 用户指定)
-/// 路径(相对转向+前进): 右转30°前0.3m → 右转50°前0.2m → 右转10°前2m
-///                      → 左转50°前0.3m → 左转30°前0.8m
+/// 路径(相对转向+前进): 右转30°前0.5m → 右转50°前0.6m → 右转7°前1.8m
+///                      → 左转50°前0.8m → 左转40°前0.8m → 左转91°
 /// 转向: abs_yaw 闭环(右转=负); 前进: odom 距离 + 航向锁
+/// 踏步保护 (2026-08-18): odom卡死时指令里程兜底 + 转向5s超时
 class Stage3Real : public StageBase {
 public:
     using StageBase::StageBase;
@@ -23,6 +24,8 @@ private:
     int   turn_settle_{0};    // 转到位停稳帧数
     float last_x_{0.0f}, last_y_{0.0f};
     float traveled_{0.0f};    // 本步前进累计
+    float cmd_travel_{0.0f};  // 本步指令里程累计 (2026-08-18 踏步保护: odom卡死时兜底结束本步)
+    int   turn_total_{0};     // 本转向步总帧数 (2026-08-18 踏步保护: 5秒超时强制进FWD)
 
     // ── 矫正项 (2026-08-16 与 Stage2 对齐) ──
     int   turn_guard_{0};                 // 停稳复核补转计数(最多60帧)

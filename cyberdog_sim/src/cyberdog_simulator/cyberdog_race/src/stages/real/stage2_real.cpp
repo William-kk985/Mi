@@ -6,9 +6,10 @@
 
 // ═══════════════════════════════════════════════════════════
 // Stage2Real 真机版 — 第2赛段 (2026-08-15 用户重定流程)
-// 前进0.92 → 左移0.3 → 右转90° → 左移3 → 左移0.1回 → 转180° →
-// 前进1 → 右移0.1回 → 左移3 → 前进1 → 右移3 → 右移0.1回 →
-// 前进1 → 左移3 → 右转90° → 前进3 → DONE
+// 每个左移/前进步出发前统一左转2° (2026-08-18 用户: 抵消越走越右偏; 3°太多/1°不转→折中2°)
+// 前进0.95 → 左移0.3 → 右转90° → 左移2.8 → 转180° → 左移2.8 →
+// 前进1.2 → 右移2.7 → 左移0.15 → 前进1.12 → 左移2.8 → 右转90° → 左转4° → 前进3.3 →
+// 前进0.1 → 左转90° → 前进0.5 → 右转90° → 前进0.6 → DONE
 // 移动中找正前方球(|x|≤0.15)撞击; 全场最多4球, 撞过位置防重;
 // 撞击触球判定+轨迹原路退回 (旧侧移扫球逻辑已迁至 stage2_real_test)
 // ═══════════════════════════════════════════════════════════
@@ -26,7 +27,7 @@ constexpr float BACK_V      = 0.20f;    // 退回速度
 constexpr float PITCH_S2    = 0.06f;    // 轻微低头 ~3.4°
 constexpr float TURN_V      = 0.5f;     // 原地转向速度 rad/s
 constexpr int   TURN_SETTLE_FRAMES = 30;  // 转向到位停稳 0.3s (10ms循环)
-constexpr float TURN_EXTRA_RAD = -2.0f * M_PI / 180.0f;  // (2026-08-17 用户: 单步物理欠转2°, 恢复-2°; 08-18回退到昨晚版本)
+constexpr float TURN_EXTRA_RAD = 0.0f;  // (2026-08-20 用户: 转90°没转够→归零转满; 之前-2°是“物理过转”假设, 08-18二次修正已证不成立)
 
 // ═══ 找球/撞击 ═══
 constexpr float BALL_MAX_DIST     = 0.6f;   // 球距≤0.6m 才算找到
@@ -40,23 +41,36 @@ constexpr float HIT_SPOT_GUARD   = 0.5f;    // 撞过的球位置防重半径 m
 
 // ═══ 动作序列 (用户 2026-08-15 重定; 2026-08-16 删所有0.1m短横移, 步14前进1.2→1.0) ═══
 const std::vector<S2Step> STEPS = {
-    {S2Kind::FWD,      0.95f},  // 0 开场衔接前进 (2026-08-17 用户: 0.92→0.95)
-    {S2Kind::SLIDE_L,  0.30f},  // 1 左移0.3
-    {S2Kind::TURN_R90, 0.0f},   // 2 右转90°
-    {S2Kind::SLIDE_L,  2.80f},  // 3 左移2.8 撞球 (2026-08-15 3→2.8)
-    {S2Kind::TURN_180, 0.0f},   // 4 转180°
-    {S2Kind::SLIDE_L,  2.80f},  // 5 左移2.8 撞球
-    {S2Kind::FWD,      1.20f},  // 6 前进1.20 换行 (2026-08-18 用户: 1.15→1.20)
-    {S2Kind::SLIDE_R,  2.70f},  // 7 右移2.7 撞球 (2026-08-17 用户: 2.8→2.7)
-    {S2Kind::FWD,      1.12f},  // 8 前进1.12 换行 (2026-08-17 用户: 1.20→1.12)
+    {S2Kind::TURN_ABS, 2.0f},   // 0 出发前左转2° (2026-08-18 用户: 每次左移/前进出发前统一左转; 3°太多1°不转→2°)
+    {S2Kind::FWD,      0.95f},  // 1 开场衔接前进 (2026-08-17 用户: 0.92→0.95)
+    {S2Kind::TURN_ABS, 2.0f},   // 2 出发前左转2°
+    {S2Kind::SLIDE_L,  0.30f},  // 3 左移0.3
+    {S2Kind::TURN_R90, 0.0f},   // 4 右转90°
+    {S2Kind::TURN_ABS, 2.0f},   // 5 出发前左转2°
+    {S2Kind::SLIDE_L,  2.80f},  // 6 左移2.8 撞球 (2026-08-15 3→2.8)
+    {S2Kind::TURN_180, 0.0f},   // 7 转180°
+    {S2Kind::TURN_ABS, 2.0f},   // 8 出发前左转2°
     {S2Kind::SLIDE_L,  2.80f},  // 9 左移2.8 撞球
-    {S2Kind::TURN_R90, 0.0f},   // 10 右转90°
-    {S2Kind::FWD,      3.10f},  // 11 前进3.1 离场 (2026-08-18 用户: 3.00→3.10)
-    {S2Kind::FWD,      0.10f},  // 12 前进0.1 (2026-08-16 用户追加)
-    {S2Kind::TURN_L90, 0.0f},   // 13 左转90°
-    {S2Kind::FWD,      0.50f},  // 14 前进0.5 (2026-08-17 用户: 0.2→0.5)
-    {S2Kind::TURN_R90, 0.0f},   // 15 右转90°
-    {S2Kind::FWD,      0.60f},  // 16 前进0.6 (2026-08-17 用户: 0.4→0.6)
+    {S2Kind::TURN_ABS, 2.0f},   // 10 出发前左转2°
+    {S2Kind::FWD,      1.20f},  // 11 前进1.20 换行 (2026-08-18 用户: 1.15→1.20)
+    {S2Kind::SLIDE_R,  2.70f},  // 12 右移2.7 撞球 (2026-08-17 用户: 2.8→2.7; 右移不加1°)
+    {S2Kind::TURN_ABS, 2.0f},   // 13 出发前左转2°
+    {S2Kind::SLIDE_L,  0.15f},  // 14 左移0.15 (2026-08-18 用户: 前进1.12前加左移0.15)
+    {S2Kind::TURN_ABS, 2.0f},   // 15 出发前左转2° (2026-08-18 用户: 前进1.12前补微调)
+    {S2Kind::FWD,      1.12f},  // 16 前进1.12 换行 (2026-08-17 用户: 1.20→1.12)
+    {S2Kind::TURN_ABS, 2.0f},   // 17 出发前左转2°
+    {S2Kind::SLIDE_L,  2.80f},  // 18 左移2.8 撞球
+    {S2Kind::TURN_R90, 0.0f},   // 19 右转90°
+    {S2Kind::TURN_ABS, 4.0f},   // 20 离场长直线前左转4° (2026-08-18 用户: 离场3°+出发前3°合并→各折中2°合计4°)
+    {S2Kind::FWD,      3.30f},  // 21 前进3.3 离场 (2026-08-18 用户: 3.20→3.30)
+    {S2Kind::TURN_ABS, 2.0f},   // 22 出发前左转2°
+    {S2Kind::FWD,      0.10f},  // 23 前进0.1 (2026-08-16 用户追加)
+    {S2Kind::TURN_L90, 0.0f},   // 24 左转90°
+    {S2Kind::TURN_ABS, 3.0f},   // 25 出发前左转3° (2026-08-18 用户: 此处2°→3°)
+    {S2Kind::FWD,      0.50f},  // 26 前进0.5 (2026-08-17 用户: 0.2→0.5)
+    {S2Kind::TURN_R90, 0.0f},   // 27 右转90°
+    {S2Kind::TURN_ABS, 2.0f},   // 28 出发前左转2°
+    // (2026-08-21 用户: 原步29前进0.6m移交Stage3当第一步, Stage2到此结束)
 };
 
 // 归一化角度到 [-π, π]
@@ -125,6 +139,8 @@ void Stage2Real::do_hold() {
     yaw_integ_ = 0.0f;
     fwd_integ_ = 0.0f;
     last_yaw_err_ = 0.0f;
+    last_dev_fwd_ = 0.0f;              // (2026-08-18) 撞击回点后跳变检测基准清零
+    post_impact_guard_ = 0.5f;         // (2026-08-18) 回点后保护0.5m: vx_lock限幅收紧防左前冲
     phase_ = Phase::STEP;   // 继续当前步剩余
 }
 
@@ -339,6 +355,7 @@ void Stage2Real::run() {
         yaw_integ_       = 0.0f;
         last_yaw_err_    = 0.0f;   // (2026-08-16) 新锚误差基准重置; drift_rate_ 跨步保留(机械特性)
         fwd_integ_       = 0.0f;   // (2026-08-16) 前向积分每步清零
+        last_dev_fwd_    = 0.0f;   // (2026-08-18) 新步跳变检测基准清零
         ball_confirm_    = 0;
         last_x_ = sensor_.odom_x; last_y_ = sensor_.odom_y;
         // (2026-08-16) 转向源改 abs_yaw(与Stage1同款): odom yaw与物理航向有固定偏差导致"左移走左前"
@@ -346,6 +363,7 @@ void Stage2Real::run() {
         if (s.kind == S2Kind::TURN_R90)      turn_target_ = sensor_.abs_yaw - (M_PI_2 + TURN_EXTRA_RAD);
         else if (s.kind == S2Kind::TURN_L90) turn_target_ = sensor_.abs_yaw + (M_PI_2 + TURN_EXTRA_RAD);
         else if (s.kind == S2Kind::TURN_180) turn_target_ = sensor_.abs_yaw + M_PI;   // (2026-08-17 用户: 180°转满, 不用-2°欠转补偿)
+        else if (s.kind == S2Kind::TURN_ABS) turn_target_ = sensor_.abs_yaw + s.dist * M_PI / 180.0f;   // dist=度数 正=左转 (2026-08-18 用户: 离场前左转3°)
         turn_settle_ = 0;
         turn_guard_   = 0;
         adjust_frames_ = 0;
@@ -358,20 +376,33 @@ void Stage2Real::run() {
                 s.kind == S2Kind::SLIDE_L ? "左移" :
                 s.kind == S2Kind::SLIDE_R ? "右移" :
                 s.kind == S2Kind::TURN_R90 ? "右转90°" :
-                s.kind == S2Kind::TURN_L90 ? "左转90°" : "转180°",
+                s.kind == S2Kind::TURN_L90 ? "左转90°" :
+                s.kind == S2Kind::TURN_180 ? "转180°" : "微调转向",
                 s.dist, step_yaw_slam_, step_yaw_odom_);
         fflush(stderr);
 #endif
     }
 
     // ── 转向步 ──
-    if (s.kind == S2Kind::TURN_R90 || s.kind == S2Kind::TURN_L90 || s.kind == S2Kind::TURN_180) {
+    if (s.kind == S2Kind::TURN_R90 || s.kind == S2Kind::TURN_L90 || s.kind == S2Kind::TURN_180 || s.kind == S2Kind::TURN_ABS) {
+        // (2026-08-18 TURN_ABS 2°微调: 到位阈值0.008rad(0.46°)保证真转; 停稳10帧省时间)
+        // (2026-08-20 90°步 0.02→0.01(0.57°): 转不够的次级因素——欠1°级不会被修, 收紧)
+        const float turn_tol    = (s.kind == S2Kind::TURN_ABS) ? 0.008f : 0.01f;
+        const int   settle_need = (s.kind == S2Kind::TURN_ABS) ? 10 : TURN_SETTLE_FRAMES;
         if (turn_settle_ > 0) {   // 停稳计数
-            if (++turn_settle_ >= TURN_SETTLE_FRAMES) {
+            if (++turn_settle_ >= settle_need) {
                 turn_settle_ = 0;
+                // ── TURN_ABS微调直接过 (2026-08-18 用户: 复核+顶回在abs_yaw噪声下反复补转→一直踏步; 小角度直接进下一步) ──
+                if (s.kind == S2Kind::TURN_ABS) {
+                    turn_guard_ = 0;
+                    adjust_frames_ = 0;
+                    step_idx_++;
+                    step_start_ = true;
+                    return;
+                }
                 // ── 停稳复核 (2026-08-16 移植Stage1): odom在快速转向时低估转角, 停稳后误差仍大 → 低速补转 ──
                 const float err2 = norm_yaw(turn_target_ - sensor_.abs_yaw);
-                if (std::abs(err2) > 0.02f && turn_guard_ < 60) {   // 残余>1.1°, 最多再补0.6s (2026-08-17 0.03→0.02)
+                if (std::abs(err2) > turn_tol && turn_guard_ < 60) {   // 残余>阈值, 最多再补0.6s (2026-08-17 0.03→0.02)
                     ++turn_guard_;
                     const float spd = std::max(-0.30f, std::min(0.30f, err2 * 2.0f));
                     motion_.set_walk_velocity_pitch(0.0f, 0.0f, spd, PITCH_S2);
@@ -402,7 +433,7 @@ void Stage2Real::run() {
             return;
         }
         const float err = norm_yaw(turn_target_ - sensor_.abs_yaw);
-        if (std::abs(err) < 0.02f) {   // (2026-08-17 0.03→0.02 收紧: 用户转向不够准)
+        if (std::abs(err) < turn_tol) {   // (2026-08-17 0.03→0.02 收紧; 2026-08-18 TURN_ABS小角度用0.008保证1°真转)
             turn_settle_ = 1;
             motion_.stop();
         } else {
@@ -498,6 +529,7 @@ void Stage2Real::run() {
     if (side_odom_accum_ - anchor_traveled_ >= 0.7f) {
         anchor_x_ = sensor_.odom_x; anchor_y_ = sensor_.odom_y;
         anchor_traveled_ = side_odom_accum_;
+        last_dev_fwd_ = 0.0f;   // (2026-08-18) 重锚瞬间dev归零, 同步清跳变基准防误判
     }
 
     if (s.kind == S2Kind::FWD) {
@@ -514,9 +546,18 @@ void Stage2Real::run() {
         const float fu = std::cos(step_yaw_slam_), fv = std::sin(step_yaw_slam_);
         const float dev_fwd = (sensor_.odom_x - anchor_x_) * fu +
                               (sensor_.odom_y - anchor_y_) * fv;
-        // ── 前向积分 (2026-08-16): 闭环自动学习横移角偏 (2026-08-18 回退±0.03→±0.05 恢复昨晚版本)
-        fwd_integ_ = std::max(-0.05f, std::min(0.05f, fwd_integ_ + dev_fwd * 0.01f));
-        const float vx_lock = std::max(-0.25f, std::min(0.25f, -(dev_fwd * 0.9f + fwd_integ_ * 1.0f)));
+        // ── 撞击后odom假跳保护 (2026-08-18 用户: 撞击回点后devF巨跳害闭环猛顶左前冲): 单帧跳>0.1m沿用上帧 ──
+        const float dev_use = (std::abs(dev_fwd - last_dev_fwd_) > 0.10f) ? last_dev_fwd_ : dev_fwd;
+        last_dev_fwd_ = dev_use;
+        // ── 前向积分 (2026-08-16): 闭环自动学习横移角偏 (2026-08-18 回退±0.03→±0.05 恢复昨晚版本) ──
+        fwd_integ_ = std::max(-0.05f, std::min(0.05f, fwd_integ_ + dev_use * 0.01f));
+        float vx_lock = std::max(-0.25f, std::min(0.25f, -(dev_use * 0.9f + fwd_integ_ * 1.0f)));
+        // ── 撞击回点后保护 (2026-08-18): 前0.5m内vx_lock限幅±0.05, 防odom残差致左前冲 ──
+        if (post_impact_guard_ > 0.0f) {
+            vx_lock = std::max(-0.05f, std::min(0.05f, vx_lock));
+            post_impact_guard_ -= std::abs(moved);
+            if (post_impact_guard_ < 0.0f) post_impact_guard_ = 0.0f;
+        }
         const float slide_sign = (s.kind == S2Kind::SLIDE_L) ? 1.0f : -1.0f;
         // (2026-08-17 左右分开: 左移开环-0.08过度→走左后, 右移+0.08略大→走右前)
         const float fwd_comp = (s.kind == S2Kind::SLIDE_L) ? SLIDE_L_FWD_COMP : SLIDE_R_FWD_COMP;
@@ -524,8 +565,10 @@ void Stage2Real::run() {
         // (2026-08-18 回退昨晚版本: 去掉cmd_vx钳位)
         static int slide_dbg_ = 0;   // (2026-08-16 无条件诊断: 每100帧一次, 看横移角偏与补偿)
         if (++slide_dbg_ % 100 == 0) {
-            fprintf(stderr, "[S2Slide] devF=%.3f integ=%.3f vxLock=%.3f cmd_vx=%.3f yawErr=%.3f yawCmd=%.3f absYaw=%.2f\n",
-                    dev_fwd, fwd_integ_, vx_lock, vx_cmd, yaw_err, yaw_cmd, sensor_.abs_yaw);
+            fprintf(stderr, "[S2Slide] devF=%.3f devU=%.3f integ=%.3f vxLock=%.3f cmd_vx=%.3f yawErr=%.3f yawCmd=%.3f absYaw=%.2f guard=%.2f slam=(%.2f,%.2f) odom=(%.2f,%.2f) rollMap=%.2f\n",
+                    dev_fwd, dev_use, fwd_integ_, vx_lock, vx_cmd, yaw_err, yaw_cmd, sensor_.abs_yaw,
+                    post_impact_guard_, sensor_.odom_x, sensor_.odom_y,
+                    sensor_.odom_pos_x, sensor_.odom_pos_y, sensor_.roll_map);
             fflush(stderr);
         }
         motion_.set_walk_velocity_pitch(vx_cmd, SLIDE_V * slide_sign, yaw_cmd, PITCH_S2);

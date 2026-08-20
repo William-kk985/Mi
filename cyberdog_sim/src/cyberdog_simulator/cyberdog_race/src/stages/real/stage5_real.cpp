@@ -1,267 +1,5 @@
 #include "cyberdog_race/stages/real/stage5_real.hpp"
 
-#include "cyberdog_race/stages/real/stage5_real.hpp"
-
-#include <algorithm>
-#include <cmath>
-#include <cstdio>
-
-namespace {
-
-constexpr float kPi = 3.14159265358979323846f;
-constexpr float kSection3Distance = 1.50f;
-constexpr float kSection4Distance = 1.10f;
-
-constexpr float kSlopeSpeed = 0.08f;
-constexpr float kSlopeLateralSpeed = 0.005f;
-constexpr float kSlopeRoll = 0.063f;
-constexpr float kStepHeight = 0.10f;
-constexpr float kBodyHeight = 0.25f;
-constexpr float kTurnPreShiftDistance = 0.08f;
-constexpr float kTurnPreShiftSpeed = 0.04f;
-constexpr float kTurnYawSpeed = 0.18f;
-
-constexpr float kYawTolerance = 0.05f;
-constexpr int kTurnStableFrames = 15;
-constexpr int kWalkTimeoutFrames = 6000;
-constexpr int kTurnTimeoutFrames = 1200;
-
-float clamp(float value, float low, float high) {
-    return std::max(low, std::min(high, value));
-}
-
-}  // namespace
-
-void Stage5Real::init() {
-    state_ = State::WAIT_FOR_SENSORS;
-    next_state_ = State::WALK_SECTION_3;
-    done_ = false;
-    localization_initialized_ = false;
-    desired_roll_ = 0.0f;
-    stable_frames_ = 0;
-    state_frames_ = 0;
-
-    motion_.stop();
-    motion_.set_body_params_lcm(0.0f, 0.0f, kBodyHeight);
-    std::fprintf(stderr,
-        "[Stage5Real-34Test] waiting for localization\n");
-}
-
-void Stage5Real::run() {
-    if (done_) return;
-
-    if (!localization_initialized_) {
-        motion_.stop();
-        if (sensor_.abs_yaw == 0.0f &&
-            sensor_.odom_x == 0.0f && sensor_.odom_y == 0.0f) {
-            return;
-        }
-
-        localization_initialized_ = true;
-        start_yaw_ = sensor_.abs_yaw;
-        motion_.locomotion();
-        begin_walk(State::TURN_RIGHT_2, kSection3Distance, 0.0f, true);
-
-        std::fprintf(stderr,
-            "[Stage5Real-34Test] section 3 start: odom=(%.3f, %.3f), yaw=%.3f\n",
-            sensor_.odom_x, sensor_.odom_y, start_yaw_);
-        return;
-    }
-
-    ++state_frames_;
-
-    switch (state_) {
-    case State::WAIT_FOR_SENSORS:
-        motion_.stop();
-        break;
-
-    case State::WALK_SECTION_3:
-        if (update_walk()) {
-            begin_pre_shift(State::PRE_SHIFT_LEFT_3);
-            std::fprintf(stderr,
-                "[Stage5Real-34Test] section 3 complete, shift left before turn\n");
-        }
-        break;
-
-    case State::PRE_SHIFT_LEFT_3:
-        if (update_pre_shift()) {
-            begin_turn(State::WALK_SECTION_4, -kPi / 2.0f);
-        }
-        break;
-
-    case State::TURN_RIGHT_2:
-        if (update_turn()) {
-            begin_walk(State::DONE, kSection4Distance, -kPi / 2.0f, true);
-            std::fprintf(stderr,
-                "[Stage5Real-34Test] section 4 start\n");
-        }
-        break;
-
-    case State::WALK_SECTION_4:
-        if (update_walk()) {
-            motion_.stop();
-            motion_.set_body_params_lcm(0.0f, 0.0f, kBodyHeight);
-            state_ = State::DONE;
-            done_ = true;
-            std::fprintf(stderr,
-                "[Stage5Real-34Test] sections 3 and 4 complete\n");
-        }
-        break;
-
-    case State::DONE:
-        done_ = true;
-        break;
-
-    default:
-        motion_.stop();
-        std::fprintf(stderr,
-            "[Stage5Real-34Test] unexpected state %d, stopped\n",
-            static_cast<int>(state_));
-        state_ = State::DONE;
-        done_ = true;
-        break;
-    }
-}
-
-bool Stage5Real::is_done() {
-    return done_;
-}
-
-float Stage5Real::get_desired_height() const {
-    return kBodyHeight;
-}
-
-float Stage5Real::get_desired_roll() const {
-    return desired_roll_;
-}
-
-float Stage5Real::get_desired_step_height() const {
-    return kStepHeight;
-}
-
-void Stage5Real::begin_walk(
-    State next_state, float distance, float yaw_offset, bool tilted)
-{
-    next_state_ = next_state;
-    target_distance_ = distance;
-    target_yaw_ = norm_yaw(start_yaw_ + yaw_offset);
-    segment_start_x_ = sensor_.odom_x;
-    segment_start_y_ = sensor_.odom_y;
-    desired_roll_ = tilted ? kSlopeRoll : 0.0f;
-    stable_frames_ = 0;
-    state_frames_ = 0;
-
-    motion_.set_body_params_lcm(desired_roll_, 0.0f, kBodyHeight);
-
-    if (next_state == State::TURN_RIGHT_2) {
-        state_ = State::WALK_SECTION_3;
-    } else {
-        state_ = State::WALK_SECTION_4;
-    }
-}
-
-bool Stage5Real::update_walk() {
-    const float remaining = target_distance_ - projected_distance();
-    if (remaining <= 0.0f) {
-        motion_.stop();
-        return true;
-    }
-
-    if (state_frames_ > kWalkTimeoutFrames) {
-        motion_.stop();
-        std::fprintf(stderr,
-            "[Stage5Real-34Test] walk timeout in state %d\n",
-            static_cast<int>(state_));
-        return true;
-    }
-
-    const float yaw_error = norm_yaw(target_yaw_ - sensor_.abs_yaw);
-    const float yaw_cmd = clamp(yaw_error, -0.20f, 0.20f);
-    const float speed = remaining < 0.30f ? 0.06f : kSlopeSpeed;
-
-    motion_.set_body_params_lcm(kSlopeRoll, 0.0f, kBodyHeight);
-    motion_.set_walk_velocity_step(
-        speed, kSlopeLateralSpeed, yaw_cmd, kStepHeight);
-    return false;
-}
-
-void Stage5Real::begin_turn(State next_state, float yaw_offset) {
-    next_state_ = next_state;
-    target_yaw_ = norm_yaw(start_yaw_ + yaw_offset);
-    stable_frames_ = 0;
-    state_frames_ = 0;
-    state_ = State::TURN_RIGHT_2;
-}
-
-void Stage5Real::begin_pre_shift(State state) {
-    state_ = state;
-    shift_start_x_ = sensor_.odom_x;
-    shift_start_y_ = sensor_.odom_y;
-    state_frames_ = 0;
-    motion_.stop();
-}
-
-bool Stage5Real::update_pre_shift() {
-    const float dx = sensor_.odom_x - shift_start_x_;
-    const float dy = sensor_.odom_y - shift_start_y_;
-    const float left_shift = -dx * std::sin(target_yaw_) + dy * std::cos(target_yaw_);
-    if (left_shift >= kTurnPreShiftDistance) {
-        motion_.stop();
-        return true;
-    }
-    if (state_frames_ > kTurnTimeoutFrames) {
-        motion_.stop();
-        return true;
-    }
-    motion_.set_body_params_lcm(kSlopeRoll, 0.0f, kBodyHeight);
-    motion_.set_walk_velocity_step(0.0f, kTurnPreShiftSpeed, 0.0f, kStepHeight);
-    return false;
-}
-
-bool Stage5Real::update_turn() {
-    const float yaw_error = norm_yaw(target_yaw_ - sensor_.abs_yaw);
-    if (std::abs(yaw_error) < kYawTolerance) {
-        ++stable_frames_;
-        motion_.set_walk_velocity_step(0.0f, 0.0f, 0.0f, kStepHeight);
-        if (stable_frames_ >= kTurnStableFrames) return true;
-    } else {
-        stable_frames_ = 0;
-        motion_.set_walk_velocity_step(
-            0.0f, 0.0f, clamp(yaw_error, -kTurnYawSpeed, kTurnYawSpeed), kStepHeight);
-    }
-
-    if (state_frames_ > kTurnTimeoutFrames) {
-        motion_.stop();
-        std::fprintf(stderr, "[Stage5Real-34Test] turn timeout\n");
-        return true;
-    }
-    return false;
-}
-
-float Stage5Real::projected_distance() const {
-    const float dx = sensor_.odom_x - segment_start_x_;
-    const float dy = sensor_.odom_y - segment_start_y_;
-    return dx * std::cos(target_yaw_) + dy * std::sin(target_yaw_);
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/*#include "cyberdog_race/stages/real/stage5_real.hpp"
-
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -276,20 +14,20 @@ constexpr float kPi = static_cast<float>(M_PI);
 // 真机测试显示第一段在桥头前约 0.5 m 就触发转弯，增加直行余量。
 constexpr float kSection1Distance = 4.70f; 
 constexpr float kSection2Distance = 3.40f;
-constexpr float kSection3Distance = 3.90f;
+constexpr float kSection3Distance = 3.70f;
 constexpr float kSection4Distance = 3.70f;
 constexpr float kSection5Distance = 2.00f;
 
 constexpr float kFlatSpeed = 0.16f;
 constexpr float kSlopeSpeed = 0.12f;
-constexpr float kSlopeLateralSpeed = 0.03f;  // 后四段左高右低桥：向左微调
+constexpr float kSlopeLateralSpeed = 0.005f;  // 后四段左高右低桥：向左微调
 constexpr float kStepHeight = 0.10f;
 constexpr float kBridgeEntryStepHeight = 0.20f;  // 刚上第一段桥时抬高步高
 constexpr float kBodyHeight = 0.25f;
 
 // 第二至第五段左高右低。图纸约为50厘米横向跨度、10厘米高差，
 // atan(0.10 / 0.50)约等于0.20弧度。
-constexpr float kSlopeRoll = -0.2f;
+constexpr float kSlopeRoll = 0.063f;
 
 constexpr float kYawTolerance = 0.045f;
 constexpr int kTurnStableFrames = 15;
@@ -569,4 +307,3 @@ float Stage5Real::projected_distance() const {
     const float dy = sensor_.odom_y - segment_start_y_;
     return dx * std::cos(target_yaw_) + dy * std::sin(target_yaw_);
 }
-*/
