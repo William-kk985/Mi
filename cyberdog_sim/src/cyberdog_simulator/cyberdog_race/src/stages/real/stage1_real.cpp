@@ -12,11 +12,11 @@
 
 namespace {
 
-constexpr float STEP_H        = 0.30f;   // 步高 0.30 (2026-08-18 0.27→0.30: 用户反馈卡脚→抬腿更高防绊; ⚠稳定性风险观察)
-constexpr float WALK_V        = 0.20f;   // 正常前进速度 m/s (2026-08-18 0.25→0.20 用户要求再慢)
-constexpr float RUSH_V        = 0.45f;   // 卡住冲刺速度 (2026-08-17 0.50→0.45 同步慢)
-constexpr float BONUS_SWING   = 0.08f;   // 步幅增益 cmpc_bonus_swing 默认0.05 (2026-08-18 0.10→0.08: 用户反馈卡脚→步幅略小防绊)
-constexpr float GAIT_PERIOD   = 0.35f;   // 步态周期 gait_period_time 默认0.5 (2026-08-18 0.40→0.35: 用户要求步频再快, 2.5→2.86Hz 更小碎步)
+constexpr float STEP_H        = 0.35f;   // 步高 0.35 (2026-08-18 0.30→0.35: 用户要求步高再提高)
+constexpr float WALK_V        = 0.18f;   // 正常前进速度 m/s (2026-08-18 0.20→0.18: 用户要求速度减慢)
+constexpr float RUSH_V        = 0.40f;   // 卡住冲刺速度 (2026-08-20 0.45→0.40 冲刺柔和化)
+constexpr float BONUS_SWING   = 0.06f;   // 步幅增益 cmpc_bonus_swing 默认0.05 (2026-08-18 0.10→0.06: 用户要求步幅大减弱)
+constexpr float GAIT_PERIOD   = 0.30f;   // 步态周期 gait_period_time 默认0.5 (2026-08-18 0.35→0.30: 用户要求步频再加高, 2.86→3.33Hz 更小碎步)
 constexpr float GOAL_DIST     = 3.70f;   // 前进 3.70m (2026-08-17 用户: 3.75少走5cm)
 constexpr float LAT_COMP      = 0.02f;   // (2026-08-18 用户: Stage1喜欢右偏(latDev恒负)→开环向左打底; 正=左, 抵消物理右偏)
 constexpr float TURN_YAW      = M_PI / 2.0f;  // 目标转角 90° (test14 相对转向)
@@ -27,9 +27,9 @@ constexpr int   TURN_SETTLE_FRAMES = 15; // 转到位停稳 0.15s (2026-08-12 �
 constexpr float KP_YAW        = 0.8f;    // 视觉比例
 constexpr float KD_YAW        = 0.3f;    // 视觉微分
 constexpr float IMU_WEIGHT    = 0.3f;    // IMU 回正权重(视觉为主)
-constexpr float STUCK_DIST    = 0.01f;   // 卡住判定位移阈值 (m)
-constexpr int   STUCK_THRESH  = 30;      // 卡住帧数 (2026-08-13 改回30, 避免冲刺太频繁打断)
-constexpr int   RUSH_FRAMES   = 12;      // 冲刺帧数 (2026-08-15 15→12 冲刺再少一些)
+constexpr float STUCK_DIST    = 0.003f;  // 卡住判定位移阈值 m (2026-08-20 0.01→0.003: 匹配25ms帧率, 3.33Hz小碎步每帧0.3-0.7cm, 原1cm误判率100%→假冲刺频繁不稳)
+constexpr int   STUCK_THRESH  = 120;     // 卡住帧数 (2026-08-20 30→120: 真卡住定义拉长到~3s, 防小碎步误判)
+constexpr int   RUSH_FRAMES   = 8;       // 冲刺帧数 (2026-08-20 12→8 冲刺再少一些)
 constexpr int   LANE_LOST_LIM = 10;      // 丢线容忍帧数
 
 }  // namespace

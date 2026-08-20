@@ -22,7 +22,7 @@ private:
     // (2026-08-15 实测样张校准): 球HSV H=5~8 S=85~192 V=136~255
     //   H上限22会混入黄线(H≥15)→误检, 收紧到12; H下限6砍边缘→3; S下限80兜反光边缘
     cv::Scalar orange_low_{3, 80, 80};
-    cv::Scalar orange_high_{12, 255, 255};
+    cv::Scalar orange_high_{15, 255, 255};   // (2026-08-20 用户框选: H中位6/p95=14, 上限12→15覆盖球边缘)
     cv::Scalar blue_low_{95, 80, 80};
     cv::Scalar blue_high_{125, 255, 255};
     cv::Scalar white_low_{0, 0, 180};

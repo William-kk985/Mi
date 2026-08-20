@@ -126,8 +126,10 @@ bool Stage4Detector::is_orange(const cv::Mat& hsv,
 Stage4Detector::CircleResult Stage4Detector::find_limbar(const cv::Mat& hsv) {
     CircleResult result;
     cv::Mat mask_red_low, mask_red_high, mask;
-    cv::inRange(hsv, cv::Scalar(0, 35, 30), cv::Scalar(15, 255, 255), mask_red_low);
-    cv::inRange(hsv, cv::Scalar(160, 35, 30), cv::Scalar(180, 255, 255), mask_red_high);
+    // (2026-08-20 用户框选定稿: H[0,8]∪[160,180] S[25,120] V[55,160];
+    //  实测杆 H中位175/S中位76/V中位79 暗紫红低饱和, S上限排掉高饱和红色干扰物)
+    cv::inRange(hsv, cv::Scalar(0, 25, 55), cv::Scalar(8, 120, 160), mask_red_low);
+    cv::inRange(hsv, cv::Scalar(160, 25, 55), cv::Scalar(180, 120, 160), mask_red_high);
     cv::bitwise_or(mask_red_low, mask_red_high, mask);
     cv::morphologyEx(mask, mask, cv::MORPH_CLOSE,
                      cv::getStructuringElement(cv::MORPH_RECT, cv::Size(31, 9)));
@@ -211,7 +213,8 @@ Stage4Detector::CircleResult Stage4Detector::find_limbar(const cv::Mat& hsv) {
 Stage4Detector::CircleResult Stage4Detector::find_coke(const cv::Mat& hsv) {
     CircleResult result;
     cv::Mat mask;
-    cv::inRange(hsv, cv::Scalar(0, 0, 0), cv::Scalar(180, 255, 70), mask);
+    // (2026-08-20 用户框选定稿: V<85 S<45; 原V<70漏瓶身中位72, 加S上限排蓝色背景)
+    cv::inRange(hsv, cv::Scalar(0, 0, 0), cv::Scalar(180, 45, 85), mask);
     cv::erode(mask,  mask, cv::Mat(), cv::Point(-1,-1), 2);
     cv::dilate(mask, mask, cv::Mat(), cv::Point(-1,-1), 2);
 
@@ -228,8 +231,14 @@ Stage4Detector::CircleResult Stage4Detector::find_coke(const cv::Mat& hsv) {
     if (max_area < 500) return result;  // 面积过滤
 
     cv::Rect bbox = cv::boundingRect(contours[max_idx]);
-    // 立着的类长方体：高度 > 宽度 * 1.2
-    if (bbox.height < bbox.width * 1.2f) return result;
+    // (2026-08-20 用户: 加形状限制防海报/阴影误报)
+    //   立着的类长方体: 高宽比≥1.8 (原1.2太松, 海报深色竖条全过)
+    if (bbox.height < bbox.width * 1.8f) return result;
+    //   宽度15~150px (排除窄阴影条/过宽色块)
+    if (bbox.width < 15 || bbox.width > 150) return result;
+    //   外接矩形填充率≥0.45 (排除不规则阴影)
+    const double fill = max_area / (static_cast<double>(bbox.width) * bbox.height);
+    if (fill < 0.45) return result;
 
     result.found = true;
     result.cx    = (bbox.x + bbox.width/2.0f - hsv.cols/2.0f) / (hsv.cols/2.0f);
@@ -243,7 +252,8 @@ Stage4Detector::CircleResult Stage4Detector::find_coke(const cv::Mat& hsv) {
 Stage4Detector::CircleResult Stage4Detector::find_football(const cv::Mat& hsv) {
     CircleResult result;
     cv::Mat mask;
-    cv::inRange(hsv, cv::Scalar(0, 0, 160), cv::Scalar(180, 60, 255), mask);   // 白色: V高 S低
+    // (2026-08-20 用户框选定稿: V>140 S<30; 原V>160漏球面中位159, S<60太宽抓灰地面反光)
+    cv::inRange(hsv, cv::Scalar(0, 0, 140), cv::Scalar(180, 30, 255), mask);
     cv::erode(mask,  mask, cv::Mat(), cv::Point(-1,-1), 2);
     cv::dilate(mask, mask, cv::Mat(), cv::Point(-1,-1), 2);
 
@@ -304,6 +314,8 @@ Stage4Detector::CircleResult Stage4Detector::find_obstacle(const cv::Mat& hsv) {
         double area = cv::contourArea(c);
         if (area < 500) continue;
         cv::Rect bbox = cv::boundingRect(c);
+        // (2026-08-20 视频验证: 墙上海报/招牌全被误判, 障碍物在地面→只认画面中下部)
+        if (bbox.y < hsv.rows * 0.30f) continue;
         if (bbox.width < hsv.cols * 0.08f || bbox.height < hsv.rows * 0.08f) continue;
         double perimeter = cv::arcLength(c, true);
         double circularity = 4 * M_PI * area / (perimeter * perimeter);

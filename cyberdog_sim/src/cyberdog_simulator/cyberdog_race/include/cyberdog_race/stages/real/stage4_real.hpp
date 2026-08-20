@@ -40,6 +40,7 @@ private:
     // (2026-08-18 用户: 三轮起步前进 0.8m/1m/1m; 先第1轮0.8m, 第2轮1m)
     static constexpr float kFwdDist[kMaxRounds] = {0.8f, 1.0f, 1.0f};
     static constexpr float kLaneDist  = 3.5f;      // 通道单程3.5m (2026-08-18 用户: 2.8→3.5)
+    static constexpr float kLaneDistBack[kMaxRounds] = {3.0f, 2.8f, 3.5f}; // 回程按轮次 (2026-08-18 用户: 轮1回程3m 轮2回程2.8m 轮3保持3.5)
 
     // 运动参数
     static constexpr float kWalkSpeed = 0.30f;
@@ -51,8 +52,8 @@ private:
     // (2026-08-17 方向矫正: 转向物理欠转2°补偿, Stage2同款实测; 加在转向目标上)
     static constexpr float kTurnExtraRad = -2.0f * 3.14159265f / 180.0f;
     static constexpr float kYawDeadband = 0.01f;  // (2026-08-17 行进yaw死区, 防微差抖动, Stage2同款)
-    static constexpr float kFwdLatComp  = 0.015f; // (2026-08-18 用户: 0.00→0.01偏右→0.02偏左→折中0.015; 正=左)
-    static constexpr float kFwdLatCompLow = 0.01f; // (2026-08-18 破限低头段: vel_cmd_scale被x_effect放大→补偿也要小, 防偏左过度)
+    static constexpr float kFwdLatComp  = 0.025f; // (2026-08-20 用户: 仍偏右→持续加左补; 0.02→0.025 正=左)
+    static constexpr float kFwdLatCompLow = 0.02f; // (2026-08-20 破限低头段同步加大左补 0.015→0.02, 与正常段对齐)
 
     // 任务参数
     static constexpr float kLimbarTriggerDist = 0.8f;  // 限高杆<0.8m触发低姿 (2026-08-17 用户: 1.2→0.8)
@@ -72,7 +73,7 @@ private:
     static constexpr auto  kVisionTimeout = std::chrono::milliseconds(600);
 
     // 识别停点 (2026-08-17 用户: 2.8m走到剩0.3m处停5秒专门识别足球/可乐/橙球)
-    static constexpr float kScanStopMargin = 0.3f;   // 距终点还剩多少米时停
+    static constexpr float kScanStopMargin = 0.6f;   // 距终点还剩多少米时停 (2026-08-18 用户: 0.3→0.6)
     static constexpr int   kScanHoldFrames = 800;    // 停8秒 @100Hz (2026-08-18 用户: 5秒→8秒)
 
     // 跌倒与恢复
