@@ -34,8 +34,7 @@ const char* Stage4Real::state_name(State s) {
         case State::TURN_EXIT_R:      return "TURN_EXIT_R";
         case State::FWD_EXIT_2:       return "FWD_EXIT_2";
         case State::TURN_EXIT_L:      return "TURN_EXIT_L";
-        case State::FWD_EXIT_3:       return "FWD_EXIT_3";
-        case State::RECOVERING:       return "RECOVERING";
+        case State::FWD_EXIT_3:       return "FWD_EXIT_3";        case State::TURN_EXIT_L2:      return "TURN_EXIT_L2";        case State::RECOVERING:       return "RECOVERING";
         case State::DONE:             return "DONE";
     }
     return "?";
@@ -158,7 +157,7 @@ bool Stage4Real::turn_to_yaw(float target_yaw, float rel_delta) {
         }
         target_yaw = turn_rel_target_;
     }
-    target_yaw = norm_yaw(target_yaw + kTurnExtraRad);
+    target_yaw = norm_yaw(target_yaw + kTurnExtraRad + kTurnYawBias);
     // (2026-08-22 用户: 原地转向漂移严重; 记录转向起点, 转向中横纵向拉回保持位置)
     if (!turn_ref_valid_) {
         turn_ref_x_ = sensor_.odom_x;
@@ -682,8 +681,16 @@ void Stage4Real::run() {
             }
             return;
         }
-        case State::FWD_EXIT_3: {   // 前进1.5m → DONE 保持站立
+        case State::FWD_EXIT_3: {   // 前进1.5m → 再左转离场
             if (walk_distance(kExitFwd3, exit_yaw3_, kWalkSpeed)) {
+                motion_.stop();
+                state_frames_ = 0; sub_state_ = 0;
+                state_ = State::TURN_EXIT_L2;
+            }
+            return;
+        }
+        case State::TURN_EXIT_L2: {   // (2026-08-22 用户: 末尾再左转90°后立正)
+            if (turn_to_yaw(0.0f, +1.5708f)) {
                 finish();
             }
             return;

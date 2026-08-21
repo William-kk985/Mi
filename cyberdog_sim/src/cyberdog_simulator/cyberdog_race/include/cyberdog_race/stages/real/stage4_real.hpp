@@ -53,6 +53,7 @@ private:
     static constexpr float kYawTol    = 0.03f;   // (2026-08-21 0.08→0.03: 旧值4.6°太宽致转向时多时少, 对齐Stage2收紧)
     // (2026-08-21 归零: “物理欠转2°”旧假设在Stage2已证不成立, 转满; 与Stage2对齐)
     static constexpr float kTurnExtraRad = 0.0f;
+    static constexpr float kTurnYawBias  = 0.05f;   // (2026-08-22 用户: 整体转向偏右 → 目标yaw往左偏置, 正=多转左)
     static constexpr float kYawDeadband = 0.01f;  // (2026-08-17 行进yaw死区, 防微差抖动, Stage2同款)
 #ifdef DEBUG_STAGE4_NO_COMP
     // (2026-08-21 startrace4test: 左补全0, 观察自然偏左量; 正式版保持注释走#else)
@@ -117,6 +118,7 @@ private:
         FWD_EXIT_2,     // 前进1.0m
         TURN_EXIT_L,    // 左转90°
         FWD_EXIT_3,     // 前进1.5m
+        TURN_EXIT_L2,   // (2026-08-22 用户: 前进1.5m后再左转90°)
         RECOVERING,
         DONE
     } state_{State::WAIT_FOR_SENSORS};
