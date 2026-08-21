@@ -163,11 +163,11 @@ void Stage2Real::do_step_fix() {
     const float yaw_err = norm_yaw(fix_step_yaw_ - a);
     const bool  yaw_ok  = std::abs(yaw_err) < 0.03f;   // (2026-08-18 回退0.02→0.03 恢复昨晚版本; 08-17: 差一点不修减少来回折腾)
     const bool  lat_ok  = std::abs(v_left) < 0.04f;    // (2026-08-17 0.02→0.04: 偏差4cm内直接过)
-    const bool  timeout = fix_frames_ > 100;           // (2026-08-17 250→100: 最多修1秒, 用户嫌矫正走太多)
+    const bool  timeout = fix_frames_ > 60;            // (2026-08-21 100→60: 用户嫌矫正拖太久, 阈值不变精度不变)
 
     if (fix_phase_ == 0) {
         if (yaw_ok || timeout) { fix_phase_ = 1; fix_frames_ = 0; fix_lat_integ_ = 0.0f; motion_.stop(); return; }
-        const float yv = std::max(-0.20f, std::min(0.20f, yaw_err * 1.2f));   // (2026-08-17 0.30→0.20 柔和)
+        const float yv = std::max(-0.35f, std::min(0.35f, yaw_err * 1.8f));   // (2026-08-21 提速: 1.2/0.20→1.8/0.35, 修得快更省时)
         motion_.set_walk_velocity_pitch(0.0f, 0.0f, yv, PITCH_S2);
         return;
     }
@@ -187,7 +187,7 @@ void Stage2Real::do_step_fix() {
         return;
     }
     fix_lat_integ_ = std::max(-0.10f, std::min(0.10f, fix_lat_integ_ + v_left * 0.01f));
-    const float vy = std::max(-0.10f, std::min(0.10f, -v_left * 0.8f - fix_lat_integ_ * 0.4f));   // (2026-08-17 0.15→0.10 柔和防来回)
+    const float vy = std::max(-0.15f, std::min(0.15f, -v_left * 1.2f - fix_lat_integ_ * 0.6f));   // (2026-08-21 提速: 0.8/0.4/0.10→1.2/0.6/0.15, 阈值不变精度不变)
     motion_.set_walk_velocity_pitch(0.0f, vy, 0.0f, PITCH_S2);
 }
 
