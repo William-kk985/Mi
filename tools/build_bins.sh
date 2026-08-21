@@ -19,6 +19,7 @@ set_config() {
         -e 's|^#define DEBUG_START_STAGE.*|// #define DEBUG_START_STAGE|' \
         -e 's|^#define DEBUG_END_STAGE.*|// #define DEBUG_END_STAGE|' \
         -e 's|^#define DEBUG_STAGE4_NO_COMP.*|// #define DEBUG_STAGE4_NO_COMP|' \
+        -e 's|^#define DEBUG_STAGE2_TEST.*|// #define DEBUG_STAGE2_TEST|' \
         "$CONF"
     case "$combo" in
         1|2|3|4|5|6)
@@ -26,6 +27,8 @@ set_config() {
             ;;
         4test) sed -i -e 's|^// #define DEBUG_SINGLE_STAGE.*|#define DEBUG_SINGLE_STAGE 4|' \
                     -e 's|^// #define DEBUG_STAGE4_NO_COMP.*|#define DEBUG_STAGE4_NO_COMP|' "$CONF";;
+        2test) sed -i -e 's|^// #define DEBUG_SINGLE_STAGE.*|#define DEBUG_SINGLE_STAGE 2|' \
+                    -e 's|^// #define DEBUG_STAGE2_TEST.*|#define DEBUG_STAGE2_TEST|' "$CONF";;
         12) sed -i -e 's|^// #define DEBUG_START_STAGE.*|#define DEBUG_START_STAGE 1|' \
                   -e 's|^// #define DEBUG_END_STAGE.*|#define DEBUG_END_STAGE 2|' "$CONF";;
         34) sed -i -e 's|^// #define DEBUG_START_STAGE.*|#define DEBUG_START_STAGE 3|' \

@@ -28,6 +28,9 @@
 // (2026-08-21 startrace4test专用: Stage4左横向补偿全0, 观察自然偏左; 正式版保持注释)
 // #define DEBUG_STAGE4_NO_COMP
 
+// (2026-08-21 startrace2test专用: 离场3.3m前左转2°(原4°减半); 正式版保持注释)
+// #define DEBUG_STAGE2_TEST
+
 // 调试开关：禁用撞球，只观察视觉效果
 // #define DEBUG_NO_HIT
 

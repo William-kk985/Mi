@@ -61,6 +61,10 @@ const std::vector<S2Step> STEPS = {
     {S2Kind::SLIDE_L,  2.80f},  // 18 左移2.8 撞球
     {S2Kind::TURN_R90, 0.0f},   // 19 右转90°
     // (2026-08-21 用户: 删原步20离场前左转4°——官方场地不滑不需要, 直接走)
+#ifdef DEBUG_STAGE2_TEST
+    // (2026-08-21 startrace2test专用: 离场3.3m前左转2°=原4°减半, 对比正式版无左转)
+    {S2Kind::TURN_ABS, 2.0f},   // 20test 离场前左转2°
+#endif
     {S2Kind::FWD,      3.30f},  // 21 前进3.3 离场 (2026-08-18 用户: 3.20→3.30)
     {S2Kind::TURN_ABS, 2.0f},   // 22 出发前左转2°
     {S2Kind::FWD,      0.10f},  // 23 前进0.1 (2026-08-16 用户追加)
