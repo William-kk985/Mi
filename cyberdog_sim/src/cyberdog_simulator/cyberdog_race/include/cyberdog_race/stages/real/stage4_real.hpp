@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstdint>
 
+#include "cyberdog_race/debug_config.hpp"
 #include "cyberdog_race/stages/stage_base.hpp"
 
 // Stage 4 real-track: 蛇形三通道巡逻（2026-08-16 新版动作）
@@ -52,8 +53,14 @@ private:
     // (2026-08-17 方向矫正: 转向物理欠转2°补偿, Stage2同款实测; 加在转向目标上)
     static constexpr float kTurnExtraRad = -2.0f * 3.14159265f / 180.0f;
     static constexpr float kYawDeadband = 0.01f;  // (2026-08-17 行进yaw死区, 防微差抖动, Stage2同款)
+#ifdef DEBUG_STAGE4_NO_COMP
+    // (2026-08-21 startrace4test: 左补全0, 观察自然偏左量; 正式版保持注释走#else)
+    static constexpr float kFwdLatComp  = 0.0f;
+    static constexpr float kFwdLatCompLow = 0.0f;
+#else
     static constexpr float kFwdLatComp  = 0.012f; // (2026-08-21 用户: 偏左→左补减半 0.025→0.012; 正=左)
     static constexpr float kFwdLatCompLow = 0.01f; // (2026-08-21 减半 0.02→0.01)
+#endif
 
     // 任务参数
     static constexpr float kLimbarTriggerDist = 0.8f;  // 限高杆<0.8m触发低姿 (2026-08-17 用户: 1.2→0.8)

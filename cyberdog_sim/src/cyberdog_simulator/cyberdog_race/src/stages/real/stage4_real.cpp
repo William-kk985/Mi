@@ -128,14 +128,6 @@ void Stage4Real::update_perception_in_state() { update_perception(); }
 // ═══════════════════════════════════════════════════════════════
 // 运动原语（yaw 源统一 abs_yaw，与 Stage1/2 同约定）
 // ═══════════════════════════════════════════════════════════════
-#ifdef DEBUG_STAGE4_NO_COMP
-// (2026-08-21 startrace4test: 用户要求左补全0, 观察自然偏左量)
-static constexpr float kLatComp    = 0.0f;
-static constexpr float kLatCompLow = 0.0f;
-#else
-static constexpr float kLatComp    = kFwdLatComp;
-static constexpr float kLatCompLow = kFwdLatCompLow;
-#endif
 bool Stage4Real::walk_distance(float distance, float target_yaw, float speed) {
     speed = clamp01(speed, -0.55f, 0.55f);
     float yaw_err = norm_yaw(target_yaw - sensor_.abs_yaw);
@@ -143,8 +135,8 @@ bool Stage4Real::walk_distance(float distance, float target_yaw, float speed) {
     float yaw_cmd = clamp01(kYawKp * yaw_err, -kTurnRate, kTurnRate);
     if (travelled_since_ref_ >= distance) { motion_.stop(); return true; }
     // (2026-08-17 修复摔倒: set_velocity走gamepad通道会失控, 改303)
-    // (2026-08-17 前进偏左: vy打底kLatComp向右补; 4test版=0)
-    motion_.set_walk_velocity_pitch(speed, kLatComp, yaw_cmd, 0.0f);
+    // (2026-08-17 前进偏左: vy打底kFwdLatComp向右补; 4test版=0, 见hpp宏)
+    motion_.set_walk_velocity_pitch(speed, kFwdLatComp, yaw_cmd, 0.0f);
     return false;
 }
 
@@ -158,8 +150,8 @@ bool Stage4Real::walk_low(float distance, float target_yaw, float speed) {
     if (std::abs(yaw_err) < kYawDeadband) yaw_err = 0.0f;   // (2026-08-17 死区, Stage2同款)
     float yaw_cmd = clamp01(kYawKp * yaw_err, -kTurnRate, kTurnRate);
     if (travelled_since_ref_ - sub_start_travel_ >= distance) { motion_.stop(); return true; }
-    // (2026-08-18 破限段: vel_cmd_scale被x_effect_scale_pos放大→横移补偿用更小kLatCompLow防偏左过度; 4test版=0)
-    motion_.set_walk_velocity_pitch(speed, kLatCompLow, yaw_cmd, kLimbarPitch);
+    // (2026-08-18 破限段: vel_cmd_scale被x_effect_scale_pos放大→横移补偿用更小kFwdLatCompLow防偏左过度; 4test版=0)
+    motion_.set_walk_velocity_pitch(speed, kFwdLatCompLow, yaw_cmd, kLimbarPitch);
     return false;
 }
 
