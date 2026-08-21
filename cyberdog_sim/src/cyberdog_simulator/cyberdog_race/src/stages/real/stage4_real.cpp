@@ -594,11 +594,8 @@ void Stage4Real::run() {
             return;
         }
         case State::TURN_R_OUT: {
-            // (2026-08-22 用户: 出通道改左转90°(原右转回entry), 每轮起步方向反转180°)
-            if (turn_to_yaw(norm_yaw(entry_yaw_ + 3.14159265f))) {
-                entry_yaw_ = norm_yaw(entry_yaw_ + 3.14159265f);
-                lane_yaw_  = norm_yaw(entry_yaw_ - 1.5708f);   // 右转90°进通道
-                back_yaw_  = norm_yaw(entry_yaw_ + 1.5708f);   // 掉头返回朝向
+            // (2026-08-22 用户纠正: 前两轮出通道保持右转90°回正, 只有最后一轮(TURN_L_FINAL)才左转)
+            if (turn_to_yaw(entry_yaw_)) {
                 ++round_count_;
                 fprintf(stderr, "\033[1;35m[S4] 第%d轮完成\033[0m\n", round_count_);
                 if (round_count_ >= kMaxRounds) { finish(); return; }
