@@ -88,7 +88,7 @@ private:
     static constexpr int   kScanHoldFrames = 300;    // 停3秒 @100Hz (2026-08-22 用户: 8秒→3秒)
     static constexpr float kPostScanFwd   = 0.7f;    // (2026-08-22 用户: 识别完固定前进 0.5→0.7m)
     static constexpr float kExitFwd1 = 1.0f;  // (2026-08-22 不规则四边形离场: 左转90°后前进1.0)
-    static constexpr float kExitFwd2 = 1.0f;  // 右转90°后前进1.0
+    static constexpr float kExitFwd2 = 1.15f; // 右转90°后前进 (2026-08-22 用户: 1.0→1.15, 绕第三赛道蓝色障碍物)
     static constexpr float kExitFwd3 = 1.5f;  // 左转90°后前进1.5
 
     // 跌倒与恢复
