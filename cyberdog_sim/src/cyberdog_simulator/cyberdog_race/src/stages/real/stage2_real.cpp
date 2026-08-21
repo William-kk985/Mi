@@ -98,6 +98,7 @@ void Stage2Real::init() {
     ball_confirm_     = 0;
     turn_target_      = 0.0f;
     turn_settle_      = 0;
+    turn_total_       = 0;   // (2026-08-21 转向超时兜底计数)
     impact_lost_      = 0;
     impact_goal_      = 0.0f;
     touch_frames_     = 0;
@@ -369,6 +370,7 @@ void Stage2Real::run() {
         else if (s.kind == S2Kind::TURN_ABS) turn_target_ = sensor_.abs_yaw + s.dist * M_PI / 180.0f;   // dist=度数 正=左转 (2026-08-18 用户: 离场前左转3°)
         turn_settle_ = 0;
         turn_guard_   = 0;
+        turn_total_   = 0;   // (2026-08-21 每步转向超时重新计时)
         adjust_frames_ = 0;
         turn_start_x_  = sensor_.odom_x;   // ADJUST顶回基准 (2026-08-16 原地转向会后退漂移)
         turn_start_y_  = sensor_.odom_y;
@@ -440,6 +442,21 @@ void Stage2Real::run() {
             turn_settle_ = 1;
             motion_.stop();
         } else {
+            // (2026-08-21 3s兜底: yaw不收敛(原地踏步/反复抖动)强制进下一步, 防无限踏步)
+            if (++turn_total_ > 300) {
+                turn_total_ = 0;
+                turn_settle_ = 0;
+                turn_guard_ = 0;
+                adjust_frames_ = 0;
+#ifdef DEBUG_STAGE
+                fprintf(stderr, "[S2Stage] 步%d 转向超时3s err=%.3f 强制进下一步\n",
+                        step_idx_, err);
+                fflush(stderr);
+#endif
+                step_idx_++;
+                step_start_ = true;
+                return;
+            }
             const float cmd = std::max(-TURN_V, std::min(TURN_V, err * 2.0f));
             motion_.set_walk_velocity_pitch(0.0f, 0.0f, cmd, PITCH_S2);
         }

@@ -58,8 +58,8 @@ private:
     static constexpr float kFwdLatComp  = 0.0f;
     static constexpr float kFwdLatCompLow = 0.0f;
 #else
-    static constexpr float kFwdLatComp  = 0.012f; // (2026-08-21 用户: 偏左→左补减半 0.025→0.012; 正=左)
-    static constexpr float kFwdLatCompLow = 0.01f; // (2026-08-21 减半 0.02→0.01)
+    static constexpr float kFwdLatComp  = 0.018f; // (2026-08-21 用户: 0.025偏左/0.012偏右→取中间0.018)
+    static constexpr float kFwdLatCompLow = 0.015f; // (2026-08-21 同步上调 0.01→0.015)
 #endif
 
     // 任务参数

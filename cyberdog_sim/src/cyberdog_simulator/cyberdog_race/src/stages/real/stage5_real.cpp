@@ -12,22 +12,22 @@ constexpr float kPi = static_cast<float>(M_PI);
 // 图纸主路径前四段为 400、400、300、400 cm。转弯前预留约 15 cm，
 // 避免四足踩到桥外沿；第五段 150 cm，末端预留 50 cm 用于转向和跳下。
 // 真机测试显示第一段在桥头前约 0.5 m 就触发转弯，增加直行余量。
-constexpr float kSection1Distance = 4.70f; 
-constexpr float kSection2Distance = 3.40f;
-constexpr float kSection3Distance = 3.70f;
-constexpr float kSection4Distance = 3.70f;
+constexpr float kSection1Distance = 4.60f; 
+constexpr float kSection2Distance = 3.30f;
+constexpr float kSection3Distance = 3.00f;
+constexpr float kSection4Distance = 3.30f;
 constexpr float kSection5Distance = 2.00f;
 
 constexpr float kFlatSpeed = 0.16f;
 constexpr float kSlopeSpeed = 0.12f;
-constexpr float kSlopeLateralSpeed = 0.005f;  // 后四段左高右低桥：向左微调
+constexpr float kSlopeLateralSpeed = 0.01f;  // 后四段左高右低桥：向左微调
 constexpr float kStepHeight = 0.10f;
 constexpr float kBridgeEntryStepHeight = 0.20f;  // 刚上第一段桥时抬高步高
 constexpr float kBodyHeight = 0.25f;
 
 // 第二至第五段左高右低。图纸约为50厘米横向跨度、10厘米高差，
 // atan(0.10 / 0.50)约等于0.20弧度。
-constexpr float kSlopeRoll = 0.063f;
+constexpr float kSlopeRoll = 0.065f;
 
 constexpr float kYawTolerance = 0.045f;
 constexpr int kTurnStableFrames = 15;
