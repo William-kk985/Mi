@@ -39,10 +39,10 @@ private:
     // 路径参数
     static constexpr int   kMaxRounds = 3;         // 三轮
 #ifdef DEBUG_STAGE4_TEST_ROUTE
-    // (2026-08-22 test路线: 轮1起步1.8 轮2起步1.0 轮3起步1.6; 轮2去程3.25 轮3去程2.3 轮1回程3.6)
-    static constexpr float kFwdDist[kMaxRounds] = {1.8f, 1.0f, 1.6f};
+    // (2026-08-22 test路线: 轮1起步1.8 轮2起步1.2 轮3起步1.4; 轮2去程3.25 轮3去程2.3 轮1/2/3回程3.6/3.5/3.5)
+    static constexpr float kFwdDist[kMaxRounds] = {1.8f, 1.2f, 1.4f};
     static constexpr float kLaneDist[kMaxRounds] = {3.5f, 3.25f, 2.3f};
-    static constexpr float kLaneDistBack[kMaxRounds] = {3.6f, 3.4f, 3.3f};
+    static constexpr float kLaneDistBack[kMaxRounds] = {3.6f, 3.5f, 3.5f};
 #else
     // (2026-08-18 用户: 三轮起步前进 0.8m/1m/1m; 先第1轮0.8m, 第2轮1m)
     // (2026-08-22 用户: 轮2 1.0→1.2m)
@@ -70,8 +70,8 @@ private:
     static constexpr float kFwdLatComp  = 0.0f;
     static constexpr float kFwdLatCompLow = 0.0f;
 #else
-    static constexpr float kFwdLatComp  = 0.010f; // (2026-08-22 用户: 走起偏右, 0.018→0.010 减小右补)
-    static constexpr float kFwdLatCompLow = 0.008f; // (2026-08-22 同步 0.015→0.008)
+    static constexpr float kFwdLatComp  = 0.005f; // (2026-08-22 用户: 仍偏右且时间长了累积, 0.010→0.005)
+    static constexpr float kFwdLatCompLow = 0.004f; // (2026-08-22 同步 0.008→0.004)
 #endif
     static constexpr float kTurnLatComp = -0.01f;   // (2026-08-22 原地转向右漂: 固定向左补偿, 负=左)
     static constexpr float kTurnHoldLimit = 0.12f;  // (2026-08-22 转向位置保持限幅 0.08→0.12)
@@ -98,7 +98,7 @@ private:
     static constexpr int   kScanHoldFrames = 300;    // 停3秒 @100Hz (2026-08-22 用户: 8秒→3秒)
     static constexpr float kPostScanFwd   = 0.7f;    // (2026-08-22 用户: 识别完固定前进 0.5→0.7m)
 #ifdef DEBUG_STAGE4_TEST_ROUTE
-    static constexpr float kExitFwd1 = 0.5f;  // (2026-08-22 test路线: 左转90°后前进0.5m, 再左转90°立正)
+    static constexpr float kExitFwd1 = 0.8f;  // (2026-08-22 test路线: 左转90°后前进0.8m, 再左转90°立正)
     static constexpr float kExitFwd2 = 1.15f; // test不用
     static constexpr float kExitFwd3 = 1.5f;  // test不用
 #else
