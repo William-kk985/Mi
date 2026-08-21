@@ -159,7 +159,7 @@ bool Stage4Real::turn_to_yaw(float target_yaw) {
     target_yaw = norm_yaw(target_yaw + kTurnExtraRad);   // (2026-08-17 物理欠转2°补偿, Stage2同款)
     float yaw_err = norm_yaw(target_yaw - sensor_.abs_yaw);
     if (std::abs(yaw_err) <= kYawTol) { motion_.stop(); return true; }
-    float cmd = clamp01(std::abs(yaw_err) * kYawKp, 0.10f, kTurnRate);
+    float cmd = clamp01(std::abs(yaw_err) * kYawKp, 0.05f, kTurnRate);   // (2026-08-22 下限0.10→0.05: 接近目标减速收尾, 防惯性过冲"转多")
     motion_.set_walk_velocity_pitch(0.0f, 0.0f, yaw_err > 0.0f ? cmd : -cmd, 0.0f);
     return false;
 }
@@ -594,7 +594,11 @@ void Stage4Real::run() {
             return;
         }
         case State::TURN_R_OUT: {
-            if (turn_to_yaw(entry_yaw_)) {
+            // (2026-08-22 用户: 出通道改左转90°(原右转回entry), 每轮起步方向反转180°)
+            if (turn_to_yaw(norm_yaw(entry_yaw_ + 3.14159265f))) {
+                entry_yaw_ = norm_yaw(entry_yaw_ + 3.14159265f);
+                lane_yaw_  = norm_yaw(entry_yaw_ - 1.5708f);   // 右转90°进通道
+                back_yaw_  = norm_yaw(entry_yaw_ + 1.5708f);   // 掉头返回朝向
                 ++round_count_;
                 fprintf(stderr, "\033[1;35m[S4] 第%d轮完成\033[0m\n", round_count_);
                 if (round_count_ >= kMaxRounds) { finish(); return; }
