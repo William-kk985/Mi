@@ -42,7 +42,7 @@ private:
     // (2026-08-22 用户: 轮2 1.0→1.2m)
     static constexpr float kFwdDist[kMaxRounds] = {0.8f, 1.1f, 1.0f};   // (2026-08-22 用户: 轮2=1.1)
     static constexpr float kLaneDist[kMaxRounds] = {3.5f, 3.35f, 2.9f};  // 去程按轮次 (2026-08-22 用户: 轮2=3.35 轮3=2.9)
-    static constexpr float kLaneDistBack[kMaxRounds] = {3.3f, 3.15f, 3.6f}; // 回程按轮次 (2026-08-22 用户: 轮3=3.6)
+    static constexpr float kLaneDistBack[kMaxRounds] = {3.4f, 3.2f, 3.6f}; // 回程按轮次 (2026-08-22 用户: 轮1=3.4 轮2=3.2 轮3=3.6)
 
     // 运动参数
     static constexpr float kWalkSpeed = 0.30f;
