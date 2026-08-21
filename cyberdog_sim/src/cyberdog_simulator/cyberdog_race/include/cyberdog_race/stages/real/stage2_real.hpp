@@ -47,7 +47,6 @@ private:
     float turn_target_{0.0f};   // 转向目标 (odom yaw)
     int   turn_settle_{0};      // 转向后停稳帧计数
     int   turn_guard_{0};       // 停稳复核补转帧计数 (2026-08-16 移植Stage1: 停稳后误差仍大→低速补转)
-    int   turn_total_{0};       // 转向总帧计数/超时 (2026-08-21 3s兜底: yaw不收敛防无限踏步)
     float turn_start_x_{0.0f}, turn_start_y_{0.0f};  // 转向起点位置 (2026-08-16 ADJUST顶回基准)
     int   adjust_frames_{0};    // ADJUST顶回帧计数/超时 (2026-08-16)
     float drift_rate_{0.0f};    // 航向漂移率估计 rad/s (2026-08-16 yaw前馈, 跨步保留; 不加位置积分防SLAM放大)
