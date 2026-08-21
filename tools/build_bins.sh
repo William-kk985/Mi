@@ -37,6 +37,7 @@ set_config() {
         56) sed -i -e 's|^// #define DEBUG_START_STAGE.*|#define DEBUG_START_STAGE 5|' \
                   -e 's|^// #define DEBUG_END_STAGE.*|#define DEBUG_END_STAGE 6|' "$CONF";;
         123456) ;;   # 全注释=正式全跑
+        123456test) sed -i -e 's|^// #define DEBUG_STAGE4_NO_COMP.*|#define DEBUG_STAGE4_NO_COMP|' "$CONF";;   # (2026-08-22 全跑+Stage4横向补偿归零)
         *) echo "✗ 未知组合 $combo"; exit 1;;
     esac
     grep -E "DEBUG_(SINGLE|START|END)_STAGE" "$CONF" | grep -v "^//" | grep -v "只跑\|开始\|结束" || echo "  (全部注释=正式全跑模式)"
