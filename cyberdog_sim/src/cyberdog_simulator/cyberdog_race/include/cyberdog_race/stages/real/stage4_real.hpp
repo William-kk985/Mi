@@ -38,11 +38,21 @@ private:
 
     // 路径参数
     static constexpr int   kMaxRounds = 3;         // 三轮
+#ifdef DEBUG_STAGE4_TEST_ROUTE
+    // (2026-08-22 test路线: 轮1起步1.8 轮2起步1.0 轮3起步1.8; 轮3去程2.3 轮2/3回程3.3)
+    static constexpr float kFwdDist[kMaxRounds] = {1.8f, 1.0f, 1.8f};
+    static constexpr float kLaneDist[kMaxRounds] = {3.5f, 3.35f, 2.3f};
+    static constexpr float kLaneDistBack[kMaxRounds] = {3.4f, 3.3f, 3.3f};
+#else
     // (2026-08-18 用户: 三轮起步前进 0.8m/1m/1m; 先第1轮0.8m, 第2轮1m)
     // (2026-08-22 用户: 轮2 1.0→1.2m)
     static constexpr float kFwdDist[kMaxRounds] = {0.8f, 1.1f, 1.0f};   // (2026-08-22 用户: 轮2=1.1)
     static constexpr float kLaneDist[kMaxRounds] = {3.5f, 3.35f, 2.0f};  // 去程按轮次 (2026-08-22 用户: 轮2=3.35 轮3=2.0(3.0-1.0起点后移))
     static constexpr float kLaneDistBack[kMaxRounds] = {3.4f, 2.3f, 2.1f}; // 回程按轮次 (2026-08-22 用户: 轮1=3.4 轮2=2.3 轮3=2.3→2.1)
+#endif
+    // (2026-08-22 test路线第3轮绕行, 仅test进入; 始终定义避免非test编译报未定义)
+    static constexpr float kSpecialFwd1 = 1.0f;  // 绕行: 左转90°后前进1.0
+    static constexpr float kSpecialFwd2 = 1.1f;  // 绕行: 右转90°后前进1.1
 
     // 运动参数
     static constexpr float kWalkSpeed = 0.30f;
@@ -87,9 +97,15 @@ private:
     static constexpr float kScanStopMargin = 0.3f;   // 距终点还剩多少米时停 (2026-08-21 用户: 0.6→0.3)
     static constexpr int   kScanHoldFrames = 300;    // 停3秒 @100Hz (2026-08-22 用户: 8秒→3秒)
     static constexpr float kPostScanFwd   = 0.7f;    // (2026-08-22 用户: 识别完固定前进 0.5→0.7m)
+#ifdef DEBUG_STAGE4_TEST_ROUTE
+    static constexpr float kExitFwd1 = 0.5f;  // (2026-08-22 test路线: 左转90°后前进0.5m, 再左转90°立正)
+    static constexpr float kExitFwd2 = 1.15f; // test不用
+    static constexpr float kExitFwd3 = 1.5f;  // test不用
+#else
     static constexpr float kExitFwd1 = 1.0f;  // (2026-08-22 不规则四边形离场: 左转90°后前进1.0)
     static constexpr float kExitFwd2 = 1.15f; // 右转90°后前进 (2026-08-22 用户: 1.0→1.15, 绕第三赛道蓝色障碍物)
     static constexpr float kExitFwd3 = 1.5f;  // 左转90°后前进1.5
+#endif
 
     // 跌倒与恢复
     static constexpr float kFallRollThresh  = 0.45f;
@@ -112,6 +128,11 @@ private:
         TURN_BACK,      // 掉头180°
         LANE_BACK,      // 回程2.8m：只处理限高杆
         TURN_R_OUT,     // 右转90°回 entry 朝向（进下一轮）
+        TURN_SPEC_L,    // (2026-08-22 test路线 第3轮绕行: 左转90°)
+        FWD_SPEC_1,     // 前进1.0m
+        TURN_SPEC_R,    // 右转90°
+        FWD_SPEC_2,     // 前进1.1m
+        TURN_SPEC_L2,   // 左转90°进通道
         TURN_L_FINAL,   // (2026-08-20) 第3轮回程后左转90°离场
         FWD_EXIT_1,     // (2026-08-22 不规则四边形离场: 前进1.0m)
         TURN_EXIT_R,    // 右转90°
@@ -164,6 +185,8 @@ private:
     float exit_yaw1_{0.0f};   // 离场: 左转90°后方向
     float exit_yaw2_{0.0f};   // 离场: 右转90°后方向
     float exit_yaw3_{0.0f};   // 离场: 左转90°后方向
+    float spec_yaw1_{0.0f};   // (2026-08-22 test绕行: 左转90°后方向)
+    float spec_yaw2_{0.0f};   // (2026-08-22 test绕行: 右转90°后方向)
 
     // 子任务临时量
     float sub_start_travel_{0.0f};   // 低姿/撞击段起点里程（相对 travelled_since_ref_）

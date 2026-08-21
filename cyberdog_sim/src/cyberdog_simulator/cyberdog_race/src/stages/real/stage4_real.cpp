@@ -28,8 +28,11 @@ const char* Stage4Real::state_name(State s) {
         case State::SCAN_STOP:        return "SCAN_STOP";
         case State::TURN_BACK:        return "TURN_BACK";
         case State::LANE_BACK:        return "LANE_BACK";
-        case State::TURN_R_OUT:       return "TURN_R_OUT";
-        case State::TURN_L_FINAL:     return "TURN_L_FINAL";
+        case State::TURN_R_OUT:       return "TURN_R_OUT";        case State::TURN_SPEC_L:       return "TURN_SPEC_L";
+        case State::FWD_SPEC_1:        return "FWD_SPEC_1";
+        case State::TURN_SPEC_R:       return "TURN_SPEC_R";
+        case State::FWD_SPEC_2:        return "FWD_SPEC_2";
+        case State::TURN_SPEC_L2:      return "TURN_SPEC_L2";        case State::TURN_L_FINAL:     return "TURN_L_FINAL";
         case State::FWD_EXIT_1:       return "FWD_EXIT_1";
         case State::TURN_EXIT_R:      return "TURN_EXIT_R";
         case State::FWD_EXIT_2:       return "FWD_EXIT_2";
@@ -570,7 +573,63 @@ void Stage4Real::run() {
                 ref_y_ = last_odom_y_ = sensor_.odom_y;
                 travelled_since_ref_ = 0.0f;
                 sub_start_travel_ = 0.0f;
+                state_frames_ = 0; sub_state_ = 0;
+#ifdef DEBUG_STAGE4_TEST_ROUTE
+                if (round_count_ == 2) {   // (2026-08-22 test路线: 第3轮绕行进通道)
+                    state_ = State::TURN_SPEC_L;
+                    return;
+                }
+#endif
                 lane_pitch_unlock();   // (2026-08-18 进2.8m段全程低头)
+                state_ = State::LANE_OUT;
+            }
+            return;
+        }
+        case State::TURN_SPEC_L: {   // (2026-08-22 test路线: 第3轮左转90°绕行)
+            if (turn_to_yaw(0.0f, +1.5708f)) {
+                spec_yaw1_ = sensor_.abs_yaw;
+                ref_x_ = last_odom_x_ = sensor_.odom_x;
+                ref_y_ = last_odom_y_ = sensor_.odom_y;
+                travelled_since_ref_ = 0.0f;
+                state_frames_ = 0; sub_state_ = 0;
+                state_ = State::FWD_SPEC_1;
+            }
+            return;
+        }
+        case State::FWD_SPEC_1: {   // 前进1.0m
+            if (walk_distance(kSpecialFwd1, spec_yaw1_, kWalkSpeed)) {
+                motion_.stop();
+                state_frames_ = 0; sub_state_ = 0;
+                state_ = State::TURN_SPEC_R;
+            }
+            return;
+        }
+        case State::TURN_SPEC_R: {   // 右转90°
+            if (turn_to_yaw(0.0f, -1.5708f)) {
+                spec_yaw2_ = sensor_.abs_yaw;
+                ref_x_ = last_odom_x_ = sensor_.odom_x;
+                ref_y_ = last_odom_y_ = sensor_.odom_y;
+                travelled_since_ref_ = 0.0f;
+                state_frames_ = 0; sub_state_ = 0;
+                state_ = State::FWD_SPEC_2;
+            }
+            return;
+        }
+        case State::FWD_SPEC_2: {   // 前进1.1m
+            if (walk_distance(kSpecialFwd2, spec_yaw2_, kWalkSpeed)) {
+                motion_.stop();
+                state_frames_ = 0; sub_state_ = 0;
+                state_ = State::TURN_SPEC_L2;
+            }
+            return;
+        }
+        case State::TURN_SPEC_L2: {   // 左转90°进通道
+            if (turn_to_yaw(0.0f, +1.5708f)) {
+                ref_x_ = last_odom_x_ = sensor_.odom_x;
+                ref_y_ = last_odom_y_ = sensor_.odom_y;
+                travelled_since_ref_ = 0.0f;
+                sub_start_travel_ = 0.0f;
+                lane_pitch_unlock();   // 进通道全程低头
                 state_frames_ = 0; sub_state_ = 0;
                 state_ = State::LANE_OUT;
             }
@@ -647,7 +706,11 @@ void Stage4Real::run() {
             if (walk_distance(kExitFwd1, exit_yaw1_, kWalkSpeed)) {
                 motion_.stop();
                 state_frames_ = 0; sub_state_ = 0;
+#ifdef DEBUG_STAGE4_TEST_ROUTE
+                state_ = State::TURN_EXIT_L2;   // test路线: 0.5m后直接左转90°立正
+#else
                 state_ = State::TURN_EXIT_R;
+#endif
             }
             return;
         }

@@ -28,6 +28,9 @@
 // (2026-08-21 startrace4test专用: Stage4左横向补偿全0, 观察自然偏左; 正式版保持注释)
 // #define DEBUG_STAGE4_NO_COMP
 
+// (2026-08-22 startrace4test/123456test: Stage4走test路线(起步1.8/1.0/1.8, 第3轮绕行, 离场左转→0.5m→左转); 正式版保持注释)
+// #define DEBUG_STAGE4_TEST_ROUTE
+
 // (2026-08-21 startrace2test专用: 离场3.3m前左转2°(原4°减半); 正式版保持注释)
 // #define DEBUG_STAGE2_TEST
 
