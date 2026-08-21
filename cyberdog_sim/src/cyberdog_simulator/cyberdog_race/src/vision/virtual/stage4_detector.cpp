@@ -39,10 +39,16 @@ Stage4Result Stage4Detector::detect(const cv::Mat& frame) {
     result.limbar_dist  = limbar.dist;
     result.limbar_box   = limbar.box;
 
-    // ── 可乐/足球: (2026-08-18 用户: 先不用模型, 用传统CV识别; 模型训练好后再切回) ──
-    //   可乐=黑色立着的类长方体; 足球=黑白球体(白圆+圆内黑斑)
+    // ── 可乐/足球: (2026-08-21 接入ONNX模型: 异步发帧给python推理服务, 模型优先/传统CV兜底) ──
+    //   remote_detect_async 非阻塞: 无未决请求时发半分辨率JPEG, 结果走最近缓存;
+    //   服务不在/连接失败 → 返回false → 纯CV兜底 (2026-08-18 之前: 纯传统CV识别)
     CircleResult coke = find_coke(hsv);
     CircleResult football = find_football(hsv);
+    CircleResult rcoke, rfb;
+    if (remote_detect_async(frame, rcoke, rfb)) {
+        if (rcoke.found) coke = rcoke;            // 模型结果优先(已过服务端阈值)
+        if (rfb.found)  football = rfb;
+    }
     result.coke_found = coke.found;
     result.coke_cx    = coke.cx;
     result.coke_dist  = coke.dist;
