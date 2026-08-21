@@ -46,14 +46,10 @@ void Stage3Real::init() {
     turn_total_ = 0;
     phase_     = Phase::WAIT_READY;
 
-    // ── 站起 (与 Stage1 同款已验证序列) ──
-    motion_.locomotion();
-    bool svc_ready = motion_.wait_motion_result_ready(5);
-    motion_.stand();
-    rclcpp::sleep_for(std::chrono::seconds(3));
+    // ── 站起 (2026-08-22 用户: 与Stage4同款问题, 服务起来会站立, 不再主动站起/不动它;
+    //   避免已站立时被误判趴着→强行站起折腾摔倒; 开跑前 WAIT_READY 等 body_height≥0.23) ──
 #ifdef DEBUG_SENSOR
-    fprintf(stderr, "[S3S] 站起: 服务%s odom=(%.2f,%.2f) absYaw=%.2f\n",
-            svc_ready ? "✅就绪" : "❌超时", sensor_.odom_x, sensor_.odom_y, sensor_.abs_yaw);
+    fprintf(stderr, "[S3S] init: body_h=%.2f (等待服务站起, 不主动干预)\n", sensor_.body_height);
     fflush(stderr);
 #endif
     RCLCPP_INFO(rclcpp::get_logger("stage3_real"),
@@ -66,7 +62,8 @@ void Stage3Real::run() {
 
     // ── ① 等定位就绪 (init 在 spin 前, 回调没跑 absYaw 恒0, 同Stage1) ──
     if (phase_ == Phase::WAIT_READY) {
-        if (sensor_.abs_yaw != 0.0f || sensor_.odom_x != 0.0f) {
+        if ((sensor_.abs_yaw != 0.0f || sensor_.odom_x != 0.0f)
+            && sensor_.body_height >= 0.23f) {   // (2026-08-22 用户: 开跑前必须确认已站立, 防开始就摔)
             step_idx_   = 0;
             target_yaw_ = norm_yaw(sensor_.abs_yaw + PATH[0].turn_deg * M_PI / 180.0f);
             turn_settle_ = 0;
