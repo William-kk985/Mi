@@ -52,7 +52,7 @@ private:
 #endif
     // (2026-08-22 test路线第3轮绕行, 仅test进入; 始终定义避免非test编译报未定义)
     static constexpr float kSpecialFwd1 = 1.0f;  // 绕行: 左转90°后前进1.0
-    static constexpr float kSpecialFwd2 = 1.1f;  // 绕行: 右转90°后前进1.1
+    static constexpr float kSpecialFwd2 = 0.6f;  // 绕行: 右转90°后前进 (2026-08-22 用户: 1.1→0.6)
 
     // 运动参数
     static constexpr float kWalkSpeed = 0.30f;
