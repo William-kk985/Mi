@@ -113,7 +113,7 @@ void Stage6Real::run() {
         break;
     case State::TURN_RIGHT_48:
         if (update_turn()) {
-            begin_walk(State::MOVE_FORWARD_2, 1.0f, 0.0f, 2.60f,
+            begin_walk(State::MOVE_FORWARD_2, 1.0f, 0.0f, 2.20f,
                        start_yaw_ - kTurn48);
         }
         break;
