@@ -273,7 +273,7 @@ void Stage4Real::lane_pitch_restore() {
 // ═══════════════════════════════════════════════════════════════
 void Stage4Real::lane_out() {
     // (2026-08-21 用户: 识别停点结束后固定前进0.5m, 不再是走完剩余段)
-    const float lane_goal = post_scan_ ? kPostScanFwd : kLaneDist;
+    const float lane_goal = post_scan_ ? kPostScanFwd : kLaneDist[round_count_];
     if (travelled_since_ref_ >= lane_goal) {
         post_scan_ = false;
         lane_pitch_restore();   // (2026-08-18 离开2.8m段恢复限位)
@@ -287,12 +287,12 @@ void Stage4Real::lane_out() {
     }
 
     // ── 识别停点 (2026-08-17 用户: 剩0.3m处停5秒识别足球/可乐/橙球播报) ──
-    if (!scan_done_out_ && travelled_since_ref_ >= kLaneDist - kScanStopMargin) {
+    if (!scan_done_out_ && travelled_since_ref_ >= kLaneDist[round_count_] - kScanStopMargin) {
         scan_done_out_ = true;
         scan_return_ = State::LANE_OUT;
         scan_frames_ = 0;
 #ifdef DEBUG_STAGE
-        fprintf(stderr, "[S4] 去程剩%.2fm → 识别停点5s\n", kLaneDist - travelled_since_ref_);
+        fprintf(stderr, "[S4] 去程剩%.2fm → 识别停点5s\n", kLaneDist[round_count_] - travelled_since_ref_);
         fflush(stderr);
 #endif
         state_ = State::SCAN_STOP;
@@ -318,10 +318,10 @@ void Stage4Real::lane_out() {
         }
     } else {
         // 视觉超时：减速慢走（不平白停死）
-        walk_low(kLaneDist, lane_yaw_, kLowSpeed);
+        walk_low(kLaneDist[round_count_], lane_yaw_, kLowSpeed);
         return;
     }
-    walk_low(kLaneDist, lane_yaw_, kWalkSpeed);
+    walk_low(kLaneDist[round_count_], lane_yaw_, kWalkSpeed);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -535,7 +535,7 @@ void Stage4Real::run() {
                 state_name(state_), round_count_ + 1,
                 travelled_since_ref_,
                 (state_ == State::LANE_OUT || state_ == State::LANE_BACK
-                 || state_ == State::PASS_LIMBAR || state_ == State::KNOCK) ? kLaneDist : kFwdDist[round_count_]);
+                 || state_ == State::PASS_LIMBAR || state_ == State::KNOCK) ? kLaneDist[round_count_] : kFwdDist[round_count_]);
         fflush(stderr);
     }
 #endif
