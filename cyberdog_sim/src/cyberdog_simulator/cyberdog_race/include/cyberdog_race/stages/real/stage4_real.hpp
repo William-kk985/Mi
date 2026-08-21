@@ -52,8 +52,8 @@ private:
     // (2026-08-17 方向矫正: 转向物理欠转2°补偿, Stage2同款实测; 加在转向目标上)
     static constexpr float kTurnExtraRad = -2.0f * 3.14159265f / 180.0f;
     static constexpr float kYawDeadband = 0.01f;  // (2026-08-17 行进yaw死区, 防微差抖动, Stage2同款)
-    static constexpr float kFwdLatComp  = 0.025f; // (2026-08-20 用户: 仍偏右→持续加左补; 0.02→0.025 正=左)
-    static constexpr float kFwdLatCompLow = 0.02f; // (2026-08-20 破限低头段同步加大左补 0.015→0.02, 与正常段对齐)
+    static constexpr float kFwdLatComp  = 0.012f; // (2026-08-21 用户: 偏左→左补减半 0.025→0.012; 正=左)
+    static constexpr float kFwdLatCompLow = 0.01f; // (2026-08-21 减半 0.02→0.01)
 
     // 任务参数
     static constexpr float kLimbarTriggerDist = 0.8f;  // 限高杆<0.8m触发低姿 (2026-08-17 用户: 1.2→0.8)
@@ -72,9 +72,11 @@ private:
     static constexpr int   kReadyFrames   = 5;
     static constexpr auto  kVisionTimeout = std::chrono::milliseconds(600);
 
-    // 识别停点 (2026-08-17 用户: 2.8m走到剩0.3m处停5秒专门识别足球/可乐/橙球)
-    static constexpr float kScanStopMargin = 0.6f;   // 距终点还剩多少米时停 (2026-08-18 用户: 0.3→0.6)
+    // 识别停点 (2026-08-17 用户: 剩0.3m处停8秒识别足球/可乐/橙球)
+    static constexpr float kScanStopMargin = 0.3f;   // 距终点还剩多少米时停 (2026-08-21 用户: 0.6→0.3)
     static constexpr int   kScanHoldFrames = 800;    // 停8秒 @100Hz (2026-08-18 用户: 5秒→8秒)
+    static constexpr float kPostScanFwd   = 0.5f;    // (2026-08-21 用户: 识别完不管结果都固定前进0.5m)
+    static constexpr float kFinalFwd      = 2.5f;    // (2026-08-21 用户: 离场前进 3.0→2.5m)
 
     // 跌倒与恢复
     static constexpr float kFallRollThresh  = 0.45f;
@@ -98,7 +100,8 @@ private:
         LANE_BACK,      // 回程2.8m：只处理限高杆
         TURN_R_OUT,     // 右转90°回 entry 朝向（进下一轮）
         TURN_L_FINAL,   // (2026-08-20) 第3轮回程后左转90°离场
-        FWD_FINAL,      // (2026-08-20) 离场前进3m
+        FWD_FINAL,      // (2026-08-20) 离场前进2.5m
+        TURN_END,       // (2026-08-21) 离场末尾左转90°收尾
         RECOVERING,
         DONE
     } state_{State::WAIT_FOR_SENSORS};
@@ -147,6 +150,7 @@ private:
     bool  tts_football_{false};
     bool  tts_ball_{false};
     bool  tts_obstacle_{false};   // (2026-08-18 蓝色方块播报)
+    bool  post_scan_{false};      // (2026-08-21 识别停点结束后固定前进0.5m标志)
 
     // 识别停点 (2026-08-17)
     State scan_return_{State::LANE_OUT};  // 停点结束后回哪

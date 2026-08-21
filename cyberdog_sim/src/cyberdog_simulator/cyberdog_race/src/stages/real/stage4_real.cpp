@@ -31,6 +31,7 @@ const char* Stage4Real::state_name(State s) {
         case State::TURN_R_OUT:       return "TURN_R_OUT";
         case State::TURN_L_FINAL:     return "TURN_L_FINAL";
         case State::FWD_FINAL:        return "FWD_FINAL";
+        case State::TURN_END:         return "TURN_END";
         case State::RECOVERING:       return "RECOVERING";
         case State::DONE:             return "DONE";
     }
@@ -265,8 +266,10 @@ void Stage4Real::lane_pitch_restore() {
 // 去程 2.8m：全程低头 + 可乐/足球撞击
 // ═══════════════════════════════════════════════════════════════
 void Stage4Real::lane_out() {
-    // 走满 2.8m → 掉头
-    if (travelled_since_ref_ >= kLaneDist) {
+    // (2026-08-21 用户: 识别停点结束后固定前进0.5m, 不再是走完剩余段)
+    const float lane_goal = post_scan_ ? kPostScanFwd : kLaneDist;
+    if (travelled_since_ref_ >= lane_goal) {
+        post_scan_ = false;
         lane_pitch_restore();   // (2026-08-18 离开2.8m段恢复限位)
         motion_.stop();
 #ifdef DEBUG_STAGE
@@ -452,10 +455,13 @@ void Stage4Real::scan_stop() {
         fprintf(stderr, "[S4] 识别停点完成 → %s\n", state_name(scan_return_));
         fflush(stderr);
 #endif
-        // (2026-08-18 重置里程基准: 静止odom漂移不计入, 防恢复后第一帧跳变)
-        last_odom_x_ = sensor_.odom_x;
-        last_odom_y_ = sensor_.odom_y;
-        state_ = scan_return_;
+        // (2026-08-21 用户: 识别完不管结果, 固定前进0.5m再掉头)
+        // 重置里程基准(静止odom漂移不计入), 回 LANE_OUT 走 0.5m
+        post_scan_ = true;
+        ref_x_ = last_odom_x_ = sensor_.odom_x;
+        ref_y_ = last_odom_y_ = sensor_.odom_y;
+        travelled_since_ref_ = 0.0f;
+        state_ = State::LANE_OUT;
         scan_frames_ = 0;
         state_frames_ = 0;
     }
@@ -615,9 +621,16 @@ void Stage4Real::run() {
             }
             return;
         }
-        case State::FWD_FINAL: {   // (2026-08-20 离场前进3m → DONE)
-            if (walk_distance(3.0f, norm_yaw(back_yaw_ + 1.5708f), kWalkSpeed)) {
+        case State::FWD_FINAL: {   // (2026-08-20 离场前进; 2026-08-21 3m→2.5m, 末尾加左转90°收尾)
+            if (walk_distance(kFinalFwd, norm_yaw(back_yaw_ + 1.5708f), kWalkSpeed)) {
                 motion_.stop();
+                state_frames_ = 0; sub_state_ = 0;
+                state_ = State::TURN_END;
+            }
+            return;
+        }
+        case State::TURN_END: {   // (2026-08-21 离场末尾左转90° → DONE)
+            if (turn_to_yaw(norm_yaw(entry_yaw_ + 1.5708f))) {
                 finish();
             }
             return;
