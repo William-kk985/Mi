@@ -70,8 +70,8 @@ private:
     static constexpr float kFwdLatComp  = 0.0f;
     static constexpr float kFwdLatCompLow = 0.0f;
 #else
-    static constexpr float kFwdLatComp  = 0.018f; // (2026-08-21 用户: 0.025偏左/0.012偏右→取中间0.018)
-    static constexpr float kFwdLatCompLow = 0.015f; // (2026-08-21 同步上调 0.01→0.015)
+    static constexpr float kFwdLatComp  = 0.010f; // (2026-08-22 用户: 走起偏右, 0.018→0.010 减小右补)
+    static constexpr float kFwdLatCompLow = 0.008f; // (2026-08-22 同步 0.015→0.008)
 #endif
     static constexpr float kTurnLatComp = -0.01f;   // (2026-08-22 原地转向右漂: 固定向左补偿, 负=左)
     static constexpr float kTurnHoldLimit = 0.12f;  // (2026-08-22 转向位置保持限幅 0.08→0.12)
