@@ -147,16 +147,13 @@ void Stage6Real::run() {
         }
         break;
     case State::LIE_DOWN:
-        motion_.stop();
-        if (!lie_sent_) {
-            motion_.lie_down();
-            lie_sent_ = true;
-        }
-        // 接口调用后保持一个短暂状态，避免下一 timer tick 重复触发动作。
-        if (++state_frames_ >= 20) {
+        // (2026-08-22 用户: 尾巴加趴下动作; 持续发GETDOWN 3秒保证RT板执行完,
+        //  之前只发一次+20帧(0.2s)就DONE太仓促, 趴下可能被打断)
+        motion_.lie_down();   // GETDOWN幂等, 每帧重发兜底
+        if (++state_frames_ >= 300) {
             state_ = State::DONE;
             done_ = true;
-            std::fprintf(stderr, "[Stage6Real] completed\n");
+            std::fprintf(stderr, "[Stage6Real] completed (趴下完成)\n");
         }
         break;
     case State::DONE:
