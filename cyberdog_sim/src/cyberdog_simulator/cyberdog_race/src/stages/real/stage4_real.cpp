@@ -148,8 +148,17 @@ bool Stage4Real::walk_low(float distance, float target_yaw, float speed) {
     return false;
 }
 
-bool Stage4Real::turn_to_yaw(float target_yaw) {
-    target_yaw = norm_yaw(target_yaw + kTurnExtraRad);   // (2026-08-21 归零转满, 与Stage2对齐)
+bool Stage4Real::turn_to_yaw(float target_yaw, float rel_delta) {
+    // (2026-08-22 用户: 转向转少 → 相对模式: 首帧快照当前yaw+增量, 之后目标锁定,
+    //  行走段yaw漂移不再影响转向增量, 物理上每次转满固定角度)
+    if (rel_delta != 0.0f) {
+        if (!turn_rel_valid_) {
+            turn_rel_target_ = norm_yaw(sensor_.abs_yaw + rel_delta);
+            turn_rel_valid_ = true;
+        }
+        target_yaw = turn_rel_target_;
+    }
+    target_yaw = norm_yaw(target_yaw + kTurnExtraRad);
     // (2026-08-22 用户: 原地转向漂移严重; 记录转向起点, 转向中横纵向拉回保持位置)
     if (!turn_ref_valid_) {
         turn_ref_x_ = sensor_.odom_x;
@@ -160,6 +169,7 @@ bool Stage4Real::turn_to_yaw(float target_yaw) {
     if (std::abs(yaw_err) <= kYawTol) {
         motion_.stop();
         turn_ref_valid_ = false;
+        turn_rel_valid_ = false;
         return true;
     }
     float cmd = clamp01(std::abs(yaw_err) * kYawKp, 0.05f, kTurnRate);   // (2026-08-22 下限0.10→0.05: 接近目标减速收尾, 防惯性过冲"转多")
@@ -224,6 +234,7 @@ void Stage4Real::handle_recovering() {
         state_ = recovery_return_;
         // 清里程重来当前段（防恢复期间里程跳变）
         odom_initialized_ = false;
+        turn_ref_valid_ = false; turn_rel_valid_ = false;   // (2026-08-22 恢复后转向基准重置)
         ref_x_ = last_odom_x_ = sensor_.odom_x;
         ref_y_ = last_odom_y_ = sensor_.odom_y;
         travelled_since_ref_ = 0.0f;
@@ -619,8 +630,9 @@ void Stage4Real::run() {
             }
             return;
         }
-        case State::TURN_L_FINAL: {   // (2026-08-20 第3轮回程后: 左转90°离场)
-            if (turn_to_yaw(norm_yaw(back_yaw_ + 1.5708f))) {
+        case State::TURN_L_FINAL: {   // (2026-08-20 第3轮回程后: 左转90°离场; 08-22改相对转向)
+            if (turn_to_yaw(0.0f, +1.5708f)) {
+                exit_yaw1_ = sensor_.abs_yaw;
                 ref_x_ = last_odom_x_ = sensor_.odom_x;
                 ref_y_ = last_odom_y_ = sensor_.odom_y;
                 travelled_since_ref_ = 0.0f;
@@ -633,15 +645,16 @@ void Stage4Real::run() {
             return;
         }
         case State::FWD_EXIT_1: {   // (2026-08-22 不规则四边形: 左转90°后前进1.0m)
-            if (walk_distance(kExitFwd1, norm_yaw(back_yaw_ + 1.5708f), kWalkSpeed)) {
+            if (walk_distance(kExitFwd1, exit_yaw1_, kWalkSpeed)) {
                 motion_.stop();
                 state_frames_ = 0; sub_state_ = 0;
                 state_ = State::TURN_EXIT_R;
             }
             return;
         }
-        case State::TURN_EXIT_R: {   // 右转90°
-            if (turn_to_yaw(back_yaw_)) {
+        case State::TURN_EXIT_R: {   // 右转90° (08-22 相对转向)
+            if (turn_to_yaw(0.0f, -1.5708f)) {
+                exit_yaw2_ = sensor_.abs_yaw;
                 ref_x_ = last_odom_x_ = sensor_.odom_x;
                 ref_y_ = last_odom_y_ = sensor_.odom_y;
                 travelled_since_ref_ = 0.0f;
@@ -651,15 +664,16 @@ void Stage4Real::run() {
             return;
         }
         case State::FWD_EXIT_2: {   // 前进1.0m
-            if (walk_distance(kExitFwd2, back_yaw_, kWalkSpeed)) {
+            if (walk_distance(kExitFwd2, exit_yaw2_, kWalkSpeed)) {
                 motion_.stop();
                 state_frames_ = 0; sub_state_ = 0;
                 state_ = State::TURN_EXIT_L;
             }
             return;
         }
-        case State::TURN_EXIT_L: {   // 左转90°
-            if (turn_to_yaw(norm_yaw(back_yaw_ + 1.5708f))) {
+        case State::TURN_EXIT_L: {   // 左转90° (08-22 相对转向)
+            if (turn_to_yaw(0.0f, +1.5708f)) {
+                exit_yaw3_ = sensor_.abs_yaw;
                 ref_x_ = last_odom_x_ = sensor_.odom_x;
                 ref_y_ = last_odom_y_ = sensor_.odom_y;
                 travelled_since_ref_ = 0.0f;
@@ -669,7 +683,7 @@ void Stage4Real::run() {
             return;
         }
         case State::FWD_EXIT_3: {   // 前进1.5m → DONE 保持站立
-            if (walk_distance(kExitFwd3, norm_yaw(back_yaw_ + 1.5708f), kWalkSpeed)) {
+            if (walk_distance(kExitFwd3, exit_yaw3_, kWalkSpeed)) {
                 finish();
             }
             return;

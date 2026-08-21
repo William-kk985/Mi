@@ -154,6 +154,13 @@ private:
     float turn_ref_y_{0.0f};
     bool  turn_ref_valid_{false};
 
+    // 相对转向 (2026-08-22 用户: 转向转少 → 进入时快照当前yaw+增量, 物理转满固定角度)
+    bool  turn_rel_valid_{false};
+    float turn_rel_target_{0.0f};
+    float exit_yaw1_{0.0f};   // 离场: 左转90°后方向
+    float exit_yaw2_{0.0f};   // 离场: 右转90°后方向
+    float exit_yaw3_{0.0f};   // 离场: 左转90°后方向
+
     // 子任务临时量
     float sub_start_travel_{0.0f};   // 低姿/撞击段起点里程（相对 travelled_since_ref_）
     float knock_cx_{0.0f};           // 撞击目标横向偏移
@@ -189,7 +196,7 @@ private:
     bool walk_distance(float distance, float target_yaw, float speed);
     // 低姿行走：7671 value&0x02（身高强制0.13），带 yaw 闭环，走满 distance
     bool walk_low(float distance, float target_yaw, float speed);
-    bool turn_to_yaw(float target_yaw);
+    bool turn_to_yaw(float target_yaw, float rel_delta = 0.0f);   // rel_delta≠0: 相对转向, 从当前yaw转固定角度
     bool align_to_target(float cx, float tol = 0.12f);
 
     void lane_out();
