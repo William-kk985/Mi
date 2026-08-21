@@ -39,8 +39,8 @@ private:
     // 路径参数
     static constexpr int   kMaxRounds = 3;         // 三轮
 #ifdef DEBUG_STAGE4_TEST_ROUTE
-    // (2026-08-22 test路线: 轮1起步1.8 轮2起步1.2 轮3起步1.4; 轮2去程3.25 轮3去程2.3 轮1/2/3回程3.6/3.5/3.5)
-    static constexpr float kFwdDist[kMaxRounds] = {1.8f, 1.2f, 1.4f};
+    // (2026-08-22 test路线: 轮1起步1.8 轮2起步1.1 轮3起步1.4; 轮2去程3.25 轮3去程2.3 轮1/2/3回程3.6/3.5/3.5)
+    static constexpr float kFwdDist[kMaxRounds] = {1.8f, 1.1f, 1.4f};
     static constexpr float kLaneDist[kMaxRounds] = {3.5f, 3.25f, 2.3f};
     static constexpr float kLaneDistBack[kMaxRounds] = {3.6f, 3.5f, 3.5f};
 #else
@@ -51,8 +51,8 @@ private:
     static constexpr float kLaneDistBack[kMaxRounds] = {3.4f, 2.3f, 2.1f}; // 回程按轮次 (2026-08-22 用户: 轮1=3.4 轮2=2.3 轮3=2.3→2.1)
 #endif
     // (2026-08-22 test路线第3轮绕行, 仅test进入; 始终定义避免非test编译报未定义)
-    static constexpr float kSpecialFwd1 = 1.0f;  // 绕行: 左转90°后前进1.0
-    static constexpr float kSpecialFwd2 = 0.6f;  // 绕行: 右转90°后前进 (2026-08-22 用户: 1.1→0.6)
+    static constexpr float kSpecialFwd1 = 1.1f;  // 绕行: 左转90°后前进 (2026-08-22 用户: 1.0→1.1)
+    static constexpr float kSpecialFwd2 = 0.7f;  // 绕行: 右转90°后前进 (2026-08-22 用户: 0.6→0.7)
 
     // 运动参数
     static constexpr float kWalkSpeed = 0.30f;
@@ -63,7 +63,7 @@ private:
     static constexpr float kYawTol    = 0.03f;   // (2026-08-21 0.08→0.03: 旧值4.6°太宽致转向时多时少, 对齐Stage2收紧)
     // (2026-08-21 归零: “物理欠转2°”旧假设在Stage2已证不成立, 转满; 与Stage2对齐)
     static constexpr float kTurnExtraRad = 0.0f;
-    static constexpr float kTurnYawBias  = 0.05f;   // (2026-08-22 用户: 整体转向偏右 → 目标yaw往左偏置, 正=多转左)
+    static constexpr float kTurnYawBias  = 0.08f;   // (2026-08-22 用户: 转向偏右更明显, 0.05→0.08 左补偿加强)
     static constexpr float kYawDeadband = 0.01f;  // (2026-08-17 行进yaw死区, 防微差抖动, Stage2同款)
 #ifdef DEBUG_STAGE4_NO_COMP
     // (2026-08-21 startrace4test: 左补全0, 观察自然偏左量; 正式版保持注释走#else)
