@@ -163,12 +163,13 @@ bool Stage4Real::turn_to_yaw(float target_yaw) {
         return true;
     }
     float cmd = clamp01(std::abs(yaw_err) * kYawKp, 0.05f, kTurnRate);   // (2026-08-22 下限0.10→0.05: 接近目标减速收尾, 防惯性过冲"转多")
-    // 位置保持: 世界偏差投影机体系, 限幅±0.08 只对抗漂移不干扰转向
+    // 位置保持: 世界偏差投影机体系, 限幅±kTurnHoldLimit 只对抗漂移不干扰转向
+    // (2026-08-22 用户: 原地踏步右漂 → 限幅加强0.08→0.12 + vy固定左偏置补偿)
     const float dx = turn_ref_x_ - sensor_.odom_x;
     const float dy = turn_ref_y_ - sensor_.odom_y;
     const float a  = sensor_.abs_yaw;
-    const float vx = clamp01(std::cos(a) * dx + std::sin(a) * dy, -0.08f, 0.08f);
-    const float vy = clamp01(-std::sin(a) * dx + std::cos(a) * dy, -0.08f, 0.08f);
+    const float vx = clamp01(std::cos(a) * dx + std::sin(a) * dy, -kTurnHoldLimit, kTurnHoldLimit);
+    const float vy = clamp01(-std::sin(a) * dx + std::cos(a) * dy + kTurnLatComp, -kTurnHoldLimit, kTurnHoldLimit);
     motion_.set_walk_velocity_pitch(vx, vy, yaw_err > 0.0f ? cmd : -cmd, 0.0f);
     return false;
 }

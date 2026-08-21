@@ -42,7 +42,7 @@ private:
     // (2026-08-22 用户: 轮2 1.0→1.2m)
     static constexpr float kFwdDist[kMaxRounds] = {0.8f, 1.1f, 1.0f};   // (2026-08-22 用户: 轮2=1.1)
     static constexpr float kLaneDist[kMaxRounds] = {3.5f, 3.35f, 2.0f};  // 去程按轮次 (2026-08-22 用户: 轮2=3.35 轮3=2.0(3.0-1.0起点后移))
-    static constexpr float kLaneDistBack[kMaxRounds] = {3.4f, 2.3f, 2.3f}; // 回程按轮次 (2026-08-22 用户: 轮1=3.4 轮2/轮3=2.3)
+    static constexpr float kLaneDistBack[kMaxRounds] = {3.4f, 2.3f, 2.1f}; // 回程按轮次 (2026-08-22 用户: 轮1=3.4 轮2=2.3 轮3=2.3→2.1)
 
     // 运动参数
     static constexpr float kWalkSpeed = 0.30f;
@@ -60,8 +60,8 @@ private:
     static constexpr float kFwdLatCompLow = 0.0f;
 #else
     static constexpr float kFwdLatComp  = 0.018f; // (2026-08-21 用户: 0.025偏左/0.012偏右→取中间0.018)
-    static constexpr float kFwdLatCompLow = 0.015f; // (2026-08-21 同步上调 0.01→0.015)
-#endif
+    static constexpr float kFwdLatCompLow = 0.015f; // (2026-08-21 同步上调 0.01→0.015)    static constexpr float kTurnLatComp = -0.01f;   // (2026-08-22 原地转向右漂: 固定向左补偿, 负=左)
+    static constexpr float kTurnHoldLimit = 0.12f;  // (2026-08-22 转向位置保持限幅 0.08→0.12)#endif
 
     // 任务参数
     static constexpr float kLimbarTriggerDist = 0.8f;  // 限高杆<0.8m触发低姿 (2026-08-17 用户: 1.2→0.8)
