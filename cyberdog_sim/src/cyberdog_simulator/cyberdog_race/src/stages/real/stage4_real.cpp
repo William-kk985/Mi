@@ -52,9 +52,14 @@ void Stage4Real::init() {
         const bool svc_ready = motion_.wait_motion_result_ready(5);
         motion_.stand();
         rclcpp::sleep_for(std::chrono::seconds(3));
+        // (2026-08-22 用户: 开始前会摔倒; 站起后检查身高, 没起来再试一次)
+        if (sensor_.body_height < 0.20f) {
+            motion_.stand();
+            rclcpp::sleep_for(std::chrono::seconds(3));
+        }
 #ifdef DEBUG_STAGE
-        fprintf(stderr, "[S4] init: 站起 服务%s absYaw=%.2f\n",
-                svc_ready ? "✅就绪" : "❌超时", sensor_.abs_yaw);
+        fprintf(stderr, "[S4] init: 站起 服务%s absYaw=%.2f body_h=%.2f\n",
+                svc_ready ? "✅就绪" : "❌超时", sensor_.abs_yaw, sensor_.body_height);
         fflush(stderr);
 #endif
     } else {
@@ -119,6 +124,7 @@ void Stage4Real::update_perception() {
         const bool ready = sensor_.rgb_valid
                         && sensor_.abs_yaw != 0.0f   // (2026-08-17 必须等航向就绪! 否则entry_yaw=0→狗猛转圈摔倒)
                         && sensor_.odom_x != 0.0f
+                        && sensor_.body_height >= 0.23f   // (2026-08-22 用户: 开跑前必须确认已站立, 防开始就摔)
                         && motion_.gait_ready();
         ready_frames_ = ready ? ready_frames_ + 1 : 0;
     }
