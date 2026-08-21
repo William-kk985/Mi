@@ -42,7 +42,7 @@ private:
     // (2026-08-22 用户: 轮2 1.0→1.2m)
     static constexpr float kFwdDist[kMaxRounds] = {0.8f, 1.2f, 1.0f};
     static constexpr float kLaneDist  = 3.5f;      // 通道单程3.5m (2026-08-18 用户: 2.8→3.5)
-    static constexpr float kLaneDistBack[kMaxRounds] = {3.0f, 2.6f, 3.5f}; // 回程按轮次 (2026-08-20 用户: 轮1=3.0 轮2=2.6 轮3=3.5)
+    static constexpr float kLaneDistBack[kMaxRounds] = {3.3f, 3.1f, 3.5f}; // 回程按轮次 (2026-08-22 用户: 轮1=3.3 轮2=3.1 轮3=3.5)
 
     // 运动参数
     static constexpr float kWalkSpeed = 0.30f;
@@ -83,7 +83,7 @@ private:
     // 识别停点 (2026-08-17 用户: 剩0.3m处停8秒识别足球/可乐/橙球)
     static constexpr float kScanStopMargin = 0.3f;   // 距终点还剩多少米时停 (2026-08-21 用户: 0.6→0.3)
     static constexpr int   kScanHoldFrames = 800;    // 停8秒 @100Hz (2026-08-18 用户: 5秒→8秒)
-    static constexpr float kPostScanFwd   = 0.5f;    // (2026-08-21 用户: 识别完不管结果都固定前进0.5m)
+    static constexpr float kPostScanFwd   = 0.7f;    // (2026-08-22 用户: 识别完固定前进 0.5→0.7m)
     static constexpr float kFinalFwd      = 2.5f;    // (2026-08-21 用户: 离场前进 3.0→2.5m)
 
     // 跌倒与恢复
@@ -143,6 +143,11 @@ private:
     float travelled_since_ref_{0.0f};
     float last_odom_x_{0.0f};
     float last_odom_y_{0.0f};
+
+    // 转向位置保持 (2026-08-22 用户: 原地转向漂移, 记录起点拉回)
+    float turn_ref_x_{0.0f};
+    float turn_ref_y_{0.0f};
+    bool  turn_ref_valid_{false};
 
     // 子任务临时量
     float sub_start_travel_{0.0f};   // 低姿/撞击段起点里程（相对 travelled_since_ref_）

@@ -46,28 +46,12 @@ void Stage4Real::init() {
     done_ = false;
     odom_initialized_ = false;
 
-    // ── 站起 (2026-08-17 补上, 与Stage1/3同款: 没有站起狗趴着直接摔; 已站立跳过防“先摔再站”) ──
-    if (sensor_.body_height < 0.25f) {   // 1234连跑时Stage3结束狗已站立, 不再重复站起
-        motion_.locomotion();
-        const bool svc_ready = motion_.wait_motion_result_ready(5);
-        motion_.stand();
-        rclcpp::sleep_for(std::chrono::seconds(3));
-        // (2026-08-22 用户: 开始前会摔倒; 站起后检查身高, 没起来再试一次)
-        if (sensor_.body_height < 0.20f) {
-            motion_.stand();
-            rclcpp::sleep_for(std::chrono::seconds(3));
-        }
+    // ── 站起 (2026-08-22 用户: 服务起来就会站立, 这里不再主动站起/不动它;
+    //   避免已站立时被误判趴着→强行站起折腾摔倒; 开跑前 WAIT_FOR_SENSORS 等 body_height≥0.23) ──
 #ifdef DEBUG_STAGE
-        fprintf(stderr, "[S4] init: 站起 服务%s absYaw=%.2f body_h=%.2f\n",
-                svc_ready ? "✅就绪" : "❌超时", sensor_.abs_yaw, sensor_.body_height);
-        fflush(stderr);
+    fprintf(stderr, "[S4] init: body_h=%.2f (等待服务站起, 不主动干预)\n", sensor_.body_height);
+    fflush(stderr);
 #endif
-    } else {
-#ifdef DEBUG_STAGE
-        fprintf(stderr, "[S4] init: 已站立 body_h=%.2f, 跳过站起\n", sensor_.body_height);
-        fflush(stderr);
-#endif
-    }
 
     recovery_cmd_sent_ = false;
     gait_reengaged_ = false;
@@ -162,11 +146,27 @@ bool Stage4Real::walk_low(float distance, float target_yaw, float speed) {
 }
 
 bool Stage4Real::turn_to_yaw(float target_yaw) {
-    target_yaw = norm_yaw(target_yaw + kTurnExtraRad);   // (2026-08-17 物理欠转2°补偿, Stage2同款)
+    target_yaw = norm_yaw(target_yaw + kTurnExtraRad);   // (2026-08-21 归零转满, 与Stage2对齐)
+    // (2026-08-22 用户: 原地转向漂移严重; 记录转向起点, 转向中横纵向拉回保持位置)
+    if (!turn_ref_valid_) {
+        turn_ref_x_ = sensor_.odom_x;
+        turn_ref_y_ = sensor_.odom_y;
+        turn_ref_valid_ = true;
+    }
     float yaw_err = norm_yaw(target_yaw - sensor_.abs_yaw);
-    if (std::abs(yaw_err) <= kYawTol) { motion_.stop(); return true; }
+    if (std::abs(yaw_err) <= kYawTol) {
+        motion_.stop();
+        turn_ref_valid_ = false;
+        return true;
+    }
     float cmd = clamp01(std::abs(yaw_err) * kYawKp, 0.05f, kTurnRate);   // (2026-08-22 下限0.10→0.05: 接近目标减速收尾, 防惯性过冲"转多")
-    motion_.set_walk_velocity_pitch(0.0f, 0.0f, yaw_err > 0.0f ? cmd : -cmd, 0.0f);
+    // 位置保持: 世界偏差投影机体系, 限幅±0.08 只对抗漂移不干扰转向
+    const float dx = turn_ref_x_ - sensor_.odom_x;
+    const float dy = turn_ref_y_ - sensor_.odom_y;
+    const float a  = sensor_.abs_yaw;
+    const float vx = clamp01(std::cos(a) * dx + std::sin(a) * dy, -0.08f, 0.08f);
+    const float vy = clamp01(-std::sin(a) * dx + std::cos(a) * dy, -0.08f, 0.08f);
+    motion_.set_walk_velocity_pitch(vx, vy, yaw_err > 0.0f ? cmd : -cmd, 0.0f);
     return false;
 }
 
