@@ -136,8 +136,9 @@ Stage4Detector::CircleResult Stage4Detector::find_limbar(const cv::Mat& hsv) {
     //  去V上限(176会漏75%亮红杆); 去H低段[0,5]→橙球(H中位10 p5=0)深红边缘被误判限高杆)
     cv::inRange(hsv, cv::Scalar(160, 25, 55), cv::Scalar(180, 185, 255), mask_red_low);
     cv::bitwise_or(mask_red_low, mask_red_low, mask);
+    // (2026-08-21 用户: 红色连起来大块才认, 小块不要; 闭运算核31x9→51x15连得更开, 面积下限500→1500)
     cv::morphologyEx(mask, mask, cv::MORPH_CLOSE,
-                     cv::getStructuringElement(cv::MORPH_RECT, cv::Size(31, 9)));
+                     cv::getStructuringElement(cv::MORPH_RECT, cv::Size(51, 15)));
     cv::erode(mask,  mask, cv::Mat(), cv::Point(-1,-1), 1);
     cv::dilate(mask, mask, cv::Mat(), cv::Point(-1,-1), 2);
 
@@ -146,7 +147,7 @@ Stage4Detector::CircleResult Stage4Detector::find_limbar(const cv::Mat& hsv) {
 
     for (auto& c : contours) {
         double area = cv::contourArea(c);
-        if (area < 500) continue;
+        if (area < 1500) continue;   // (2026-08-21 500→1500: 小块红色噪声不要)
         cv::Rect bbox = cv::boundingRect(c);
         float ratio = (float)bbox.width / bbox.height;
         if (bbox.y > hsv.rows * 0.78f || bbox.width < hsv.cols * 0.20f) continue;
@@ -304,12 +305,11 @@ Stage4Detector::CircleResult Stage4Detector::find_football(const cv::Mat& hsv) {
 }
 
 // 障碍物：淡蓝色方块（圆度低）
-// (2026-08-20 官方赛场二次贴边定稿: H中位101(p5=100~p95=102) S中位173(p5=138) V中位254(p5=216)
-//  高饱和亮蓝; 收紧 H[99,106] S[135,200] V[200,255])
+// (2026-08-21 用户: 阈值放开一点, 淡蓝色方形也要; 原 H[99,106] S[135,200] V[200,255] 太紧)
 Stage4Detector::CircleResult Stage4Detector::find_obstacle(const cv::Mat& hsv) {
     CircleResult result;
     cv::Mat mask;
-    cv::inRange(hsv, cv::Scalar(99, 135, 200), cv::Scalar(106, 200, 255), mask);
+    cv::inRange(hsv, cv::Scalar(95, 100, 150), cv::Scalar(112, 200, 255), mask);
     cv::erode(mask,  mask, cv::Mat(), cv::Point(-1,-1), 2);
     cv::dilate(mask, mask, cv::Mat(), cv::Point(-1,-1), 2);
 
