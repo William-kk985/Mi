@@ -39,7 +39,8 @@ private:
     // 路径参数
     static constexpr int   kMaxRounds = 3;         // 三轮
     // (2026-08-18 用户: 三轮起步前进 0.8m/1m/1m; 先第1轮0.8m, 第2轮1m)
-    static constexpr float kFwdDist[kMaxRounds] = {0.8f, 1.0f, 1.0f};
+    // (2026-08-22 用户: 轮2 1.0→1.2m)
+    static constexpr float kFwdDist[kMaxRounds] = {0.8f, 1.2f, 1.0f};
     static constexpr float kLaneDist  = 3.5f;      // 通道单程3.5m (2026-08-18 用户: 2.8→3.5)
     static constexpr float kLaneDistBack[kMaxRounds] = {3.0f, 2.6f, 3.5f}; // 回程按轮次 (2026-08-20 用户: 轮1=3.0 轮2=2.6 轮3=3.5)
 
