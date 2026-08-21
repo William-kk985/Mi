@@ -563,6 +563,12 @@ void Stage4Real::run() {
             if (walk_distance(kFwdDist[round_count_], entry_yaw_, kWalkSpeed)) {
                 motion_.stop();
                 state_frames_ = 0; sub_state_ = 0;
+#ifdef DEBUG_STAGE4_TEST_ROUTE
+                if (round_count_ == 2) {   // (2026-08-22 test路线: 第3轮跳过右转, 直接绕行左转)
+                    state_ = State::TURN_SPEC_L;
+                    return;
+                }
+#endif
                 state_ = State::TURN_R_IN;
             }
             return;
@@ -573,14 +579,8 @@ void Stage4Real::run() {
                 ref_y_ = last_odom_y_ = sensor_.odom_y;
                 travelled_since_ref_ = 0.0f;
                 sub_start_travel_ = 0.0f;
-                state_frames_ = 0; sub_state_ = 0;
-#ifdef DEBUG_STAGE4_TEST_ROUTE
-                if (round_count_ == 2) {   // (2026-08-22 test路线: 第3轮绕行进通道)
-                    state_ = State::TURN_SPEC_L;
-                    return;
-                }
-#endif
                 lane_pitch_unlock();   // (2026-08-18 进2.8m段全程低头)
+                state_frames_ = 0; sub_state_ = 0;
                 state_ = State::LANE_OUT;
             }
             return;
@@ -673,6 +673,23 @@ void Stage4Real::run() {
             return;
         }
         case State::TURN_R_OUT: {
+#ifdef DEBUG_STAGE4_TEST_ROUTE
+            if (round_count_ == 1) {   // (2026-08-22 test路线: 第2轮结束左转90°衔接第3轮)
+                if (turn_to_yaw(0.0f, +1.5708f)) {
+                    entry_yaw_ = sensor_.abs_yaw;   // 更新第3轮起步朝向; lane_yaw_/back_yaw_保持不动(第3轮绕行后仍接回原通道)
+                    ++round_count_;
+                    fprintf(stderr, "\033[1;35m[S4] 第%d轮完成(左转衔接)\033[0m\n", round_count_);
+                    ref_x_ = last_odom_x_ = sensor_.odom_x;
+                    ref_y_ = last_odom_y_ = sensor_.odom_y;
+                    travelled_since_ref_ = 0.0f;
+                    state_frames_ = 0; sub_state_ = 0;
+                    tts_limbar_ = tts_coke_ = tts_football_ = tts_ball_ = tts_obstacle_ = false;
+                    scan_done_out_ = false;
+                    state_ = State::FWD_1M;
+                }
+                return;
+            }
+#endif
             // (2026-08-22 用户纠正: 前两轮出通道保持右转90°回正, 只有最后一轮(TURN_L_FINAL)才左转)
             if (turn_to_yaw(entry_yaw_)) {
                 ++round_count_;
