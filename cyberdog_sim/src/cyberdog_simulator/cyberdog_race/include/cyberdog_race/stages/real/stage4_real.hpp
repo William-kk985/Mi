@@ -49,9 +49,9 @@ private:
     static constexpr float kKnockSpeed= 0.35f;     // 撞击可乐/足球速度
     static constexpr float kTurnRate  = 0.35f;
     static constexpr float kYawKp     = 0.8f;
-    static constexpr float kYawTol    = 0.08f;
-    // (2026-08-17 方向矫正: 转向物理欠转2°补偿, Stage2同款实测; 加在转向目标上)
-    static constexpr float kTurnExtraRad = -2.0f * 3.14159265f / 180.0f;
+    static constexpr float kYawTol    = 0.03f;   // (2026-08-21 0.08→0.03: 旧值4.6°太宽致转向时多时少, 对齐Stage2收紧)
+    // (2026-08-21 归零: “物理欠转2°”旧假设在Stage2已证不成立, 转满; 与Stage2对齐)
+    static constexpr float kTurnExtraRad = 0.0f;
     static constexpr float kYawDeadband = 0.01f;  // (2026-08-17 行进yaw死区, 防微差抖动, Stage2同款)
 #ifdef DEBUG_STAGE4_NO_COMP
     // (2026-08-21 startrace4test: 左补全0, 观察自然偏左量; 正式版保持注释走#else)
