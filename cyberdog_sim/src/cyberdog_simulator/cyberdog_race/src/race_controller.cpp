@@ -418,14 +418,15 @@ void RaceController::control_loop() {
         RCLCPP_INFO(get_logger(), "[Stage] %d done", cur_stage_ + 1);
 #endif
         if (single_stage_mode_) {
-            motion_.stop();
-            RCLCPP_WARN(get_logger(), "[DEBUG] Stage %d done, stopped", cur_stage_ + 1);
+            // (2026-08-22 用户: 结束保持站立; stop()走gamepad通道会趴下 → 改303静止)
+            motion_.set_walk_velocity_pitch(0.0f, 0.0f, 0.0f, 0.0f);
+            RCLCPP_WARN(get_logger(), "[DEBUG] Stage %d done, 保持站立", cur_stage_ + 1);
             timer_->cancel();
             return;
         }
 #ifdef DEBUG_END_STAGE
         if (cur_stage_ + 1 >= DEBUG_END_STAGE) {
-            motion_.stop();
+            motion_.set_walk_velocity_pitch(0.0f, 0.0f, 0.0f, 0.0f);   // (2026-08-22 保持站立)
             RCLCPP_WARN(get_logger(), "[DEBUG] Stage %d done, end stage mode", cur_stage_ + 1);
             timer_->cancel();
             return;
