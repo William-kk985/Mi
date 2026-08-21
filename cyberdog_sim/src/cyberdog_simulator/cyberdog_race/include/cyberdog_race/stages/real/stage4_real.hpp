@@ -85,7 +85,7 @@ private:
 
     // 识别停点 (2026-08-17 用户: 剩0.3m处停8秒识别足球/可乐/橙球)
     static constexpr float kScanStopMargin = 0.3f;   // 距终点还剩多少米时停 (2026-08-21 用户: 0.6→0.3)
-    static constexpr int   kScanHoldFrames = 500;    // 停5秒 @100Hz (2026-08-22 用户: 8秒→5秒)
+    static constexpr int   kScanHoldFrames = 300;    // 停3秒 @100Hz (2026-08-22 用户: 8秒→3秒)
     static constexpr float kPostScanFwd   = 0.7f;    // (2026-08-22 用户: 识别完固定前进 0.5→0.7m)
     static constexpr float kExitFwd1 = 1.0f;  // (2026-08-22 不规则四边形离场: 左转90°后前进1.0)
     static constexpr float kExitFwd2 = 1.0f;  // 右转90°后前进1.0
