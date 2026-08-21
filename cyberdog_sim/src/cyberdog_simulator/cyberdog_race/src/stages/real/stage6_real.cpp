@@ -137,7 +137,7 @@ void Stage6Real::run() {
         break;
     case State::MOVE_LEFT_BACK_41:
         if (update_walk()) {
-            begin_walk(State::MOVE_BACKWARD, -1.0f, 0.0f, 0.40f, start_yaw_);
+            begin_walk(State::MOVE_BACKWARD, -1.0f, 0.0f, 0.90f, start_yaw_);
         }
         break;
     case State::MOVE_BACKWARD:
