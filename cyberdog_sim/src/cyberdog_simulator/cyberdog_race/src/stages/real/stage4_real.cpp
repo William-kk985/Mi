@@ -30,8 +30,11 @@ const char* Stage4Real::state_name(State s) {
         case State::LANE_BACK:        return "LANE_BACK";
         case State::TURN_R_OUT:       return "TURN_R_OUT";
         case State::TURN_L_FINAL:     return "TURN_L_FINAL";
-        case State::FWD_FINAL:        return "FWD_FINAL";
-        case State::TURN_END:         return "TURN_END";
+        case State::FWD_EXIT_1:       return "FWD_EXIT_1";
+        case State::TURN_EXIT_R:      return "TURN_EXIT_R";
+        case State::FWD_EXIT_2:       return "FWD_EXIT_2";
+        case State::TURN_EXIT_L:      return "TURN_EXIT_L";
+        case State::FWD_EXIT_3:       return "FWD_EXIT_3";
         case State::RECOVERING:       return "RECOVERING";
         case State::DONE:             return "DONE";
     }
@@ -621,25 +624,51 @@ void Stage4Real::run() {
                 ref_y_ = last_odom_y_ = sensor_.odom_y;
                 travelled_since_ref_ = 0.0f;
                 state_frames_ = 0; sub_state_ = 0;
-                state_ = State::FWD_FINAL;
+                state_ = State::FWD_EXIT_1;
 #ifdef DEBUG_STAGE
-                fprintf(stderr, "[S4] 左转完成, 离场前进3m\n"); fflush(stderr);
+                fprintf(stderr, "[S4] 左转完成, 离场前进%.1fm(不规则四边形)\n", kExitFwd1); fflush(stderr);
 #endif
             }
             return;
         }
-        case State::FWD_FINAL: {   // (2026-08-20 离场前进; 2026-08-21 3m→2.5m, 末尾加左转90°收尾)
-            if (walk_distance(kFinalFwd, norm_yaw(back_yaw_ + 1.5708f), kWalkSpeed)) {
+        case State::FWD_EXIT_1: {   // (2026-08-22 不规则四边形: 左转90°后前进1.0m)
+            if (walk_distance(kExitFwd1, norm_yaw(back_yaw_ + 1.5708f), kWalkSpeed)) {
                 motion_.stop();
                 state_frames_ = 0; sub_state_ = 0;
-                state_ = State::TURN_END;
+                state_ = State::TURN_EXIT_R;
             }
             return;
         }
-        case State::TURN_END: {   // (2026-08-21 离场末尾左转90° → DONE)
-            // (2026-08-22 修复: 离场方向=entry+180°, 目标entry+90°实际是右转;
-            //  左转目标应为 entry+270°=entry-90°)
-            if (turn_to_yaw(norm_yaw(entry_yaw_ - 1.5708f))) {
+        case State::TURN_EXIT_R: {   // 右转90°
+            if (turn_to_yaw(back_yaw_)) {
+                ref_x_ = last_odom_x_ = sensor_.odom_x;
+                ref_y_ = last_odom_y_ = sensor_.odom_y;
+                travelled_since_ref_ = 0.0f;
+                state_frames_ = 0; sub_state_ = 0;
+                state_ = State::FWD_EXIT_2;
+            }
+            return;
+        }
+        case State::FWD_EXIT_2: {   // 前进1.0m
+            if (walk_distance(kExitFwd2, back_yaw_, kWalkSpeed)) {
+                motion_.stop();
+                state_frames_ = 0; sub_state_ = 0;
+                state_ = State::TURN_EXIT_L;
+            }
+            return;
+        }
+        case State::TURN_EXIT_L: {   // 左转90°
+            if (turn_to_yaw(norm_yaw(back_yaw_ + 1.5708f))) {
+                ref_x_ = last_odom_x_ = sensor_.odom_x;
+                ref_y_ = last_odom_y_ = sensor_.odom_y;
+                travelled_since_ref_ = 0.0f;
+                state_frames_ = 0; sub_state_ = 0;
+                state_ = State::FWD_EXIT_3;
+            }
+            return;
+        }
+        case State::FWD_EXIT_3: {   // 前进1.5m → DONE 保持站立
+            if (walk_distance(kExitFwd3, norm_yaw(back_yaw_ + 1.5708f), kWalkSpeed)) {
                 finish();
             }
             return;

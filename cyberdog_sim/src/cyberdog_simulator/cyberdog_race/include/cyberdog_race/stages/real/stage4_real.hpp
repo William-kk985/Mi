@@ -41,8 +41,8 @@ private:
     // (2026-08-18 用户: 三轮起步前进 0.8m/1m/1m; 先第1轮0.8m, 第2轮1m)
     // (2026-08-22 用户: 轮2 1.0→1.2m)
     static constexpr float kFwdDist[kMaxRounds] = {0.8f, 1.1f, 1.0f};   // (2026-08-22 用户: 轮2=1.1)
-    static constexpr float kLaneDist[kMaxRounds] = {3.5f, 3.35f, 3.0f};  // 去程按轮次 (2026-08-22 用户: 轮2=3.35 轮3=3.0)
-    static constexpr float kLaneDistBack[kMaxRounds] = {3.4f, 3.3f, 3.6f}; // 回程按轮次 (2026-08-22 用户: 轮1=3.4 轮2=3.3 轮3=3.6)
+    static constexpr float kLaneDist[kMaxRounds] = {3.5f, 3.35f, 2.0f};  // 去程按轮次 (2026-08-22 用户: 轮2=3.35 轮3=2.0(3.0-1.0起点后移))
+    static constexpr float kLaneDistBack[kMaxRounds] = {3.4f, 2.3f, 2.3f}; // 回程按轮次 (2026-08-22 用户: 轮1=3.4 轮2/轮3=2.3)
 
     // 运动参数
     static constexpr float kWalkSpeed = 0.30f;
@@ -84,7 +84,9 @@ private:
     static constexpr float kScanStopMargin = 0.3f;   // 距终点还剩多少米时停 (2026-08-21 用户: 0.6→0.3)
     static constexpr int   kScanHoldFrames = 800;    // 停8秒 @100Hz (2026-08-18 用户: 5秒→8秒)
     static constexpr float kPostScanFwd   = 0.7f;    // (2026-08-22 用户: 识别完固定前进 0.5→0.7m)
-    static constexpr float kFinalFwd      = 2.5f;    // (2026-08-21 用户: 离场前进 3.0→2.5m)
+    static constexpr float kExitFwd1 = 1.0f;  // (2026-08-22 不规则四边形离场: 左转90°后前进1.0)
+    static constexpr float kExitFwd2 = 1.0f;  // 右转90°后前进1.0
+    static constexpr float kExitFwd3 = 1.5f;  // 左转90°后前进1.5
 
     // 跌倒与恢复
     static constexpr float kFallRollThresh  = 0.45f;
@@ -108,8 +110,11 @@ private:
         LANE_BACK,      // 回程2.8m：只处理限高杆
         TURN_R_OUT,     // 右转90°回 entry 朝向（进下一轮）
         TURN_L_FINAL,   // (2026-08-20) 第3轮回程后左转90°离场
-        FWD_FINAL,      // (2026-08-20) 离场前进2.5m
-        TURN_END,       // (2026-08-21) 离场末尾左转90°收尾
+        FWD_EXIT_1,     // (2026-08-22 不规则四边形离场: 前进1.0m)
+        TURN_EXIT_R,    // 右转90°
+        FWD_EXIT_2,     // 前进1.0m
+        TURN_EXIT_L,    // 左转90°
+        FWD_EXIT_3,     // 前进1.5m
         RECOVERING,
         DONE
     } state_{State::WAIT_FOR_SENSORS};
