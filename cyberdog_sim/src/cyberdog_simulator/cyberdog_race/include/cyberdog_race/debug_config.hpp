@@ -25,6 +25,9 @@
 // #define DEBUG_START_STAGE  3   // 从Stage3开始 (2026-08-18 之前: 只走Stage3+4)
 #define DEBUG_END_STAGE    5   // 跑完Stage5停止 (2026-08-20 用户: 走Stage1~5兼容伙伴Stage5)
 
+// (2026-08-21 startrace4test专用: Stage4左横向补偿全0, 观察自然偏左; 正式版保持注释)
+// #define DEBUG_STAGE4_NO_COMP
+
 // 调试开关：禁用撞球，只观察视觉效果
 // #define DEBUG_NO_HIT
 
