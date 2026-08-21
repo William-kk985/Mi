@@ -113,7 +113,7 @@ void Stage6Real::run() {
         break;
     case State::TURN_RIGHT_48:
         if (update_turn()) {
-            begin_walk(State::MOVE_FORWARD_2, 1.0f, 0.0f, 3.00f,
+            begin_walk(State::MOVE_FORWARD_2, 1.0f, 0.0f, 2.60f,
                        start_yaw_ - kTurn48);
         }
         break;
@@ -122,7 +122,7 @@ void Stage6Real::run() {
         break;
     case State::TURN_LEFT_48:
         if (update_turn()) {
-            begin_walk(State::MOVE_FORWARD_3, 1.0f, 0.0f, 0.25f, start_yaw_);
+            begin_walk(State::MOVE_FORWARD_3, 1.0f, 0.0f, 0.50f, start_yaw_);
         }
         break;
     case State::MOVE_FORWARD_3:
@@ -132,12 +132,12 @@ void Stage6Real::run() {
             // (-sin(41°), cos(41°))。
             begin_walk(State::MOVE_LEFT_BACK_41,
                        -std::sin(kDiagonal41), std::cos(kDiagonal41),
-                       3.36f, start_yaw_);
+                       3.00f, start_yaw_);
         }
         break;
     case State::MOVE_LEFT_BACK_41:
         if (update_walk()) {
-            begin_walk(State::MOVE_BACKWARD, -1.0f, 0.0f, 0.50f, start_yaw_);
+            begin_walk(State::MOVE_BACKWARD, -1.0f, 0.0f, 0.30f, start_yaw_);
         }
         break;
     case State::MOVE_BACKWARD:
