@@ -21,13 +21,14 @@ set_config() {
         -e 's|^#define DEBUG_END_STAGE.*|// #define DEBUG_END_STAGE|' \
         -e 's|^#define DEBUG_STAGE4_NO_COMP.*|// #define DEBUG_STAGE4_NO_COMP|' \
         -e 's|^#define DEBUG_STAGE2_TEST.*|// #define DEBUG_STAGE2_TEST|' \
+        -e 's|^#define DEBUG_STAGE4_TEST_ROUTE.*|// #define DEBUG_STAGE4_TEST_ROUTE|' \
         "$CONF"
     case "$combo" in
         1|2|3|4|5|6)
             sed -i "s|^// #define DEBUG_SINGLE_STAGE.*|#define DEBUG_SINGLE_STAGE $combo|" "$CONF"
             ;;
         4test) sed -i -e 's|^// #define DEBUG_SINGLE_STAGE.*|#define DEBUG_SINGLE_STAGE 4|' \
-                    -e 's|^// #define DEBUG_STAGE4_NO_COMP.*|#define DEBUG_STAGE4_NO_COMP|' "$CONF";;
+                    -e 's|^// #define DEBUG_STAGE4_TEST_ROUTE.*|#define DEBUG_STAGE4_TEST_ROUTE|' "$CONF";;
         2test) sed -i -e 's|^// #define DEBUG_SINGLE_STAGE.*|#define DEBUG_SINGLE_STAGE 2|' \
                     -e 's|^// #define DEBUG_STAGE2_TEST.*|#define DEBUG_STAGE2_TEST|' "$CONF";;
         12) sed -i -e 's|^// #define DEBUG_START_STAGE.*|#define DEBUG_START_STAGE 1|' \
@@ -37,7 +38,7 @@ set_config() {
         56) sed -i -e 's|^// #define DEBUG_START_STAGE.*|#define DEBUG_START_STAGE 5|' \
                   -e 's|^// #define DEBUG_END_STAGE.*|#define DEBUG_END_STAGE 6|' "$CONF";;
         123456) ;;   # 全注释=正式全跑
-        123456test) sed -i -e 's|^// #define DEBUG_STAGE4_NO_COMP.*|#define DEBUG_STAGE4_NO_COMP|' "$CONF";;   # (2026-08-22 全跑+Stage4横向补偿归零)
+        123456test) sed -i -e 's|^// #define DEBUG_STAGE4_TEST_ROUTE.*|#define DEBUG_STAGE4_TEST_ROUTE|' "$CONF";;   # (2026-08-22 全跑+Stage4 test路线)
         *) echo "✗ 未知组合 $combo"; exit 1;;
     esac
     grep -E "DEBUG_(SINGLE|START|END)_STAGE" "$CONF" | grep -v "^//" | grep -v "只跑\|开始\|结束" || echo "  (全部注释=正式全跑模式)"
