@@ -637,7 +637,9 @@ void Stage4Real::run() {
             return;
         }
         case State::TURN_END: {   // (2026-08-21 离场末尾左转90° → DONE)
-            if (turn_to_yaw(norm_yaw(entry_yaw_ + 1.5708f))) {
+            // (2026-08-22 修复: 离场方向=entry+180°, 目标entry+90°实际是右转;
+            //  左转目标应为 entry+270°=entry-90°)
+            if (turn_to_yaw(norm_yaw(entry_yaw_ - 1.5708f))) {
                 finish();
             }
             return;

@@ -418,17 +418,25 @@ void RaceController::control_loop() {
         RCLCPP_INFO(get_logger(), "[Stage] %d done", cur_stage_ + 1);
 #endif
         if (single_stage_mode_) {
-            // (2026-08-22 用户: 结束保持站立; stop()走gamepad通道会趴下 → 改303静止)
+            // (2026-08-22 用户: 结束保持站立; 303只发一次后RT板无指令会自己趴下 →
+            //   不cancel timer, 每tick持续发303静止保持站立直到Ctrl+C)
+            static bool done_logged = false;
+            if (!done_logged) {
+                RCLCPP_WARN(get_logger(), "[DEBUG] Stage %d done, 保持站立(持续303静止)", cur_stage_ + 1);
+                done_logged = true;
+            }
             motion_.set_walk_velocity_pitch(0.0f, 0.0f, 0.0f, 0.0f);
-            RCLCPP_WARN(get_logger(), "[DEBUG] Stage %d done, 保持站立", cur_stage_ + 1);
-            timer_->cancel();
             return;
         }
 #ifdef DEBUG_END_STAGE
         if (cur_stage_ + 1 >= DEBUG_END_STAGE) {
-            motion_.set_walk_velocity_pitch(0.0f, 0.0f, 0.0f, 0.0f);   // (2026-08-22 保持站立)
-            RCLCPP_WARN(get_logger(), "[DEBUG] Stage %d done, end stage mode", cur_stage_ + 1);
-            timer_->cancel();
+            // (2026-08-22 持续303保持站立, 不cancel)
+            static bool end_logged = false;
+            if (!end_logged) {
+                RCLCPP_WARN(get_logger(), "[DEBUG] Stage %d done, end stage mode", cur_stage_ + 1);
+                end_logged = true;
+            }
+            motion_.set_walk_velocity_pitch(0.0f, 0.0f, 0.0f, 0.0f);
             return;
         }
 #endif
