@@ -59,7 +59,7 @@ private:
 #endif
     // (2026-08-22 test路线第3轮绕行, 仅test进入; 始终定义避免非test编译报未定义)
     static constexpr float kSpecialFwd1 = 1.1f;  // 绕行: 左转90°后前进 (2026-08-22 用户: 1.0→1.1)
-    static constexpr float kSpecialFwd2 = 0.7f;  // 绕行: 右转90°后前进 (2026-08-22 用户: 0.6→0.7)
+    static constexpr float kSpecialFwd2 = 0.95f;  // 绕行: 右转90°后前进 (2026-08-22 用户: 0.7→0.95)
     // (2026-08-22 test路线2/第三版链接段, 始终定义)
     static constexpr float kLinkFwd1 = 1.8f;   // 第1轮后前进1.8m
     static constexpr float kLinkFwd2 = 2.5f;   // 第2轮左转后前进2.5m
@@ -114,7 +114,7 @@ private:
 #else
     static constexpr float kExitFwd1 = 1.0f;  // (2026-08-22 不规则四边形离场: 左转90°后前进1.0)
     static constexpr float kExitFwd2 = 1.15f; // 右转90°后前进 (2026-08-22 用户: 1.0→1.15, 绕第三赛道蓝色障碍物)
-    static constexpr float kExitFwd3 = 1.5f;  // 左转90°后前进1.5
+    static constexpr float kExitFwd3 = 1.8f;  // 左转90°后前进 (2026-08-22 用户: 1.5→1.8)
 #endif
 
     // 跌倒与恢复
