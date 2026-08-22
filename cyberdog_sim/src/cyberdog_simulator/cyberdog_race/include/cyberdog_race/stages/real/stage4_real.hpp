@@ -39,10 +39,10 @@ private:
     // 路径参数
     static constexpr int   kMaxRounds = 3;         // 三轮
 #ifdef DEBUG_STAGE4_TEST_ROUTE
-    // (2026-08-22 test路线: 轮1起步1.8 轮2起步1.1 轮3起步1.4; 轮2去程3.25 轮3去程2.3 轮1/2/3回程3.6/3.5/3.5)
-    static constexpr float kFwdDist[kMaxRounds] = {1.8f, 1.1f, 1.4f};
+    // (2026-08-22 test路线: 轮1起步1.8 轮2起步1.1 轮3起步1.2; 轮2去程3.25 轮3去程2.3 轮1/2/3回程3.6/3.5/3.6)
+    static constexpr float kFwdDist[kMaxRounds] = {1.8f, 1.1f, 1.2f};
     static constexpr float kLaneDist[kMaxRounds] = {3.5f, 3.25f, 2.3f};
-    static constexpr float kLaneDistBack[kMaxRounds] = {3.6f, 3.5f, 3.5f};
+    static constexpr float kLaneDistBack[kMaxRounds] = {3.6f, 3.5f, 3.6f};
 #else
     // (2026-08-18 用户: 三轮起步前进 0.8m/1m/1m; 先第1轮0.8m, 第2轮1m)
     // (2026-08-22 用户: 轮2 1.0→1.2m)
