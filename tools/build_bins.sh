@@ -40,7 +40,7 @@ set_config() {
                   -e 's|^// #define DEBUG_END_STAGE.*|#define DEBUG_END_STAGE 4|' "$CONF";;
         34test) sed -i -e 's|^// #define DEBUG_START_STAGE.*|#define DEBUG_START_STAGE 3|' \
                      -e 's|^// #define DEBUG_END_STAGE.*|#define DEBUG_END_STAGE 4|' \
-                     -e 's|^// #define DEBUG_STAGE4_TEST_ROUTE.*|#define DEBUG_STAGE4_TEST_ROUTE|' "$CONF";;
+                     -e 's|^// #define DEBUG_STAGE4_TEST_ROUTE[[:space:]]*$|#define DEBUG_STAGE4_TEST_ROUTE|' "$CONF";;
         34test2) sed -i -e 's|^// #define DEBUG_START_STAGE.*|#define DEBUG_START_STAGE 3|' \
                       -e 's|^// #define DEBUG_END_STAGE.*|#define DEBUG_END_STAGE 4|' \
                       -e 's|^// #define DEBUG_STAGE4_TEST_ROUTE2.*|#define DEBUG_STAGE4_TEST_ROUTE2|' "$CONF";;
