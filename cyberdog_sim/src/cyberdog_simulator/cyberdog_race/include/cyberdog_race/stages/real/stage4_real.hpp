@@ -69,12 +69,12 @@ private:
     static constexpr float kLowSpeed  = 0.20f;     // 限高杆下低姿速度
     static constexpr float kKnockSpeed= 0.35f;     // 撞击可乐/足球速度
     static constexpr float kTurnRate  = 0.35f;
-    static constexpr float kYawKp     = 0.8f;
+    static constexpr float kYawKp     = 1.2f;   // (2026-08-22 用户: 长距离行走方向右漂, 0.8→1.2 加强拉回)
     static constexpr float kYawTol    = 0.03f;   // (2026-08-21 0.08→0.03: 旧值4.6°太宽致转向时多时少, 对齐Stage2收紧)
     // (2026-08-21 归零: “物理欠转2°”旧假设在Stage2已证不成立, 转满; 与Stage2对齐)
     static constexpr float kTurnExtraRad = 0.0f;
     static constexpr float kTurnYawBias  = 0.05f;   // (2026-08-22 恢复git蓝障版那套: 0.08→0.05, 正式/test2统一)
-    static constexpr float kYawDeadband = 0.01f;  // (2026-08-17 行进yaw死区, 防微差抖动, Stage2同款)
+    static constexpr float kYawDeadband = 0.005f;  // (2026-08-22 死区0.01→0.005: 方向漂移及时拉回, Stage2同款)
 #ifdef DEBUG_STAGE4_NO_COMP
     // (2026-08-21 startrace4test: 左补全0, 观察自然偏左量; 正式版保持注释走#else)
     static constexpr float kFwdLatComp  = 0.0f;
