@@ -390,7 +390,7 @@ void Stage2Real::run() {
     if (s.kind == S2Kind::TURN_R90 || s.kind == S2Kind::TURN_L90 || s.kind == S2Kind::TURN_180 || s.kind == S2Kind::TURN_ABS) {
         // (2026-08-18 TURN_ABS 2°微调: 到位阈值0.008rad(0.46°)保证真转; 停稳10帧省时间)
         // (2026-08-20 90°步 0.02→0.01(0.57°): 转不够的次级因素——欠1°级不会被修, 收紧)
-        const float turn_tol    = (s.kind == S2Kind::TURN_ABS) ? 0.008f : 0.01f;
+        const float turn_tol    = (s.kind == S2Kind::TURN_ABS) ? 0.008f : 0.02f;   // (2026-08-22 90°步0.01→0.02: 0.57°太紧致补转↔顶回互磨26s; 1.15°欠转由下一步FIX兜底)
         const int   settle_need = (s.kind == S2Kind::TURN_ABS) ? 10 : TURN_SETTLE_FRAMES;
         if (turn_settle_ > 0) {   // 停稳计数
             if (++turn_settle_ >= settle_need) {
