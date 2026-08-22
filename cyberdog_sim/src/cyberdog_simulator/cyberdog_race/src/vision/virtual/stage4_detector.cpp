@@ -130,10 +130,11 @@ bool Stage4Detector::is_orange(const cv::Mat& hsv,
 Stage4Detector::CircleResult Stage4Detector::find_limbar(const cv::Mat& hsv) {
     CircleResult result;
     cv::Mat mask_red_low, mask_red_high, mask;
-    // (2026-08-20 官方赛场贴边定稿: H主峰178-179 S中位143 V中位198亮红;
-    //  去V上限(176会漏75%亮红杆); 去H低段[0,5]→橙球(H中位10 p5=0)深红边缘被误判限高杆)
+    // (2026-08-20 官方赛场贴边定稿: H主峰178-179 S中位143 V中位198亮红; 保留H[160,180]兼容)
+    // (2026-08-22 用户: 今日赛场杆为红高段 H2-8 S60-148 V100-190, 旧阈值漏检→补回H[0,12]段)
+    cv::inRange(hsv, cv::Scalar(0, 60, 100), cv::Scalar(12, 255, 190), mask_red_high);
     cv::inRange(hsv, cv::Scalar(160, 25, 55), cv::Scalar(180, 185, 255), mask_red_low);
-    cv::bitwise_or(mask_red_low, mask_red_low, mask);
+    cv::bitwise_or(mask_red_low, mask_red_high, mask);
     // (2026-08-21 用户: 红色连起来大块才认, 小块不要; 闭运算核31x9→51x15连得更开, 面积下限500→1500)
     cv::morphologyEx(mask, mask, cv::MORPH_CLOSE,
                      cv::getStructuringElement(cv::MORPH_RECT, cv::Size(51, 15)));
@@ -149,10 +150,10 @@ Stage4Detector::CircleResult Stage4Detector::find_limbar(const cv::Mat& hsv) {
         cv::Rect bbox = cv::boundingRect(c);
         float ratio = (float)bbox.width / bbox.height;
         if (bbox.y > hsv.rows * 0.78f || bbox.width < hsv.cols * 0.20f) continue;
-        // (2026-08-18 收紧: 横杆高度不得超过画面1/3, 防整片红色区域误报)
-        if (bbox.height > hsv.rows * 0.30f) continue;
-        // 横杆：宽度远大于高度
-        if (ratio > 3.0f) {
+        // (2026-08-22 用户: 今天杆高占比0.45, 0.30卡掉漏检→放宽0.50)
+        if (bbox.height > hsv.rows * 0.50f) continue;
+        // 横杆：宽度远大于高度 (2026-08-22 3.0→2.5: 今天杆横贯全宽实测比2.95)
+        if (ratio > 2.5f) {
             result.found = true;
             result.cx    = (bbox.x + bbox.width/2.0f - hsv.cols/2.0f) / (hsv.cols/2.0f);
             result.box   = bbox;

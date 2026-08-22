@@ -333,10 +333,7 @@ void Stage4Real::lane_out() {
 #endif
         }
         // (2026-08-18 用户: 可乐/足球/橙球只在通道末端停点识别, 走动中不识别不撞击不播报)
-        // 蓝色方块 (2026-08-18 用户: 伙伴写了识别, 我们补播报; 绕行待定)
-        if (sensor_.obstacle_found) {
-            if (!tts_obstacle_) { motion_.speak("识别到不可跨越障碍物"); tts_obstacle_ = true; }
-        }
+        // 蓝色方块播报已提到公共区(2026-08-22 走路段一直识别)
     } else {
         // 视觉超时：减速慢走（不平白停死）
         walk_low(kLaneDist[round_count_], lane_yaw_, kLowSpeed);
@@ -451,10 +448,7 @@ void Stage4Real::lane_back() {
 #endif
     }
     // (2026-08-18 用户: 橙球只在停点识别, 回程走动中不播报)
-    // 回程蓝色方块播报 (2026-08-18)
-    if (age <= kVisionTimeout && sensor_.obstacle_found) {
-        if (!tts_obstacle_) { motion_.speak("识别到不可跨越障碍物"); tts_obstacle_ = true; }
-    }
+    // 蓝色方块播报已提到公共区(2026-08-22 走路段一直识别)
     if (age > kVisionTimeout) {
         walk_low(back_dist, back_yaw_, kLowSpeed);
         return;
@@ -547,6 +541,13 @@ void Stage4Real::run() {
 
     update_perception_in_state();
     ++state_frames_;
+
+    // (2026-08-22 用户: 蓝色障碍物走路段一直识别播报, 纯播报不影响运动逻辑;
+    //  tts_obstacle_每轮在轮间复位, 每轮最多说一次)
+    if (sensor_.obstacle_found && !tts_obstacle_) {
+        motion_.speak("识别到不可跨越障碍物");
+        tts_obstacle_ = true;
+    }
 
 #ifdef DEBUG_STAGE
     // 状态切换日志 (2026-08-17)

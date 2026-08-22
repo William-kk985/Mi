@@ -73,15 +73,15 @@ private:
     static constexpr float kYawTol    = 0.03f;   // (2026-08-21 0.08→0.03: 旧值4.6°太宽致转向时多时少, 对齐Stage2收紧)
     // (2026-08-21 归零: “物理欠转2°”旧假设在Stage2已证不成立, 转满; 与Stage2对齐)
     static constexpr float kTurnExtraRad = 0.0f;
-    static constexpr float kTurnYawBias  = 0.08f;   // (2026-08-22 用户: 转向偏右更明显, 0.05→0.08 左补偿加强)
+    static constexpr float kTurnYawBias  = 0.05f;   // (2026-08-22 恢复git蓝障版那套: 0.08→0.05, 正式/test2统一)
     static constexpr float kYawDeadband = 0.01f;  // (2026-08-17 行进yaw死区, 防微差抖动, Stage2同款)
 #ifdef DEBUG_STAGE4_NO_COMP
     // (2026-08-21 startrace4test: 左补全0, 观察自然偏左量; 正式版保持注释走#else)
     static constexpr float kFwdLatComp  = 0.0f;
     static constexpr float kFwdLatCompLow = 0.0f;
 #else
-    static constexpr float kFwdLatComp  = 0.005f; // (2026-08-22 用户: 仍偏右且时间长了累积, 0.010→0.005)
-    static constexpr float kFwdLatCompLow = 0.004f; // (2026-08-22 同步 0.008→0.004)
+    static constexpr float kFwdLatComp  = 0.018f; // (2026-08-22 恢复git蓝障版: 0.005→0.018)
+    static constexpr float kFwdLatCompLow = 0.015f; // (2026-08-22 恢复git蓝障版: 0.004→0.015)
 #endif
     static constexpr float kTurnLatComp = -0.01f;   // (2026-08-22 原地转向右漂: 固定向左补偿, 负=左)
     static constexpr float kTurnHoldLimit = 0.12f;  // (2026-08-22 转向位置保持限幅 0.08→0.12)
