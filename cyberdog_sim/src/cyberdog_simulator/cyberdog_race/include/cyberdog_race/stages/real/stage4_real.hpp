@@ -46,10 +46,10 @@ private:
     static constexpr float kLaneDist[kMaxRounds] = {3.5f, 3.25f, 2.3f};
     static constexpr float kLaneDistBack[kMaxRounds] = {3.6f, 3.5f, 3.6f};
 #elif defined(DEBUG_STAGE4_TEST_ROUTE2)
-    // (2026-08-22 test路线2/第三版: 轮1起步0.8 轮2起步1.1, 通道3.5/3.4 与 3.35/3.3, 轮1后前1.8, 轮2后左转→前2.5→左转立正)
-    static constexpr float kFwdDist[kMaxRounds] = {0.8f, 1.1f, 1.0f};
+    // (2026-08-22 test路线2/第三版: 轮1起步0.8 轮2起步1.2, 通道3.5/3.6 与 3.35/3.6, 轮1后前1.8, 轮2后左转→前2.5→左转立正)
+    static constexpr float kFwdDist[kMaxRounds] = {0.8f, 1.2f, 1.0f};
     static constexpr float kLaneDist[kMaxRounds] = {3.5f, 3.35f, 2.0f};
-    static constexpr float kLaneDistBack[kMaxRounds] = {3.4f, 3.3f, 2.1f};
+    static constexpr float kLaneDistBack[kMaxRounds] = {3.6f, 3.6f, 2.1f};
 #else
     // (2026-08-18 用户: 三轮起步前进 0.8m/1m/1m; 先第1轮0.8m, 第2轮1m)
     // (2026-08-22 用户: 轮2 1.0→1.2m)
