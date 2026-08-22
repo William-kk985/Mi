@@ -63,6 +63,16 @@ for combo in "$@"; do
     MAKEFLAGS=-j6 colcon build --merge-install --packages-select cyberdog_race \
         --executor sequential 2>&1 | tail -2
     bash /SDCARD/race_bins/save_bin.sh "startrace${combo}"
+    # (2026-08-22 防重复: 与已存版本md5相同=宏没生效/编译错位, 警告勿当独立版本)
+    MY_MD5=$(cut -d' ' -f1 "/SDCARD/race_bins/race_controller_startrace${combo}.md5" 2>/dev/null || true)
+    if [ -n "$MY_MD5" ]; then
+        DUP=$(cd /SDCARD/race_bins && grep -l "^${MY_MD5}$" race_controller_startrace*.md5 2>/dev/null | grep -v "race_controller_startrace${combo}.md5" | head -1 || true)
+        if [ -n "$DUP" ]; then
+            echo "⚠⚠⚠ startrace${combo} 与 ${DUP%.md5} 内容完全相同! 宏可能没生效, 勿当独立版本用!"
+        else
+            echo "✓ md5独立: ${MY_MD5:0:8} (与其他版本不同)"
+        fi
+    fi
     echo ""
 done
 echo "════════ 全部完成, 现存版本: ════════"
