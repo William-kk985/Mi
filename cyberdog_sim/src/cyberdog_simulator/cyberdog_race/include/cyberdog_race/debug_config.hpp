@@ -31,6 +31,9 @@
 // (2026-08-22 startrace4test/123456test: Stage4走test路线(起步1.8/1.0/1.8, 第3轮绕行, 离场左转→0.5m→左转); 正式版保持注释)
 // #define DEBUG_STAGE4_TEST_ROUTE
 
+// (2026-08-22 startrace4test2: Stage4走test路线2/第三版(轮1:0.8→3.5/3.4→前1.8; 轮2:1.1→3.35/3.3→左转→前2.5→左转立正); 与TEST_ROUTE互斥)
+// #define DEBUG_STAGE4_TEST_ROUTE2
+
 // (2026-08-21 startrace2test专用: 离场3.3m前左转2°(原4°减半); 正式版保持注释)
 // #define DEBUG_STAGE2_TEST
 

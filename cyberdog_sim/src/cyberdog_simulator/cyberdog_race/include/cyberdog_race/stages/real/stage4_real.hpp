@@ -38,11 +38,18 @@ private:
 
     // 路径参数
     static constexpr int   kMaxRounds = 3;         // 三轮
-#ifdef DEBUG_STAGE4_TEST_ROUTE
+#if defined(DEBUG_STAGE4_TEST_ROUTE) && defined(DEBUG_STAGE4_TEST_ROUTE2)
+#error "DEBUG_STAGE4_TEST_ROUTE 与 DEBUG_STAGE4_TEST_ROUTE2 互斥, 只能开一个"
+#elif defined(DEBUG_STAGE4_TEST_ROUTE)
     // (2026-08-22 test路线: 轮1起步1.8 轮2起步1.1 轮3起步1.2; 轮2去程3.25 轮3去程2.3 轮1/2/3回程3.6/3.5/3.6)
     static constexpr float kFwdDist[kMaxRounds] = {1.8f, 1.1f, 1.2f};
     static constexpr float kLaneDist[kMaxRounds] = {3.5f, 3.25f, 2.3f};
     static constexpr float kLaneDistBack[kMaxRounds] = {3.6f, 3.5f, 3.6f};
+#elif defined(DEBUG_STAGE4_TEST_ROUTE2)
+    // (2026-08-22 test路线2/第三版: 轮1起步0.8 轮2起步1.1, 通道3.5/3.4 与 3.35/3.3, 轮1后前1.8, 轮2后左转→前2.5→左转立正)
+    static constexpr float kFwdDist[kMaxRounds] = {0.8f, 1.1f, 1.0f};
+    static constexpr float kLaneDist[kMaxRounds] = {3.5f, 3.35f, 2.0f};
+    static constexpr float kLaneDistBack[kMaxRounds] = {3.4f, 3.3f, 2.1f};
 #else
     // (2026-08-18 用户: 三轮起步前进 0.8m/1m/1m; 先第1轮0.8m, 第2轮1m)
     // (2026-08-22 用户: 轮2 1.0→1.2m)
@@ -53,6 +60,9 @@ private:
     // (2026-08-22 test路线第3轮绕行, 仅test进入; 始终定义避免非test编译报未定义)
     static constexpr float kSpecialFwd1 = 1.1f;  // 绕行: 左转90°后前进 (2026-08-22 用户: 1.0→1.1)
     static constexpr float kSpecialFwd2 = 0.7f;  // 绕行: 右转90°后前进 (2026-08-22 用户: 0.6→0.7)
+    // (2026-08-22 test路线2/第三版链接段, 始终定义)
+    static constexpr float kLinkFwd1 = 1.8f;   // 第1轮后前进1.8m
+    static constexpr float kLinkFwd2 = 2.5f;   // 第2轮左转后前进2.5m
 
     // 运动参数
     static constexpr float kWalkSpeed = 0.30f;
@@ -133,6 +143,9 @@ private:
         TURN_SPEC_R,    // 右转90°
         FWD_SPEC_2,     // 前进1.1m
         TURN_SPEC_L2,   // 左转90°进通道
+        FWD_LINK_1,     // (2026-08-22 test路线2: 第1轮后前进1.8m)
+        FWD_LINK_2,     // 第2轮左转后前进2.5m
+        TURN_LINK_L,    // 最后左转90°立正
         TURN_L_FINAL,   // (2026-08-20) 第3轮回程后左转90°离场
         FWD_EXIT_1,     // (2026-08-22 不规则四边形离场: 前进1.0m)
         TURN_EXIT_R,    // 右转90°
@@ -187,6 +200,8 @@ private:
     float exit_yaw3_{0.0f};   // 离场: 左转90°后方向
     float spec_yaw1_{0.0f};   // (2026-08-22 test绕行: 左转90°后方向)
     float spec_yaw2_{0.0f};   // (2026-08-22 test绕行: 右转90°后方向)
+    float link_yaw1_{0.0f};   // (2026-08-22 test路线2: 第1轮后方向)
+    float link_yaw2_{0.0f};   // (2026-08-22 test路线2: 第2轮左转后方向)
 
     // 子任务临时量
     float sub_start_travel_{0.0f};   // 低姿/撞击段起点里程（相对 travelled_since_ref_）
