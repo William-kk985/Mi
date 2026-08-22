@@ -21,8 +21,8 @@ set_config() {
         -e 's|^#define DEBUG_END_STAGE.*|// #define DEBUG_END_STAGE|' \
         -e 's|^#define DEBUG_STAGE4_NO_COMP.*|// #define DEBUG_STAGE4_NO_COMP|' \
         -e 's|^#define DEBUG_STAGE2_TEST.*|// #define DEBUG_STAGE2_TEST|' \
-        -e 's|^#define DEBUG_STAGE4_TEST_ROUTE.*|// #define DEBUG_STAGE4_TEST_ROUTE|' \
         -e 's|^#define DEBUG_STAGE4_TEST_ROUTE2.*|// #define DEBUG_STAGE4_TEST_ROUTE2|' \
+        -e 's|^#define DEBUG_STAGE4_TEST_ROUTE.*|// #define DEBUG_STAGE4_TEST_ROUTE|' \
         "$CONF"
     case "$combo" in
         1|2|3|4|5|6)
