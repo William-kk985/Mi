@@ -14,7 +14,7 @@ option(USE_TEST_ALL   "Replace ALL stages with _test.cpp versions" OFF)
 option(USE_TEST_REAL_STAGE1 "Real stage1 test version" OFF)
 option(USE_TEST_REAL_STAGE2 "Real stage2 test version" OFF)
 option(USE_TEST_REAL_STAGE3 "Real stage3 test version" OFF)
-option(USE_TEST_REAL_STAGE4 "Real stage4 test version" OFF)
+option(USE_TEST_REAL_STAGE4 "Real stage4 test version (废弃: 2026-09-02 改为运行期参数 stage4_impl, 见 race.launch.py)" OFF)
 option(USE_TEST_REAL_STAGE5 "Real stage5 test version" OFF)
 option(USE_TEST_REAL_STAGE6 "Real stage6 test version" OFF)
 option(USE_TEST_REAL_ALL   "All real stages test version" OFF)
@@ -101,9 +101,11 @@ set(SOURCES
   src/motion_ctrl.cpp
   src/vision/virtual/lane_detector.cpp
   src/vision/virtual/ball_detector.cpp
-  src/vision/virtual/stage4_detector.cpp
+
+  src/vision/real/yolo_detector.cpp
+  src/vision/real/lidar_locator.cpp
   src/utils/web_streamer.cpp
-  src/llm_helper.cpp
+  src/utils/llm_helper.cpp
   ${STAGE1_SRC}
   ${STAGE2_SRC}
   ${STAGE3_SRC}
@@ -127,10 +129,15 @@ macro(add_real_test N)
     message(STATUS "[TEST] Real Stage${N} → src/test/real/src/stage${N}_real_test.cpp")
   endif()
 endmacro()
+# ── Stage4 test 版：无条件编入 (2026-09-02 重构: 全编 + 运行期 stage4_impl 参数选) ──
+#   不再用 -DUSE_TEST_REAL_STAGE4 编译期开关; launch 传 stage4_impl:=test/test2 即选中
+list(APPEND SOURCES src/test/real/src/stage4_real_test.cpp)
+list(APPEND SOURCES src/test/real/src/stage4_real_test2.cpp)
+
 add_real_test(1)
 add_real_test(2)
 add_real_test(3)
-add_real_test(4)
+# add_real_test(4)  ← 已由上方无条件编入取代 (2026-09-02)
 add_real_test(5)
 add_real_test(6)
 
@@ -161,13 +168,16 @@ endif()
 
 install(TARGETS race_controller DESTINATION lib/${PROJECT_NAME})
 
+# ── launch 文件 (2026-09-02 重构: 运行期版本选择入口) ──
+install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
+
 # ── center_cam: 官方 camera_api 桥接节点 (2026-08-14) ──
 #   把 cam_id 0/1/2/3 的相机(bottom/center 模组)发成 ROS topic
 #   仅真机: camera_api 库只在 NX /opt/ros2/cyberdog 有
 find_library(CAMERA_API_LIB camera_api PATHS /opt/ros2/cyberdog/lib NO_DEFAULT_PATH)
 if(CAMERA_API_LIB)
   include_directories(/opt/ros2/cyberdog/include)
-  add_executable(center_cam src/center_cam.cpp)
+  add_executable(center_cam src/vision/real/center_cam.cpp)
   ament_target_dependencies(center_cam rclcpp sensor_msgs cv_bridge)
   target_link_libraries(center_cam ${CAMERA_API_LIB} ${OpenCV_LIBS})
   install(TARGETS center_cam DESTINATION lib/${PROJECT_NAME})

@@ -18,6 +18,11 @@ export AMENT_PREFIX_PATH="/opt/ros2/cyberdog:/opt/ros2/galactic"
 export PYTHONPATH="/opt/ros2/cyberdog/lib/python3.6/site-packages:/opt/ros2/galactic/lib/python3.6/site-packages"
 NS="/mi_desktop_48_b0_2d_7b_02_c7"
 
+# ★ (2026-09-02 重构: Stage4 路线由环境变量选, 替代 build_bins 多二进制; 默认正式版)
+#   用法: STAGE4_IMPL=test bash start_race.sh   (跑 test 路线)
+#        STAGE4_IMPL=formal bash start_race.sh  (跑正式版, 默认)
+STAGE4_IMPL="${STAGE4_IMPL:-formal}"
+
 echo "============================================"
 echo " CyberDog 真机比赛 (Stage1 石径探路)"
 echo "============================================"
@@ -156,4 +161,4 @@ echo "   狗将自动站起开始! 请保持场地空旷"
 echo "   Web 可视化: http://192.168.44.1:8080 (有线) 或 http://10.179.102.181:8080 (WiFi)"
 echo "   (同一真实画面+巡线标注)"
 echo ""
-exec taskset -c 4,5 /SDCARD/race_ws/install/lib/cyberdog_race/race_controller --ros-args -r __ns:=${NS} 2>&1 | tee /tmp/race_run.log
+exec taskset -c 4,5 /SDCARD/race_ws/install/lib/cyberdog_race/race_controller --ros-args -r __ns:=${NS} -p stage4_impl:=${STAGE4_IMPL} 2>&1 | tee /tmp/race_run.log

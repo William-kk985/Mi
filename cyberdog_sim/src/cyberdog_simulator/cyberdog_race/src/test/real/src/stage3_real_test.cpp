@@ -4,7 +4,7 @@
 #include <cmath>
 
 // ═══════════════════════════════════════════════════════════
-// Stage3RealTest — 测试版: 伙伴连通域寻线算法 + 伙伴控制 (2026-08-14)
+// Stage3RealTest — 测试版: 伙伴连通域寻线算法 + 伙伴控制
 // 视觉: LaneDetector v2 (test/real, 连通域轨迹跟踪 + lookahead 采样)
 // 控制: 伙伴版 — 降速巡线, 丢线低速搜索, 低通微分阻尼 (不乘固定100Hz)
 //   WALK_V=0.26 窄视野降速给单边曲线识别留时间
@@ -17,15 +17,15 @@
 namespace {
 constexpr float WALK_V   = 0.26f;    // 实拍窄视野下适当降速，给单边曲线识别留出修正时间
 constexpr float LOST_V   = 0.10f;    // 短暂丢线时低速搜索，禁止盲目前冲
-constexpr float PITCH    = 0.14f;    // 低头量 0.14 rad (~8°) (2026-08-14: 0.25→0.14 太多改小, 201正值=低头)
+constexpr float PITCH    = 0.14f;    // 低头量 0.14 rad (~8°)（201正值=低头）
 constexpr float KP_VIS   = 0.85f;
 constexpr float KD_VIS   = 0.08f;    // 对滤波后的逐帧偏差变化做阻尼，不再乘固定100Hz
-constexpr float KP_LINE  = 2.5f;    // 单线沿线趋势: yaw=-KP_LINE*线漂移dx (2026-08-14)
+constexpr float KP_LINE  = 2.5f;    // 单线沿线趋势: yaw=-KP_LINE*线漂移dx
 constexpr float YAW_LIM  = 0.65f;
 constexpr float FWD_DIST = 3.0f;     // 巡线总距离 m
 constexpr double SCALE_HACK    = 30.0;   // 破限: x_effect_scale_pos=+30 (前进中放大pitch限位)
 constexpr double SCALE_RESTORE = -0.55;  // 复原默认值
-constexpr bool   TEST_HOLD = true;  // true=201原地低头不动(调视觉) false=正式巡线 (2026-08-14 切原地)
+constexpr bool   TEST_HOLD = true;  // true=201原地低头不动(调视觉) false=正式巡线
 constexpr int    LOST_SEARCH_TICKS = 20;  // 丢线多少控制帧(100Hz=0.2s)后停前进原地搜索
 }  // namespace
 
@@ -67,7 +67,7 @@ void Stage3RealTest::run() {
             last_x_   = sensor_.odom_x;
             last_y_   = sensor_.odom_y;
             traveled_ = 0.0f;
-            // 破限只用于正式巡线(前进中303低头); 原地201低头不需要 (2026-08-14)
+            // 破限只用于正式巡线(前进中303低头)；原地201低头不需要
             if (!TEST_HOLD) {
                 motion_.set_user_param_double_lcm("x_effect_scale_pos", SCALE_HACK);
             }
@@ -92,11 +92,11 @@ void Stage3RealTest::run() {
     // ── ② 低头巡线 / 原地测试 ──
     if (phase_ == Phase::LANE_FOLLOW) {
         if (TEST_HOLD) {
-            // 201原地低头 (2026-08-14 上机验证: 正值=低头, 与303同向)
+            // 201原地低头（正值=低头，与303同向）
             //   每3帧≈33Hz持续发布, 不发303
             if (++pitch_hold_ % 3 == 0)
                 motion_.set_body_pitch(PITCH);
-            // 计算控制量写 cmd_yaw 仅供Web转向箭头显示 (2026-08-15: 原地不发运动, 与正式逻辑同算法)
+            // 计算控制量写 cmd_yaw 仅供Web转向箭头显示（原地不发运动，与正式逻辑同算法）
             {
                 float show_yaw = 0.0f;
                 if (sensor_.lane_valid) {
@@ -162,7 +162,7 @@ void Stage3RealTest::run() {
                 yaw_cmd = std::max(-YAW_LIM, std::min(YAW_LIM,
                                     -KP_VIS * off - KD_VIS * filtered_d_offset_));
             } else {
-                // ── 单线: 沿线趋势走 (2026-08-14 用户要求) ──
+                // ── 单线: 沿线趋势走 ──
                 //   原理: 锁定线的横向位置, 线不动=平行沿线直行;
                 //         线向右漂(dx>0)说明路往右弯 → 右转跟随
                 //   ⚠ 不能用斜率拟合: 透视下直线也是斜的, 会持续把狗拉向线
@@ -190,7 +190,7 @@ void Stage3RealTest::run() {
             yaw_cmd = last_yaw_;
             filtered_d_offset_ *= 0.8f;
         }
-        sensor_.cmd_yaw = yaw_cmd;   // 供Web转向箭头显示 (2026-08-15)
+        sensor_.cmd_yaw = yaw_cmd;   // 供Web转向箭头显示
         motion_.set_walk_velocity_pitch(forward_v, 0.0f, yaw_cmd, PITCH);
 #ifdef DEBUG_SENSOR
         static int dbg2_ = 0;

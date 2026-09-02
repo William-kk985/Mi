@@ -7,7 +7,7 @@
 enum class S2TestKind { FWD, SLIDE_L, SLIDE_R, TURN_R90, TURN_L90, TURN_180 };
 struct S2TestStep { S2TestKind kind; float dist; };   // TURN 步 dist 忽略
 
-/// 真机第2赛段 (2026-08-16 点位全局闭环版)
+/// 真机第2赛段 (点位全局闭环版)
 /// 动作序列与折线版一致(20步), 但每步导航到"全局目标点":
 ///   · 目标点从起点+理论航向递推(坐标系开机随机无所谓, 相对几何一致)
 ///   · 移动步: 沿步方向走 + 垂直到全局目标线闭环, 距目标点≤0.05m 到位
@@ -28,7 +28,7 @@ private:
 
     Phase phase_{Phase::STEP};
     bool  done_{false};
-    bool  loc_ready_{false};   // 定位就绪 (odom首帧, 2026-08-16)
+    bool  loc_ready_{false};   // 定位就绪 (odom首帧)
 
     int   step_idx_{0};        // 当前动作步索引
     bool  step_start_{true};   // 步起点: 推算目标点/重置
@@ -38,7 +38,7 @@ private:
     float turn_target_{0.0f};  // 转向目标 (odom yaw)
     int   turn_settle_{0};     // 转向后停稳帧计数
     int   step_timeout_{0};    // 步超时帧计数 (3000帧=30s防卡)
-    int   step_time_{0};       // 本步已走帧数 (2026-08-16 到位判定指令积分下限, 防odom虚大早停)
+    int   step_time_{0};       // 本步已走帧数 (到位判定指令积分下限, 防odom虚大早停)
 
     int   ball_confirm_{0};    // 球连续确认帧数
     int   impact_lost_{0};     // 冲击中连续丢球帧数

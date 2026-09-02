@@ -5,7 +5,7 @@
 // ============================================================
 
 // #define DEBUG_VISION    // cv::imshow 弹窗看传感器画面 (⚠真机无显示器, 勿开)
-#define DEBUG_MOTION     // 运动指令日志 (2026-08-11 真机调试开)
+#define DEBUG_MOTION     // 运动指令日志
 #define DEBUG_SENSOR     // 传感器数据日志 (odom/yaw/dist)
 #define DEBUG_STAGE      // 状态机切换日志
 
@@ -21,20 +21,15 @@
 // 赛段调试模式（都不定义 = 正式比赛从第1段跑完整6段）
 // ============================================================
 
-// #define DEBUG_SINGLE_STAGE 3   // 只跑 Stage3, 结束后停止不切换 (2026-08-15 巡线拍照调试)
-// #define DEBUG_START_STAGE  3   // 从Stage3开始 (2026-08-18 之前: 只走Stage3+4)
-#define DEBUG_END_STAGE    5   // 跑完Stage5停止 (2026-08-20 用户: 走Stage1~5兼容伙伴Stage5)
+// #define DEBUG_SINGLE_STAGE 3   // 只跑 Stage3，结束后停止不切换
+// #define DEBUG_START_STAGE  3   // 从 Stage3 开始
+#define DEBUG_END_STAGE    5   // 跑完 Stage5 停止（走 Stage1~5 兼容伙伴 Stage5）
 
-// (2026-08-21 startrace4test专用: Stage4左横向补偿全0, 观察自然偏左; 正式版保持注释)
-// #define DEBUG_STAGE4_NO_COMP
+// ═══ Stage4 路线切换用运行期参数 stage4_impl（取代编译期宏） ═══
+//   launch/命令行: -p stage4_impl:=formal|test|test2
+//   test/test2 路线实现: src/test/real/stage4_real_test.* 与 stage4_real_test2.*（继承 Stage4Real）
 
-// (2026-08-22 startrace4test/123456test: Stage4走test路线(起步1.8/1.0/1.8, 第3轮绕行, 离场左转→0.5m→左转); 正式版保持注释)
-// #define DEBUG_STAGE4_TEST_ROUTE
-
-// (2026-08-22 startrace4test2: Stage4走test路线2/第三版(轮1:0.8→3.5/3.4→前1.8; 轮2:1.1→3.35/3.3→左转→前2.5→左转立正); 与TEST_ROUTE互斥)
-// #define DEBUG_STAGE4_TEST_ROUTE2
-
-// (2026-08-21 startrace2test专用: 离场3.3m前左转2°(原4°减半); 正式版保持注释)
+// startrace2test 专用：离场 3.3m 前左转 2°（原 4° 减半）；正式版保持注释
 // #define DEBUG_STAGE2_TEST
 
 // 调试开关：禁用撞球，只观察视觉效果
@@ -61,10 +56,10 @@
 #define ENABLE_WEB_STREAMING
 #define WEB_STREAM_PORT 8080
 
-// ── 关闭 D430i 红外/深度 (任务只用RGB, 关闭减少CPU/资源竞争, 2026-08-13) ──
+// ── 关闭 D430i 红外/深度（任务只用 RGB，减少 CPU/资源竞争） ──
 #define DISABLE_D435_SUB
 
-// ── RGB 相机通道 (2026-08-14) ──
+// ── RGB 相机通道 ──
 // center 模组 (ov9782 双目, cam_id 2/3) 视角更适合寻线; bottom 相机(camera_server)位置不好
 #define USE_CENTER_CAM
 
@@ -78,21 +73,21 @@
 // ── 真狗命名空间 ──
 #define ROBOT_NS "/mi_desktop_48_b0_2d_7b_02_c7"
 
-// ── 当前测试：20=降低身高前进（pos_des[2] 扫描诊断，TOF活反馈确认） ──
+// ── 当前测试：20=降低身高前进（pos_des[2] 扫描诊断，TOF 活反馈确认） ──
 // ⚠ 测试完必须注释回 DEBUG_TEST_BEHAVIOR：开着会让 control_loop 只跑测试一次后
-//   timer->cancel()，遥测冻结在启动快照（超声卡0/TOF卡0.66）
-//   （2026-08-08 已改独立线程跑测试，期间传感器实时，但跑完仍会 cancel）
+//   timer->cancel()，遥测冻结在启动快照（超声卡 0/TOF 卡 0.66）
+//   （测试用独立线程跑，期间传感器实时，但跑完仍会 cancel）
 // #define DEBUG_TEST_BEHAVIOR
 // #define TEST_BEHAVIOR 21
 
-// ── 传感器 topic 名称（真机值经 2026-07-31 上机确认） ──
+// ── 传感器 topic 名称（真机值上机确认） ──
 // 相机全部已 lifecycle 激活。RGB 需额外通过 camera_service START_IMAGE_PUBLISH 启动推流
 //   模组1 前置AI相机(/stereo_camera): /image(RGB, camera_server推流) 无独立鱼眼topic
 //   模组2 底部D430i(/camera/camera):  /camera/infra1(红外) /camera/depth(深度) /camera/imu(IMU)
 // ⚠ D430i 无 RGB 彩色输出，只有红外+深度！
 #ifdef REAL_DOG
   #ifdef USE_CENTER_CAM
-    #define TOPIC_RGB_CAMERA       ROBOT_NS "/image_center"        // gc02m1彩色鼻区相机 (2026-08-14定稿: cam_id=1 30fps)
+    #define TOPIC_RGB_CAMERA       ROBOT_NS "/image_center"        // gc02m1 彩色鼻区相机（cam_id=1 30fps）
   #else
     #define TOPIC_RGB_CAMERA       ROBOT_NS "/image"               // bottom camera_server推流 (备用)
   #endif
@@ -102,11 +97,11 @@
   #define TOPIC_D435_DEPTH       ROBOT_NS "/camera/depth/image_rect_raw"  // D430i深度图 mono16(mm) ✅
   #define TOPIC_BMS              ROBOT_NS "/bms_status"                  // protocol::msg::BmsStatus ✅
   #define TOPIC_TOUCH            ROBOT_NS "/touch_status"                // protocol::msg::TouchStatus ✅
-  #define TOPIC_D435_INFRA2      ROBOT_NS "/camera/infra2/image_rect_raw" // D430i右目红外 mono8 ✅(2026-08-06探测)
+  #define TOPIC_D435_INFRA2      ROBOT_NS "/camera/infra2/image_rect_raw" // D430i 右目红外 mono8
   #define TOPIC_TOF_HEAD         ROBOT_NS "/head_tof_payload"            // 头TOF×2 8x8高程 ✅
   #define TOPIC_TOF_REAR         ROBOT_NS "/rear_tof_payload"            // 尾TOF×2 8x8高程 ✅
   #define TOPIC_ULTRASONIC       ROBOT_NS "/ultrasonic_payload"          // 超声 Range ✅
-  #define TOPIC_ODOM_OUT         ROBOT_NS "/odom_out"                    // RT板腿里程计+融合IMU姿态 46.6Hz (2026-08-15 航向反馈源)
+  #define TOPIC_ODOM_OUT         ROBOT_NS "/odom_out"                    // RT 板腿里程计+融合 IMU 姿态 46.6Hz（航向反馈源）
   // LCM 通道（真狗可走LCM global_to_robot，也可用ROS2 odom_out替代）
   #define LCM_ODOM_CHANNEL    "global_to_robot"
   #define LCM_STATE_ESTIMATOR "state_estimator"

@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 #include "cyberdog_race/motion_ctrl.hpp"
-#include "cyberdog_race/sensor_data.hpp"
+#include "cyberdog_race/utils/sensor_data.hpp"
 
 class StageBase {
 public:
@@ -36,9 +36,9 @@ protected:
     }
 
     // ═══════════════════════════════════════════════════════
-    // 相对目标点导航 (不借助地图, 2026-08-12)
+    // 相对目标点导航（不借助地图）
     // 目标点 (dx,dy) 以【导航启动时狗位置为原点、起点朝向为 x 轴】表达
-    // 流程: 转向对准目标方向 → 走到目标距离(累计位移+跳变保护)
+    // 流程: 转向对准目标方向 → 走到目标距离（累计位移+跳变保护）
     // ═══════════════════════════════════════════════════════
     enum class NavPhase { IDLE, TURN_TO, FORWARD_TO, DONE };
     NavPhase nav_phase_{NavPhase::IDLE};
@@ -87,7 +87,7 @@ protected:
             nav_phase_ = NavPhase::DONE;
             return true;
         }
-        // ★ norm_yaw 必须: 跨±π边界时防止转向饱和 (2026-08-12 修, 同Stage1/2)
+        // ★ norm_yaw 必须：跨 ±π 边界时防止转向饱和（同 Stage1/2）
         float yaw_cmd = std::max(-0.5f, std::min(0.5f, -norm_yaw(sensor_.abs_yaw - nav_target_yaw_) * 0.8f));
         motion_.set_walk_velocity_step(nav_speed_, 0.0f, yaw_cmd, nav_step_);
         return false;

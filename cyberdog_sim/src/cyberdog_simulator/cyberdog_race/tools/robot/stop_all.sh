@@ -5,7 +5,7 @@
 #   VM: 接收端(scan_receive_v2) + TF(static_transform) + rviz2
 #   NX: 转发服务(scan-forward) + 建图(map_builder+stop_mapping) + 相机
 # 需要: 输 NX ssh 密码 + sudo 密码
-# 用法(VM): bash ~/Mi/tools/stop_all.sh
+# 用法(VM): bash ~/Mi/cyberdog_sim/src/cyberdog_simulator/cyberdog_race/tools/robot/stop_all.sh
 # ============================================================
 
 echo "============================================"
@@ -43,6 +43,6 @@ echo "============================================"
 echo " ✅ 全部关闭完成!"
 echo " 已清除残留地图 (下次可视化是干净状态)"
 echo " 再次启动:"
-echo "   1. VM: bash ~/Mi/tools/start_rviz.sh"
+echo "   1. VM: bash ~/Mi/cyberdog_sim/src/cyberdog_simulator/cyberdog_race/tools/rviz/start_rviz.sh"
 echo "   2. NX: bash /home/mi/start_mapping.sh"
 echo "============================================"

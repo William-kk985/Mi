@@ -111,7 +111,7 @@ void pitch_test(MotionCtrl& motion, SensorData& sensor) {
     (void)sensor;
     fprintf(stderr, "\033[1;35m[Pitch] 抬头 15° 3秒...\033[0m\n");
     for (int i = 0; i < 60; i++) {
-        motion.set_body_pitch(-0.26f);   // ⚠ 真机约定：负值=抬头（2026-08-08 舵机方向确认）
+        motion.set_body_pitch(-0.26f);   // ⚠ 真机约定：负值=抬头
         rclcpp::sleep_for(std::chrono::milliseconds(50));
     }
     fprintf(stderr, "\033[1;35m[Pitch] 回正 2秒...\033[0m\n");
@@ -121,7 +121,7 @@ void pitch_test(MotionCtrl& motion, SensorData& sensor) {
     }
     fprintf(stderr, "\033[1;35m[Pitch] 低头 15° 3秒...\033[0m\n");
     for (int i = 0; i < 60; i++) {
-        motion.set_body_pitch(0.26f);   // ⚠ 真机约定：正值=低头（2026-08-08 舵机方向确认）
+        motion.set_body_pitch(0.26f);   // ⚠ 真机约定：正值=低头
         rclcpp::sleep_for(std::chrono::milliseconds(50));
     }
     motion.set_body_pitch(0.0f);
@@ -178,7 +178,7 @@ void march_in_place_test(MotionCtrl& motion, SensorData& sensor) {
 // ── 相对转向：从当前 abs_yaw 转 90°（⚠ 反馈用 global_to_robot.rpy[2]，IMU yaw 真机一直 0） ──
 void turn_angle_test(MotionCtrl& motion, SensorData& sensor) {
     const float TARGET_DEG = 90.0f;
-    const float TURN_SPEED = 0.6f;   // rad/s，+0.6=左转（2026-08-07 已验证方向）
+    const float TURN_SPEED = 0.6f;   // rad/s，+0.6=左转
     motion.stand();
     rclcpp::sleep_for(std::chrono::seconds(3));
     float start_yaw = sensor.abs_yaw;   // 地图绝对朝向（SLAM 有数据）
@@ -316,16 +316,16 @@ void step_height_walk_test(MotionCtrl& motion, SensorData& sensor) {
 
 // ── 低头前进（身躯姿态变化 + 前进组合，test17） ──
 // 交替(201+303)与 des_roll_pitch_height 参数均失败：走路时 pitch 被速度控制器冲回 0。
-// 【2026-08-08 源码确认】仿真/真机同源 convex_mpc_loco_gaits.cpp:2305：
+// 源码确认（仿真/真机同源 convex_mpc_loco_gaits.cpp:2305）：
 //   rpy_cmd_[1] = ctrl_cmd_->rpy_des[1];   ← 走路时 pitch 目标直接读 303 命令的 rpy_des[1]!
 //   rpy_des_(1) = WrapRange(..., scale*min, scale*max)  ← TROT 默认 ±0.1rad(±5.7°)，限位随速度负放大(x_effect_scale=-0.55)
 //   safety_checker: locomotion+大pitch 专门放行（只禁 lift error）
 // → 正确姿势：303 WALK 命令里直接带 rpy_des[1]=pitch（set_walk_velocity_pitch），20Hz 持续。
-// ⚠ 2026-08-08 三测：方向按真机约定【正值=低头】PITCH=+0.30（上坡桥面需要低头），0.15慢速 + 走 0.5m
+// 方向按真机约定【正值=低头】PITCH=+0.30（上坡桥面需要低头），0.15慢速 + 走 0.5m
 //   步态夹持 ±5.7°，另加 B2 段试 LCM 7668 参数 des_roll_pitch_height[1] 能否破限
 // 反馈用 pitch_map(global_to_robot.rpy[1])：+0.30 会被步态夹到 ~+5.7° 起。
 void pitch_low_fwd_test(MotionCtrl& motion, SensorData& sensor) {
-    const float PITCH = 0.30f;    // 低头 0.30 rad（真机约定正值=低头，2026-08-08 舵机方向确认）
+    const float PITCH = 0.30f;    // 低头 0.30 rad（真机约定正值=低头）
     const float SPEED = 0.15f;    // 慢速 0.15 m/s（pitch 限位随速度负放大，越慢范围越大）
     motion.stand();
     rclcpp::sleep_for(std::chrono::seconds(2));
@@ -392,7 +392,7 @@ void pitch_low_fwd_test(MotionCtrl& motion, SensorData& sensor) {
 }
 
 // ── roll 走路保持侧倾（身躯姿态变化 + 前进组合，test18） ──
-// 【2026-08-08 排查 → LCM 参数通道打通方案】
+// 方案排查 → LCM 参数通道打通：
 // - ❌ des_roll_pitch_height YamlParam(ROS topic)：真机无节点订阅 yaml_parameter，死通道
 // - ❌ 303+rpy_des[0]：走路时 roll 命令通道关闭（运控只启用 pitch），冲回0
 // - ❌ 201+rpy_des[0]+vel_des：201 忽略 vel_des，姿态能保持但不走
@@ -513,9 +513,8 @@ void pitch_unlock_test(MotionCtrl& motion, SensorData& sensor) {
 }
 
 // ── 降低身体高度（test20） ──
-// 【2026-08-10 路线26】kWalkWave(60) + motion 参数降身高 — 唯一"走+降"都通的链路
-// 路线22: motion 参数降身高 ✅ (0.235→0.143) 不崩，但 kTrotInOut(56) 不走
-// 路线4: kWalkWave(60) ✅ 能走（MotionGaits 里唯一能前进的步态）
+// kWalkWave(60) + motion 参数降身高 — 唯一"走+降"都通的链路：
+//   motion 参数降身高(0.235→0.143)不崩，但 kTrotInOut 不走；kWalkWave 能走（唯一能前进的步态）
 // → 站定写 motion[2]=0.16 → kWalkWave(60) 走10秒（SetWalkWaveParams 读 motion[2]）
 void height_low_walk_test(MotionCtrl& motion, SensorData& sensor) {
     const float SPEED = 0.2f;

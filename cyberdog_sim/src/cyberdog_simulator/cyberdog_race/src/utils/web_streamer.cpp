@@ -323,7 +323,7 @@ void WebStreamer::stop() {
 void WebStreamer::push_frame(const cv::Mat& frame) {
     if (!running_.load() || frame.empty()) return;
 
-    // ★ 半分辨率编码: tegra 全分辨率JPEG太慢导致RGB流时有时无 (2026-08-13)
+    // ★ 半分辨率编码：tegra 全分辨率 JPEG 太慢导致 RGB 流时有时无
     cv::Mat small;
     cv::resize(frame, small, cv::Size(frame.cols / 2, frame.rows / 2));
     std::vector<uint8_t> jpeg;
@@ -342,7 +342,7 @@ void WebStreamer::push_frame(const cv::Mat& frame) {
 void WebStreamer::push_debug_frame(const cv::Mat& frame) {
     if (!running_.load() || frame.empty()) return;
 
-    // ★ 半分辨率编码: 防RGB流时有时无 (2026-08-13)
+    // ★ 半分辨率编码：防 RGB 流时有时无
     cv::Mat small;
     cv::resize(frame, small, cv::Size(frame.cols / 2, frame.rows / 2));
     std::vector<uint8_t> jpeg;
@@ -398,7 +398,7 @@ void WebStreamer::push_d435_frame(const cv::Mat& frame) {
     frame_cv_.notify_all();
 }
 
-// ── D430i 右目红外（mono8→灰度，2026-08-06 接入） ──
+// ── D430i 右目红外（mono8→灰度） ──
 void WebStreamer::push_infra2_frame(const cv::Mat& frame) {
     if (!running_.load() || frame.empty()) return;
     std::vector<uint8_t> jpeg;
@@ -411,7 +411,7 @@ void WebStreamer::push_infra2_frame(const cv::Mat& frame) {
 
 void WebStreamer::push_dark_frame(const cv::Mat& frame) {
     if (!running_.load() || frame.empty()) return;
-    // ★ 半分辨率编码: 防RGB流时有时无 (2026-08-13)
+    // ★ 半分辨率编码：防 RGB 流时有时无
     cv::Mat small;
     cv::resize(frame, small, cv::Size(frame.cols / 2, frame.rows / 2));
     std::vector<uint8_t> jpeg;
@@ -530,8 +530,8 @@ void WebStreamer::server_loop(int port) {
             continue;
         }
 
-        // ★ 剥离 query string：浏览器切换流会带 ?t=时间戳 防缓存（如 /stream/debug?t=1712...）
-        //   不剥离则路由匹配失败 → 404 → 切换黑屏（已 2026-08-06 定位）
+        // ★ 剥离 query string：浏览器切换流会带 ?t=时间戳 防缓存
+        //   不剥离则路由匹配失败 → 404 → 切换黑屏
         {
             size_t qpos = path.find('?');
             if (qpos != std::string::npos) path = path.substr(0, qpos);
@@ -670,8 +670,7 @@ void WebStreamer::client_handler(int client_fd, const std::string& path) {
             close(client_fd);
             return;
         }
-        // ★ 3s 首帧超时仍无帧 → 直接退出释放连接 (2026-08-12)
-        //   否则该流一直挂起占着 active_clients_, 占满后新连接全 503 → Web 黑屏
+        // ★ 3s 首帧超时仍无帧 → 直接退出释放连接；否则占满 active_clients_，新连接全 503 → 黑屏
         if (!have_first) {
             active_clients_--;
             close(client_fd);
@@ -692,8 +691,7 @@ void WebStreamer::client_handler(int client_fd, const std::string& path) {
 
     // 推流循环
     while (running_.load()) {
-        // ★ 检测客户端断开：浏览器关闭连接后线程必须退出，否则线程堆积 +
-        //   active_clients_ 占满上限 → 后续请求全 503 → 画面黑屏（2026-08-06 定位）
+        // ★ 检测客户端断开：否则线程堆积占满 active_clients_ → 后续请求全 503 → 黑屏
         {
             struct pollfd pfd;
             pfd.fd = client_fd;

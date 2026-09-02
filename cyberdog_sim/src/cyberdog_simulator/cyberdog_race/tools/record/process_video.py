@@ -10,7 +10,8 @@ import numpy as np
 
 
 def detect_limbar(hsv):
-    m = cv2.inRange(hsv, (0, 25, 55), (8, 120, 160)) | cv2.inRange(hsv, (160, 25, 55), (180, 120, 160))
+    # (2026-08-20 官方赛场: H主峰178-179无V上限; 去H低段防橙球深红边缘误判)
+    m = cv2.inRange(hsv, (160, 25, 55), (180, 185, 255))
     m = cv2.morphologyEx(m, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
     cnts, _ = cv2.findContours(m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     for c in cnts:
@@ -22,7 +23,7 @@ def detect_limbar(hsv):
 
 
 def detect_football(hsv):
-    white = cv2.inRange(hsv, (0, 0, 140), (180, 30, 255))
+    white = cv2.inRange(hsv, (0, 0, 140), (180, 60, 255))
     black = cv2.inRange(hsv, (0, 0, 0), (180, 255, 90))
     white = cv2.morphologyEx(white, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
     cnts, _ = cv2.findContours(white, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -33,51 +34,65 @@ def detect_football(hsv):
         (cx, cy), r = cv2.minEnclosingCircle(c)
         if r < 8 or r > 90:
             continue
-        if area / (math.pi * r * r) < 0.65:
+        if area / (math.pi * r * r) < 0.6:
             continue
         mask = np.zeros(white.shape, np.uint8)
         cv2.circle(mask, (int(cx), int(cy)), int(r), 255, -1)
         mask &= black
         ratio = cv2.countNonZero(mask) / max(1.0, math.pi * r * r)
-        if ratio > 0.04:
+        if ratio > 0.015:
             yield int(cx - r), int(cy - r), int(2 * r), int(2 * r), 'football'
 
 
 def detect_coke(hsv):
-    m = cv2.inRange(hsv, (0, 0, 0), (180, 45, 85))
+    # (2026-08-20 用户贴边框选: 可乐蓝黑瓶身 H[95,115] S[20,60] V[55,190])
+    m = cv2.inRange(hsv, (95, 20, 55), (115, 60, 190))
     m = cv2.morphologyEx(m, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
     cnts, _ = cv2.findContours(m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     for c in cnts:
         x, y, w, h = cv2.boundingRect(c)
-        if cv2.contourArea(c) < 300:
+        area = cv2.contourArea(c)
+        if area < 500:
             continue
-        if h > 1.2 * w:
-            yield x, y, w, h, 'coke'
+        if h < w * 1.5:
+            continue
+        if w < 30 or w > 350:
+            continue
+        if area / (w * h) < 0.40:
+            continue
+        yield x, y, w, h, 'coke'
 
 
 def detect_obstacle(hsv):
-    m = cv2.inRange(hsv, (90, 25, 70), (130, 255, 255))
+    m = cv2.inRange(hsv, (99, 135, 200), (106, 200, 255))
     m = cv2.morphologyEx(m, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
     cnts, _ = cv2.findContours(m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    H = hsv.shape[0]
     for c in cnts:
         x, y, w, h = cv2.boundingRect(c)
+        # (2026-08-20 与真机一致: 用轮廓中心y判断, 只认地面障碍物)
+        if y + h / 2 < H * 0.30:
+            continue
         if cv2.contourArea(c) > 300 and w > 20 and h > 20:
             yield x, y, w, h, 'obstacle'
 
 
 def detect_orange(hsv):
-    m = cv2.inRange(hsv, (3, 80, 80), (15, 255, 255))
-    m = cv2.morphologyEx(m, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+    # (2026-08-20 对齐真机 ball_detector: 无半径上限; 大球占画面>10%圆度放宽0.30)
+    m = cv2.inRange(hsv, (0, 80, 80), (15, 255, 255))
+    m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9)))
     cnts, _ = cv2.findContours(m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    H, W = hsv.shape[:2]
     for c in cnts:
         area = cv2.contourArea(c)
-        if area < 300:
+        if area < 100:
+            continue
+        ratio = area / (W * H)
+        min_circ = 0.30 if ratio > 0.10 else 0.55
+        circ = 4 * math.pi * area / (cv2.arcLength(c, True) ** 2)
+        if circ < min_circ:
             continue
         (cx, cy), r = cv2.minEnclosingCircle(c)
-        if r < 8 or r > 90:
-            continue
-        if area / (math.pi * r * r) < 0.65:
-            continue
         yield int(cx - r), int(cy - r), int(2 * r), int(2 * r), 'orange'
 
 

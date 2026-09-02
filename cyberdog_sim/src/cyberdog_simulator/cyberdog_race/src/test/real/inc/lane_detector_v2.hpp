@@ -6,7 +6,7 @@ struct LaneResult {
     float yaw{0.0f};
     float curvature{0.0f};
     float lane_width{0.0f};
-    float line_x{0.0f};   // 单线近端x位置(归一化[-1,1], 仅单线时有效) (2026-08-14)
+    float line_x{0.0f};   // 单线近端x位置(归一化[-1,1], 仅单线时有效)
     bool  valid{false};
     bool  both_sides{false};
 };
@@ -27,8 +27,8 @@ public:
     std::vector<cv::Point> last_right_;
 
 private:
-    cv::Scalar hsv_low_{18, 95, 95};     // (2026-08-14 中间值: 正式(15,80,80)与收紧(20,110,110)之间)
-    cv::Scalar hsv_high_{33, 255, 255};  // (2026-08-14 中间值: 35↔32 之间)
+    cv::Scalar hsv_low_{18, 95, 95};     // HSV下界（正式与收紧阈值之间的中间值）
+    cv::Scalar hsv_high_{33, 255, 255};  // HSV上界（正式与收紧阈值之间的中间值）
 
     float alpha_{0.4f};
     float last_offset_{0.0f};

@@ -94,7 +94,7 @@ void Stage6Real::run() {
     if (done_) return;
 
     if (!pose_initialized_) {
-        // (2026-08-21 兼容修复: SensorData 无 odom_valid 字段, 用 odom_yaw_ready(收到过odom首包))
+        // 用 odom_yaw_ready 判定位就绪 (SensorData 无 odom_valid 字段)
         if (!sensor_.odom_yaw_ready) {
             motion_.stop();
             return;
@@ -147,8 +147,7 @@ void Stage6Real::run() {
         }
         break;
     case State::LIE_DOWN:
-        // (2026-08-22 用户: 尾巴加趴下动作; 持续发GETDOWN 3秒保证RT板执行完,
-        //  之前只发一次+20帧(0.2s)就DONE太仓促, 趴下可能被打断)
+        // 加趴下动作: 持续发 GETDOWN 3 秒保证 RT 板执行完 (只发一次易被打断)
         motion_.lie_down();   // GETDOWN幂等, 每帧重发兜底
         if (++state_frames_ >= 300) {
             state_ = State::DONE;

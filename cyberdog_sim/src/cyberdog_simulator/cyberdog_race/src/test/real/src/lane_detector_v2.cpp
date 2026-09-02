@@ -41,7 +41,7 @@ LaneResult LaneDetector::detect(const cv::Mat& frame) {
     else
         scan_edges(mask, left_pts, right_pts);
 
-    // 2.5 五点滑动平均 (2026-08-15): 边线x序列平滑, 抑制阈值边界逐帧抖动
+    // 2.5 五点滑动平均: 边线x序列平滑, 抑制阈值边界逐帧抖动
     auto smooth5 = [](std::vector<cv::Point>& pts) {
         if (pts.size() < 5) return;
         std::vector<int> xs(pts.size());
@@ -78,7 +78,7 @@ LaneResult LaneDetector::detect(const cv::Mat& frame) {
     result.lane_width = lane_width_;
     result.both_sides = !left_pts.empty() && !right_pts.empty();
 
-    // 7. 单线近端横向位置 (2026-08-14: 沿线趋势跟踪用)
+    // 7. 单线近端横向位置 (沿线趋势跟踪用)
     //    取近端(最大y)1/3点平均x, 归一化[-1,1], 避免远端透视干扰
     if (!result.both_sides) {
         const auto& pts = !left_pts.empty() ? left_pts : right_pts;
@@ -107,13 +107,13 @@ void LaneDetector::scan_stage3_tracks(const cv::Mat& binary, const cv::Mat& fram
     if (rows < 40 || cols < 40) return;
 
     // 只看地面区域；开运算去反光碎点，闭运算连接胶带皱褶造成的小断口。
-    // (2026-08-14: 0.42 掩膜范围太大→下1/3; 用户要求 ROI 给到下1/2 看更远)
+    // ROI 用下1/2，看更远（弯道提前可见）
     const int roi_y = static_cast<int>(rows / 2);
     cv::Mat roi = binary(cv::Rect(0, roi_y, cols, rows - roi_y)).clone();
     cv::morphologyEx(
         roi, roi, cv::MORPH_OPEN,
         cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(3, 3)));
-    // (2026-08-15: 15x15会把远处两条线粘住→不稳定, 回9x9)
+    // 闭运算9x9（15x15会把远处两条线粘住，不稳定）
     cv::morphologyEx(
         roi, roi, cv::MORPH_CLOSE,
         cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(9, 9)));
@@ -123,8 +123,8 @@ void LaneDetector::scan_stage3_tracks(const cv::Mat& binary, const cv::Mat& fram
 
     struct Track {
         std::vector<cv::Point> points;       // 黄带中心(展示/连续性用)
-        std::vector<cv::Point> inner_left;   // 带右缘x1 = 左线内侧 (2026-08-15)
-        std::vector<cv::Point> inner_right;  // 带左缘x0 = 右线内侧 (2026-08-15)
+        std::vector<cv::Point> inner_left;   // 带右缘x1 = 左线内侧
+        std::vector<cv::Point> inner_right;  // 带左缘x0 = 右线内侧
         float near_x{0.0f};
         float score{0.0f};
     };
@@ -154,7 +154,7 @@ void LaneDetector::scan_stage3_tracks(const cv::Mat& binary, const cv::Mat& fram
         int last_x = -1;
         for (int y = component.rows - 1; y >= 0; y -= 4) {
             const uchar* row = component.ptr<uchar>(y);
-            // ── 逐行跟踪取段 (2026-08-15): 选离上一行中心最近的黄段 ──
+            // ── 逐行跟踪取段: 选离上一行中心最近的黄段 ──
             //   旧版取"最长段"在段长度接近时会互相切换→边缘跳变→不稳定;
             //   最近段=连续性优先, 碎片离轨迹远自然被忽略(八邻域巡线同思路)
             int best0 = -1, best1 = -1, best_dist = 0x7fffffff, best_len = 0;
@@ -176,7 +176,7 @@ void LaneDetector::scan_stage3_tracks(const cv::Mat& binary, const cv::Mat& fram
                 if (!track.points.empty() && ++gap_rows > 4) break;
                 continue;
             }
-            // ── gap续接保护 (2026-08-15): 恢复点离gap前太远→继续算gap, 防远距硬接成折线 ──
+            // ── gap续接保护: 恢复点离gap前太远→继续算gap, 防远距硬接成折线 ──
             if (gap_rows > 0) {
                 const int cx = (best0 + best1) / 2;
                 if (std::abs(cx - last_x) > cols * 0.06f) {
@@ -186,7 +186,7 @@ void LaneDetector::scan_stage3_tracks(const cv::Mat& binary, const cv::Mat& fram
             }
             gap_rows = 0;
             int x0 = best0, x1 = best1;
-            // ── 边缘精修 (2026-08-15): 在端点邻域内找B通道突变最大处 ──
+            // ── 边缘精修: 在端点邻域内找B通道突变最大处 ──
             //   黄线B低/地面B高, 阈值二值化边缘在灰度渐渡处会抖,
             //   梯度最大点=真正的"黄色突变处", 逐帧稳定
             {
@@ -199,7 +199,7 @@ void LaneDetector::scan_stage3_tracks(const cv::Mat& binary, const cv::Mat& fram
                         const int g = std::abs(int(brow[3 * (xi + 1)]) - int(brow[3 * (xi - 1)]));
                         if (g > bg) { bg = g; best = xi; }
                     }
-                    // 限幅±4px (2026-08-15): 只做微调, 防搜到带外杂物/反光边缘→跳变折线
+                    // 限幅±4px: 只做微调, 防搜到带外杂物/反光边缘→跳变折线
                     return std::max(xe - 4, std::min(xe + 4, best));
                 };
                 x1 = refine(x1, +1);   // 左线内侧=带右缘, 往右搜
@@ -208,7 +208,7 @@ void LaneDetector::scan_stage3_tracks(const cv::Mat& binary, const cv::Mat& fram
             const int x = (x0 + x1) / 2;
             if (last_x >= 0 && std::abs(x - last_x) > cols * 0.18f) break;
             track.points.emplace_back(x, y + roi_y);
-            // 内侧边缘 (2026-08-15): 赛道线宽粗, 外侧受光照/视角影响不稳,
+            // 内侧边缘: 赛道线宽粗, 外侧受光照/视角影响不稳,
             //   左线用带右缘x1(靠赛道中), 右线用带左缘x0, 归属确定后二选一
             track.inner_left.emplace_back(x1, y + roi_y);
             track.inner_right.emplace_back(x0, y + roi_y);

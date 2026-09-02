@@ -61,13 +61,13 @@ private:
     static constexpr float YAW_THRESH = 0.05f;
     static constexpr float BALL_DIST_THRESH = 0.80f;
     static constexpr float SCAN_ANGLE       = 0.7f;
-    static constexpr int   SCAN_WAIT_FRAMES    = 100;  // 停下等待200帧（2秒）
+    static constexpr float SCAN_WAIT_FRAMES    = 100;  // 停下识别等待帧数
 
     // 运动参数
-    static constexpr float MOVE_SPEED       = 1.0f; //0.8
-    static constexpr float TURN_SPEED       = 0.7f;  // 路径点转向速度0.5
-    static constexpr float SCAN_TURN_SPEED  = 0.25f;  // 扫描时转向速度（慢，方便识别）0.2
-    static constexpr float HIT_SPEED        = 0.8f; //0.5
+    static constexpr float MOVE_SPEED       = 1.0f;
+    static constexpr float TURN_SPEED       = 0.7f;  // 路径点转向速度
+    static constexpr float SCAN_TURN_SPEED  = 0.25f;  // 扫描时转向速度（慢，方便识别）
+    static constexpr float HIT_SPEED        = 0.8f;
 
     void navigate_to(float tx, float ty);
     void turn_to(float target_yaw);

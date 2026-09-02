@@ -28,7 +28,7 @@
 #include <protocol/msg/rear_tof_payload.hpp>
 #endif
 #include "cyberdog_race/motion_ctrl.hpp"
-#include "cyberdog_race/sensor_data.hpp"
+#include "cyberdog_race/utils/sensor_data.hpp"
 #include "cyberdog_race/stages/stage_base.hpp"
 #include "cyberdog_race/stages/virtual/stage1.hpp"
 #include "cyberdog_race/stages/virtual/stage2.hpp"
@@ -37,36 +37,41 @@
 #include "cyberdog_race/stages/virtual/stage5.hpp"
 #include "cyberdog_race/stages/virtual/stage6.hpp"
 #ifdef REAL_DOG
-#include "cyberdog_race/stages/real/stage1_real.hpp"  // 真机第1赛段 石径探路 (2026-08-11)
-#include "cyberdog_race/stages/real/stage2_real.hpp"  // 真机第2赛段 (2026-08-12)
-#include "cyberdog_race/stages/real/stage3_real.hpp"  // 真机第3赛段 破限低头前进 (2026-08-12)
-#include "cyberdog_race/stages/real/stage4_real.hpp"  // 真机第4赛段 (2026-08-16 伙伴逻辑接入)
-#include "cyberdog_race/stages/real/stage5_real.hpp"  // 真机第5赛段 (2026-08-16 伙伴逻辑接入)
-#include "cyberdog_race/stages/real/stage6_real.hpp"  // 真机第6赛段 (2026-08-20 伙伴逻辑接入)
-#ifdef USE_TEST_REAL_STAGE2
-#include "stage2_real_test.hpp"  // 测试版Stage2: 旧侧移扫球逻辑 (2026-08-15 新流程启用后迁移)
+#include "cyberdog_race/stages/real/stage1_real.hpp"  // 真机第1赛段 石径探路
+#include "cyberdog_race/stages/real/stage2_real.hpp"  // 真机第2赛段
+#include "cyberdog_race/stages/real/stage3_real.hpp"  // 真机第3赛段 破限低头前进
+#include "cyberdog_race/stages/real/stage4_real.hpp"  // 真机第4赛段 伙伴逻辑
+#include "cyberdog_race/stages/real/stage5_real.hpp"  // 真机第5赛段 伙伴逻辑
+#include "cyberdog_race/stages/real/stage6_real.hpp"  // 真机第6赛段 伙伴逻辑
+#include "stage4_real_test.hpp"  // ★ Stage4 test 路线实现，无条件编入 + launch 参数选择
+#include "stage4_real_test2.hpp"  // ★ Stage4 test2 路线实现，无条件编入 + launch 参数选择
+#include "stage2_real_test.hpp"  // 测试版 Stage2：旧侧移扫球逻辑
 #endif
 #ifdef USE_TEST_REAL_STAGE3
-#include "stage3_real_test.hpp"  // 测试版Stage3: 伙伴算法实验 (2026-08-14)
+#include "stage3_real_test.hpp"  // 测试版 Stage3：伙伴算法实验
 #endif
 #endif
 #include "behavior_test.hpp"
 #ifdef USE_TEST_LANE_V2
-#include "lane_detector_v2.hpp"   // 伙伴连通域寻线实验版 (2026-08-14)
+#include "lane_detector_v2.hpp"   // 伙伴连通域寻线实验版
 #else
 #include "cyberdog_race/vision/virtual/lane_detector.hpp"
 #endif
 #include "cyberdog_race/vision/virtual/ball_detector.hpp"
-#include "cyberdog_race/vision/virtual/stage4_detector.hpp"
+#include "cyberdog_race/vision/vision_result.hpp"   // YoloResult 公共结果结构
+#ifdef REAL_DOG
+#include "cyberdog_race/vision/real/yolo_detector.hpp"   // 真机多目标检测（socket YOLO + CV）
+#include "cyberdog_race/vision/real/lidar_locator.hpp"   // 雷达定位（样子）
+#endif
 #include "cyberdog_race/utils/web_streamer.hpp"
-#include "cyberdog_race/llm_helper.hpp"
+#include "cyberdog_race/utils/llm_helper.hpp"
 
 class RaceController : public rclcpp::Node {
 public:
     RaceController();
     ~RaceController();
     MotionCtrl& get_motion() { return motion_; }
-    void on_external_imu(const lcm::ReceiveBuffer*, const std::string&);  // (2026-08-16) 原始包解码quat, public供静态回调桥调用
+    void on_external_imu(const lcm::ReceiveBuffer*, const std::string&);  // 原始包解码 quat，public 供静态回调桥调用
 
 private:
     void on_rgb(sensor_msgs::msg::Image::SharedPtr msg);
@@ -88,7 +93,7 @@ private:
                             const localization_lcmt* msg);
     void on_state_estimator(const lcm::ReceiveBuffer*, const std::string&,
                             const state_estimator_lcmt* msg);
-    void on_odom_out(nav_msgs::msg::Odometry::SharedPtr msg);  // RT板腿里程计航向 (2026-08-15)
+    void on_odom_out(nav_msgs::msg::Odometry::SharedPtr msg);  // RT 板腿里程计航向
     void control_loop();
     void apply_stage_params();
 
@@ -102,9 +107,12 @@ private:
 
     LaneDetector lane_detector_;
     BallDetector ball_detector_;
-    Stage4Detector stage4_detector_;
+#ifdef REAL_DOG
+    YoloDetector yolo_detector_;     // 真机多目标检测（2026-09-02: 替代仿真 Stage4Detector）
+    LidarLocator lidar_locator_;     // 雷达定位（样子）
+#endif
 
-    unsigned rgb_recv_cnt_{0};   // on_rgb 累计收帧数 (2026-08-14 订阅匹配自检用)
+    unsigned rgb_recv_cnt_{0};   // on_rgb 累计收帧数（订阅匹配自检用）
 
 #ifdef ENABLE_WEB_STREAMING
     WebStreamer web_streamer_;
@@ -125,7 +133,7 @@ private:
 
     rclcpp::TimerBase::SharedPtr timer_;
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr     sub_rgb_;
-    rclcpp::TimerBase::SharedPtr diag_timer_;   // RGB自检timer (2026-08-14 必须保存否则被析构)
+    rclcpp::TimerBase::SharedPtr diag_timer_;   // RGB 自检 timer（必须保存否则被析构）
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr       sub_imu_;
     rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr sub_lidar_;
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr     sub_d435_infra1_;
@@ -138,7 +146,7 @@ private:
 #endif
     // rclcpp::Subscription<protocol::msg::TouchStatus>::SharedPtr sub_touch_; // TODO: 需bridges包
     rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr sub_bms_;
-    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr sub_odom_out_;  // (2026-08-15)
+    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr sub_odom_out_;  // RT 板腿里程计
     // rclcpp::Subscription<protocol::msg::HeadTofPayload>::SharedPtr sub_head_tof_;  // TODO: 需bridges包
     // rclcpp::Subscription<protocol::msg::RearTofPayload>::SharedPtr sub_rear_tof_;  // TODO: 需bridges包
     rclcpp::Publisher<cyberdog_msg::msg::YamlParam>::SharedPtr   yaml_pub_;

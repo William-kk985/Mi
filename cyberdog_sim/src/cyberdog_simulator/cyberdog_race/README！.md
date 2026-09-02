@@ -9,7 +9,9 @@
 ```
 race_controller (ROS2 Node, 100Hz timer)
   │
-  ├─ on_rgb()     ─── LaneDetector / BallDetector / Stage4Detector
+  ├─ on_rgb()     ─── LaneDetector / BallDetector
+  │                     ├─ 真机: YoloDetector (socket YOLO + 本地CV)
+  │                     └─ 仿真: 无 Stage4 检测（stage4_detector 已删 2026-09-02）
   │                     ↓
   │                  sensor_ (SensorData, 互斥锁保护)
   │
@@ -45,29 +47,36 @@ cyberdog_race/
 ├── package.xml                           # ROS2 包清单
 ├── README！.md                           # ← 本文档
 │
+├── launch/                               # ★(2026-09-02 重构) 运行期版本选择入口
+│   └── race.launch.py                    #   stage4_impl:=formal|test|test2 选路线 (替代 build_bins 多二进制)
+│
+├── config/                               # (2026-09-02) 调参配置文件（yaml）
+│   └── camera_hw.yaml                    # 相机硬件配置（分辨率/曝光/增益）
+│
 ├── doc/                                  # 文档
 │   └── LLM_GUIDE.md                      # LLM 集成指南
 │
 ├── srv/                                  # ROS2 服务定义
 │   └── LLMAsk.srv
 │
-├── scripts/                              # 上机运行脚本（rsync 到 NX 后执行）
-│   ├── sync_to_nx.sh                     # ★ 安全同步 VM→NX（防覆盖/删除伙伴改动，见「构建与运行」）
-│   ├── sensor_probe.py                   # 传感器探测：逐个 topic 收帧验证（含 TOF/超声/右红外）
-│   ├── start_web.sh                      # Web 推流（8路 MJPEG + 环境修复 + 防双开 + 8080自动释放）
-│   ├── start_rgb_test.sh                 # RGB imshow 预览 (TEST_BEHAVIOR=10)
-│   ├── start_sensor_check.sh             # 逐传感器检查 (TEST_BEHAVIOR=9)
-│   ├── start_pitch_test.sh               # 俯仰测试 (TEST_BEHAVIOR=7, 走新接口)
-│   ├── start_march_test.sh               # 原地踏步测试 (TEST_BEHAVIOR=11, servo 303 vel=0)
+├── scripts/                              # ★ ROS py 层（2026-09-02 整理: 只放 ROS 相关 Python, 先 py 后 cpp 的原型/测试）
+│   ├── s4_detect_server.py               # Stage4 可乐/足球 ONNX 推理服务 (unix socket)
+│   ├── sensor_probe.py                   # 传感器探测：逐个 topic 收帧验证
 │   ├── pitch_test_servo.py               # ★ 真机低头独立验证脚本（CyberDog2 官方接口）
 │   └── record_dataset.py                 # 数据集录制（PNG/MP4 → dataset/）
+│   # 部署 sh (start_race.sh / start_web.sh / sync_to_nx.sh 等) 在包内 tools/scripts/ (与 scripts/ 同级),
+│   #   由 sync_to_nx.sh 同步到 NX 的 cyberdog_race/scripts/ (NX 路径不变)
 │
 ├── include/cyberdog_race/
 │   ├── debug_config.hpp                  # ★ 所有编译时宏定义（真机/仿真切换）
-│   ├── race_controller.hpp               # 主控制器类声明
-│   ├── motion_ctrl.hpp                   # LCM 运动控制接口
-│   ├── sensor_data.hpp                   # 传感器共享数据 POD
-│   ├── llm_helper.hpp                    # LLM 通信辅助
+│   ├── race_controller.hpp               # 主控制器类声明（总控，持有 motion_/sensor_/赛段）
+│   ├── motion_ctrl.hpp                   # 运动执行层（LCM 速度 + 真机 servo 姿态）
+│   │
+│   ├── lcm/                              # LCM 消息头（真机专用 4 个；gamepad_lcmt 走 cyberdog_locomotion include path）
+│   │   ├── control_parameter_request_lcmt.hpp
+│   │   ├── control_parameter_respones_lcmt.hpp
+│   │   ├── file_send_lcmt.hpp
+│   │   └── motion_control_request_lcmt.hpp
 │   │
 │   ├── stages/
 │   │   ├── stage_base.hpp                # 赛段基类（纯虚接口）
@@ -77,28 +86,36 @@ cyberdog_race/
 │   │       ├── stage1_real.hpp ~ stage6_real.hpp
 │   │       └── README.md
 │   │
-│   ├── utils/
+│   ├── utils/                            # 通用工具 + 共享数据
 │   │   ├── web_streamer.hpp              # 嵌入式 MJPEG HTTP 推流
-│   │   └── led_indicator.hpp             # LED 赛段指示（框架，等 bridges 包）
+│   │   ├── led_indicator.hpp             # LED 赛段指示（框架，等 bridges 包）
+│   │   ├── llm_helper.hpp                # LLM 通信辅助（PROXY/API 双模式）
+│   │   └── sensor_data.hpp               # 传感器共享数据 POD（SensorData）
 │   │
 │   └── vision/
+│       ├── vision_result.hpp             # YoloResult 公共多目标检测结果
 │       ├── virtual/                      # 仿真视觉检测器
 │       │   ├── lane_detector.hpp
-│       │   ├── ball_detector.hpp
-│       │   └── stage4_detector.hpp
-│       └── real/                         # 真机视觉骨架
-│           ├── lidar_locator.hpp
-│           └── yolo_detector.hpp
+│       │   └── ball_detector.hpp         # （stage4_detector 已删 2026-09-02）
+│       └── real/                         # 真机视觉
+│           ├── yolo_detector.hpp         # 真机多目标检测（socket YOLO + 本地 CV）
+│           └── lidar_locator.hpp         # 雷达定位
 │
 └── src/
     ├── main.cpp                          # 入口 + spin + 关机序列
-    ├── race_controller.cpp               # 主控制器实现
-    ├── motion_ctrl.cpp                   # LCM 运动指令
-    ├── llm_helper.cpp                    # LLM 通信
+    ├── race_controller.cpp               # 总控实现（订阅/调度/写 sensor_）
+    ├── motion_ctrl.cpp                   # 运动执行层（与总控并列，被所有赛段共用）
     ├── stages/virtual/                   # 仿真赛段 .cpp
-    ├── stages/real/                      # 真机赛段 .cpp（骨架）
-    ├── utils/web_streamer.cpp            # HTTP 服务
-    ├── vision/virtual/                   # 视觉检测器 .cpp
+    ├── stages/real/                      # 真机赛段 .cpp
+    ├── utils/                            # 通用工具 .cpp
+    │   ├── web_streamer.cpp              # HTTP 推流
+    │   └── llm_helper.cpp                # LLM 通信
+    ├── vision/
+    │   ├── virtual/                      # 仿真视觉 .cpp（lane/ball detector）
+    │   └── real/                         # 真机视觉 .cpp
+    │       ├── yolo_detector.cpp
+    │       ├── lidar_locator.cpp
+    │       └── center_cam.cpp            # ★ 独立节点：官方 camera_api 桥接（cam_id→topic）
     ├── test/                             # 测试代码（cmake 条件编译）
     │   ├── function/                     # 通用测试函数
     │   │   ├── inc/behavior_test.hpp     # 行为测试 + 通用链路测试
@@ -112,6 +129,23 @@ cyberdog_race/
     │       ├── inc/
     │       └── src/
 ```
+
+---
+
+## 运行期版本选择（Stage4 多路线，2026-09-02 重构）
+
+- **一个二进制，编译一次**：`Stage4Real`(正式) / `Stage4RealTest`(test 路线) 全部编进 `race_controller`。
+- **版本选择 = 运行期参数**（取代 build_bins.sh 的 sed 多二进制机制）：
+  ```bash
+  # launch 方式（推荐）
+  ros2 launch cyberdog_race race.launch.py stage4_impl:=test
+  # 命令行方式
+  ros2 run cyberdog_race race_controller --ros-args -p stage4_impl:=test
+  # 真机 start_race.sh 方式（环境变量）
+  STAGE4_IMPL=test bash /SDCARD/race_ws/src/cyberdog_race/scripts/start_race.sh
+  ```
+- **新增一条路线**：继承 `Stage4Real`，override `set_route_params()` + 流转 hook（`route_after_fwd1m/round_out/exit_fwd1`），在 `race_controller.cpp` 加一个 `stage4_impl` 分支即可，无需改宏/重编其他路线。
+- 路线实现位于 `src/test/real/stage4_real_test.*`（test）/ `stage4_real_test2.*`（test2），类名不同 → 可全编共存。
 
 ---
 
@@ -131,7 +165,7 @@ cyberdog_race/
 | 数据 | 写者 | 读者 | 保护方式 |
 |---|---|---|---|
 | `sensor_` 全部字段 | 所有 `on_*` 回调 | `control_loop`, `render_*`, StageBase::run | `sensor_mutex_` 互斥锁 |
-| `SensorData::vision_result` | `on_rgb` | `Stage4::run` | 低频无锁（数据竞争容忍） |
+| `SensorData::vision_result` | `on_rgb`(真机 yolo_detector) | `Stage4::run` | 低频无锁（数据竞争容忍；仿真恒空 YoloResult） |
 | `WebStreamer` 缓冲 | `on_rgb` / `render_*` | HTTP 客户端线程 | `frame_mutex_` + `condition_variable` |
 | `odom_history_` | `control_loop` | `render_track_frame` | 读时锁内快照 |
 
@@ -146,7 +180,7 @@ on_rgb()
   → cv_bridge::toCvShare(msg, "bgr8")   ← cv_bridge 自动处理源编码 (rgb8→bgr8)
   → LaneDetector::detect(cv_img, BGR)    ← 内部做 BGR→HSV 转换
   → BallDetector::detect(cv_img, BGR)    ← 同上
-  → Stage4Detector::detect(cv_img, BGR)  ← 同上
+  → YoloDetector::detect(cv_img, BGR)    ← 真机多目标（远程YOLO + 本地CV）
 ```
 
 🚫 **不要**在 `on_rgb` 之外单独订阅 ROS2 图像再转 BGR——统一入口已处理编码差异。
@@ -458,7 +492,7 @@ colcon build --merge-install --packages-select cyberdog_race
 # 真机（NX 上构建）
 # 1. VM 编辑后同步到 NX：⚠ 必须用安全脚本，❌ 勿用 rsync --delete
 #    （--delete 会删除/覆盖 NX 上伙伴改了但没 git 同步的文件——历史教训 .github/ 被删）
-bash /home/kaka/Mi/cyberdog_sim/src/cyberdog_simulator/cyberdog_race/scripts/sync_to_nx.sh
+bash ~/Mi/cyberdog_sim/src/cyberdog_simulator/cyberdog_race/tools/scripts/sync_to_nx.sh
 # 2. NX 上构建（真机需 protocol 包——NX 有、仿真无 → CMake 已 QUIET 保护）：
 ssh cyberdog "source /etc/mi/ros2_env.conf && cd /SDCARD/race_ws && \
   colcon build --merge-install --packages-select cyberdog_race"

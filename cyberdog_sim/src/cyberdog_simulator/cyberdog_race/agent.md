@@ -130,6 +130,43 @@ controller (主循环)
 
 ---
 
+## 宏 vs 运行期参数（取舍与模式）
+
+宏解决"**编译期不兼容**"（平台/硬件差异），运行期参数解决"**同一接口换实现**"（正式/测试版）。
+两者不是替代关系，而是按场景选择：
+
+| 场景 | 用宏 | 用运行期参数 |
+|---|---|---|
+| 平台差异（真机/仿真） | ✅ 代码不兼容，编译期定死 | ❌ |
+| 正式版 vs 测试版实现 | ❌ 会造多二进制 | ✅ 同接口不同实现，运行期选 |
+| 功能开关 | ✅ 注释=零开销 | 配置文件 |
+| 调试开关 | ✅ 发布前全注释 | ❌ |
+| 运行时可调参数 | ❌ 改参数要重编译 | ✅ 配置文件 / launch 参数 |
+
+### 单二进制多实现模式（推荐）
+
+> 多个实现全部**无条件编入**同一二进制，启动时用参数选创建哪个实例。
+> 杜绝 `sed + 多二进制 + md5 对账` 这类编译期 hack。
+
+```
+一个二进制
+  ├─ ImplFormal   ← 正式版（默认）
+  ├─ ImplTest     ← 测试版
+  └─ ImplTest2    ← 测试版2
+启动参数  xxx_impl:=formal|test|test2
+       ↓
+declare_parameter("xxx_impl", "formal")
+    → if/switch → make_unique<对应类>()
+```
+
+要点：
+- **默认=正式版**：不传参数就是正式行为，测试版不污染正式版
+- 测试类继承正式基类、只覆写差异（如 `set_route_params()` + 钩子函数），复用最大化
+- 一个部署包全包含，切换/排查只看启动命令参数，不用对二进制
+- 入口：`launch/*.launch.py` 暴露 `xxx_impl:=formal|test|test2` → 主程序 `declare_parameter` 选择
+
+---
+
 ## 安全注意事项
 
 ### 宏展开副作用
@@ -171,44 +208,75 @@ inline int square(int x) { return x * x; }
 
 ## 文件组织规范
 
+### 顶层职责划分
+
+| 目录 | 放什么 | 规则 |
+|---|---|---|
+| `include/<pkg>/` + `src/` | 头文件 / 实现 | 一一对应，路径同名 |
+| `<pkg>/<domain>/` | 领域模块（vision、stages…） | 按平台分 `real/` `virtual/`，互不引用 |
+| `<pkg>/utils/` | 通用工具 + 共享数据结构 | 主循环、赛段都可引用 |
+| `<pkg>/lcm/`（或 msg/） | 消息结构定义 | 不散落 include 根 |
+| `config/` | 运行时配置文件（yaml 等） | 参数走配置文件 |
+| `launch/` | 启动入口 | 暴露运行期版本选择参数 |
+| `test/` | 测试代码 | cmake 条件编译，不污染正式版 |
+
+### 总控 vs 执行层
+
+| | 总控（controller） | 执行层（motion_ctrl 等） |
+|---|---|---|
+| 类型 | 顶层 Node / main | 纯 C++ 类（可自带通信） |
+| 职责 | 订阅全部数据、调度赛段、写共享数据 | 把意图翻译成设备指令 |
+| 关系 | **持有**执行层（组合） | 被持有，不反向依赖总控 |
+| 位置 | `src/` 顶层 | `src/` 顶层（与总控并列） |
+
+> 执行层被多个模块/赛段共用，是独立硬件抽象层——**不要**埋进 utils 或 domain 子目录。
+
+### 目录树
+
 ```
 project/
-├── CMakeLists.txt              # 编译配置（新增 .cpp 必须加 SOURCES）
+├── CMakeLists.txt              # 编译配置（新增 .cpp 必须加 SOURCES；独立节点单独 add_executable）
 ├── agent.md                    # ← 本文档
 │
 ├── include/project/
 │   ├── config.hpp              # ★ 所有编译时宏
-│   ├── controller.hpp          # 主控制器声明
+│   ├── controller.hpp          # 总控声明（持有执行层）
+│   ├── motion_ctrl.hpp         # 执行层（硬件抽象）
 │   ├── module_base.hpp         # 模块基类（纯虚接口）
 │   │
-│   ├── modules/                # 各平台/场景的模块实现
-│   │   ├── impl_a/             # 实现 A 版
-│   │   └── impl_b/             # 实现 B 版（独立类，互不引用）
+│   ├── domain/                 # 领域模块（vision/、stages/…）
+│   │   ├── impl_a/             # 实现 A 版（real/）
+│   │   └── impl_b/             # 实现 B 版（virtual/，独立类，互不引用）
 │   │
-│   ├── utils/                  # 可选工具（功能宏控制编译）
-│   └── shared/                 # 共享数据定义
-│       └── data.hpp
+│   ├── utils/                  # 通用工具 + 共享数据
+│   │   ├── helper.hpp
+│   │   └── data.hpp
+│   │
+│   └── lcm/                    # 消息结构（不散落 include 根）
+│
+├── config/                     # 运行时配置文件
+├── launch/                     # 启动入口（运行期版本选择）
 │
 └── src/
     ├── main.cpp
     ├── controller.cpp
-    ├── modules/impl_a/         # 实现 A 的 .cpp
-    ├── modules/impl_b/         # 实现 B 的 .cpp
+    ├── motion_ctrl.cpp
+    ├── domain/impl_a/          # 实现 A 的 .cpp
+    ├── domain/impl_b/          # 实现 B 的 .cpp
+    ├── utils/
     └── test/                   # 测试代码目录（cmake 条件编译）
         ├── function/           # 通用测试函数
         │   ├── inc/
-        │   │   └── behavior_test.hpp
         │   └── src/
-        │       └── behavior_test.cpp
-        ├── real/               # 真机测试
-        │   ├── inc/
-        │   │   └── moduleN_test.hpp
-        │   └── src/
-        │       └── moduleN_test.cpp
-        └── virtual/            # 虚拟测试
-            ├── inc/
-            └── src/
+        ├── real/               # 真机测试（inc/ + src/）
+        └── virtual/            # 虚拟测试（inc/ + src/）
 ```
+
+### 关键约定补充
+
+- 新增 .cpp 必须加 `set(SOURCES ...)`，否则链接错误
+- **独立节点**（自带 main 的可执行文件，如相机桥接）放领域目录，CMakeLists **单独** `add_executable`，不进 SOURCES
+- include 路径用包全名：`#include "<pkg>/utils/data.hpp"`
 
 ---
 
@@ -283,6 +351,9 @@ project/
 mkdir build && cd build && cmake .. && make -j
 
 # 打开某个宏：取消 config.hpp 中注释，或 cmake -DMACRO=ON
+
+# 运行期选实现（不传=默认正式版）
+./app --ros-args -p xxx_impl:=test        # 或通过 launch 传 xxx_impl:=test
 ```
 
 ---

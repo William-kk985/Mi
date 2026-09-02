@@ -1,10 +1,10 @@
 #include "cyberdog_race/race_controller.hpp"
 #include <thread>
-#include <cstring>   // (2026-08-16) external_imu 原始包 memcpy
-#include <cmath>     // (2026-08-16) atan2/fabs/M_PI
-#include <cstdint>   // (2026-08-16) uint32_t/uint8_t
+#include <cstring>   // external_imu 原始包 memcpy
+#include <cmath>     // atan2/fabs/M_PI
+#include <cstdint>   // uint32_t/uint8_t
 
-// LCM 原始包 C 回调桥前向声明 (2026-08-16): 底层 lcm_subscribe + getUnderlyingLCM
+// LCM 原始包 C 回调桥前向声明（底层 lcm_subscribe + getUnderlyingLCM）
 static void lcm_external_imu_handler(const lcm_recv_buf_t*, const char*, void*);
 
 // ============================================================
@@ -40,7 +40,7 @@ RaceController::RaceController() : Node("race_controller") {
     sub_lidar_ = create_subscription<sensor_msgs::msg::LaserScan>(
         TOPIC_LIDAR, 10,
         [this](sensor_msgs::msg::LaserScan::SharedPtr msg) { on_lidar(msg); });
-#ifndef DISABLE_D435_SUB   // 任务只用RGB, 关闭D430i红外/深度 (2026-08-13)
+#ifndef DISABLE_D435_SUB   // 任务只用 RGB，关闭 D430i 红外/深度
     sub_d435_infra1_ = create_subscription<sensor_msgs::msg::Image>(
         TOPIC_D435_INFRA1, qos_be,
         [this](sensor_msgs::msg::Image::SharedPtr msg) { on_d435_infra1(msg); });
@@ -71,8 +71,8 @@ RaceController::RaceController() : Node("race_controller") {
         TOPIC_BMS, 10,
         [this](std_msgs::msg::Float32MultiArray::SharedPtr msg) { on_bms(msg); });
 
-    // RT板腿里程计+融合IMU姿态 (2026-08-15): 航向反馈源, 46.6Hz
-    // 实测: 静止10s yaw漂移仅0.03°, 远好于SLAM abs_yaw的转向滞后
+    // RT 板腿里程计+融合 IMU 姿态：航向反馈源，46.6Hz
+    // 静止 10s yaw 漂移仅 0.03°，远好于 SLAM abs_yaw 的转向滞后
     sub_odom_out_ = create_subscription<nav_msgs::msg::Odometry>(
         TOPIC_ODOM_OUT, qos_be,
         [this](nav_msgs::msg::Odometry::SharedPtr msg) { on_odom_out(msg); });
@@ -136,7 +136,7 @@ RaceController::RaceController() : Node("race_controller") {
         rclcpp::sleep_for(std::chrono::milliseconds(500));
         // ⚠ 启动保持水平，不低头（-0.26 是低头测试遗留，真机启动就低头会出事故）
         motion_.set_pitch(0.0f);
-        // 破限参数统一复位 (2026-08-14): 防上次 Stage3 破限 hack 残留影响 Stage1/2 侧移/转向限幅
+        // 破限参数统一复位：防上次 Stage3 破限 hack 残留影响 Stage1/2 侧移/转向限幅
         motion_.set_user_param_double_lcm("x_effect_scale_pos", -0.55);
         RCLCPP_INFO(get_logger(), "Motion init OK");
     } catch (const std::exception& e) {
@@ -158,34 +158,37 @@ RaceController::RaceController() : Node("race_controller") {
     if (cur_stage_ == 2) lane_detector_.set_mode(LaneMode::RELAXED);
     if (cur_stage_ == 5) ball_detector_.reset_filter();
     stages_[cur_stage_]->init();
-#elif defined(REAL_DOG)  // 真机: 创建真机赛段 (2026-08-11)
+#elif defined(REAL_DOG)  // 真机：创建真机赛段
     stages_[0] = std::make_unique<Stage1Real>(motion_, sensor_);
     stages_[1] = std::make_unique<Stage2Real>(motion_, sensor_);
-    stages_[2] = std::make_unique<Stage3Real>(motion_, sensor_);  // 破限低头前进 (2026-08-12)
+    stages_[2] = std::make_unique<Stage3Real>(motion_, sensor_);  // 破限低头前进
 #ifdef USE_TEST_REAL_STAGE2
-    stages_[1] = std::make_unique<Stage2RealTest>(motion_, sensor_);  // 旧侧移扫球逻辑 (2026-08-15)
+    stages_[1] = std::make_unique<Stage2RealTest>(motion_, sensor_);  // 旧侧移扫球逻辑
 #endif
 #ifdef USE_TEST_REAL_STAGE3
-    stages_[2] = std::make_unique<Stage3RealTest>(motion_, sensor_);  // 伙伴算法实验 (2026-08-14)
+    stages_[2] = std::make_unique<Stage3RealTest>(motion_, sensor_);  // 伙伴算法实验
 #endif
-    // Stage4 真机识别目标后通过官方 TTS 播报 (2026-08-16 伙伴逻辑接入)
+    // Stage4 真机识别目标后通过官方 TTS 播报
     motion_.attach_tts_pub(this);
-    // Stage4 多目标检测模型；真机路径与 /SDCARD/race_ws 工作区一致 (模型未部署则回退颜色检测)
-#ifdef REAL_DOG
-    if (cur_stage_ >= 3) {   // (2026-08-17 修复123趴下: 28MB×2的ONNX解析很慢, 123模式启动时无条件加载把启动/主循环拖死)
-        stage4_detector_.set_coke_model(
-            "/SDCARD/race_ws/src/cyberdog_race/models/cola.onnx", 0);
-        stage4_detector_.set_football_model(
-            "/SDCARD/race_ws/src/cyberdog_race/models/soccer.onnx", 1);
-    }
-#else
-    stage4_detector_.set_coke_model("");
-    stage4_detector_.set_football_model("");
-#endif
+    // Stage4 多目标检测（2026-09-02 拆分: 真机用 yolo_detector 远程 YOLO+CV，仿真用 stage4_detector 纯 CV）
+    // 真机可乐/足球经 unix socket → s4_detect_server.py，启动脚本 start_race.sh 自动拉起推理服务
 
-    stages_[3] = std::make_unique<Stage4Real>(motion_, sensor_);
+    // Stage4 路线实现由运行期参数 stage4_impl 选择（取代编译期宏/多二进制）
+    //   launch: ros2 launch cyberdog_race race.launch.py stage4_impl:=test
+    //   命令行: ros2 run ... race_controller --ros-args -p stage4_impl:=test
+    const std::string stage4_impl = declare_parameter("stage4_impl", "formal").as_string();
+    if (stage4_impl == "test") {
+        RCLCPP_WARN(get_logger(), "[Stage4] 使用 test 路线实现 (Stage4RealTest)");
+        stages_[3] = std::make_unique<Stage4RealTest>(motion_, sensor_);
+    } else if (stage4_impl == "test2") {
+        RCLCPP_WARN(get_logger(), "[Stage4] 使用 test2 路线实现 (Stage4RealTest2)");
+        stages_[3] = std::make_unique<Stage4RealTest2>(motion_, sensor_);
+    } else {
+        RCLCPP_WARN(get_logger(), "[Stage4] 使用正式路线实现 (Stage4Real)");
+        stages_[3] = std::make_unique<Stage4Real>(motion_, sensor_);
+    }
     stages_[4] = std::make_unique<Stage5Real>(motion_, sensor_);
-    stages_[5] = std::make_unique<Stage6Real>(motion_, sensor_);   // (2026-08-20 伙伴 Stage6 实机版融合)
+    stages_[5] = std::make_unique<Stage6Real>(motion_, sensor_);   // 伙伴 Stage6 实机版
     if (stages_[cur_stage_]) {
         if (cur_stage_ == 3) {
             std::lock_guard<std::mutex> lock(sensor_mutex_);
@@ -193,7 +196,7 @@ RaceController::RaceController() : Node("race_controller") {
         } else {
             stages_[cur_stage_]->init();
         }
-    }  // 从哪段开始就 init 哪段 (2026-08-12)
+    }  // 从哪段开始就 init 哪段
 #endif
 
     if (lcm_sub_.good()) {
@@ -202,7 +205,7 @@ RaceController::RaceController() : Node("race_controller") {
                            &RaceController::on_global_to_robot, this);
         lcm_sub_.subscribe(LCM_STATE_ESTIMATOR,
                            &RaceController::on_state_estimator, this);
-        // external_imu 原始订阅 (2026-08-16): 官方未公开struct, 回调内按实测偏移解码姿态四元数
+        // external_imu 原始订阅：官方未公开 struct，回调内按实测偏移解码姿态四元数
         lcm_subscribe(lcm_sub_.getUnderlyingLCM(), "external_imu", &lcm_external_imu_handler, this);
         RCLCPP_INFO(get_logger(), "[RealDog] LCM odom: %s, state: %s",
                     LCM_ODOM_CHANNEL, LCM_STATE_ESTIMATOR);
@@ -222,10 +225,10 @@ RaceController::RaceController() : Node("race_controller") {
         [this]() { control_loop(); });
 
 #ifdef DEBUG_SENSOR
-    // 订阅匹配自检 (2026-08-14): 每2s落盘 matched pub 与收帧计数,
-    // 黑屏时直接区分「发现失败(pub=0)」还是「发现OK但无数据(pub≥1)」
-    // 2s周期: 用户常在spin后几秒就Ctrl+C, 5s周期一条都打不出
-    // ★ 必须保存返回的SharedPtr, 否则引用归零timer立即销毁(2026-08-14 修)
+    // 订阅匹配自检：每 2s 落盘 matched pub 与收帧计数，
+    // 黑屏时区分「发现失败(pub=0)」还是「发现 OK 但无数据(pub≥1)」
+    // 2s 周期：用户常在 spin 后几秒就 Ctrl+C，5s 周期打不出一条
+    // ★ 必须保存返回的 SharedPtr，否则引用归零 timer 立即销毁
     diag_timer_ = create_wall_timer(std::chrono::milliseconds(2000), [this]() {
         RCLCPP_INFO(get_logger(), "[RGB] matched pub=%zu recv=%u",
                     sub_rgb_->get_publisher_count(), rgb_recv_cnt_);
@@ -233,7 +236,7 @@ RaceController::RaceController() : Node("race_controller") {
 #endif
 
 #ifdef ENABLE_WEB_STREAMING
-    web_streamer_.start(WEB_STREAM_PORT, 8);   // 8客户端 (2026-08-12 4易被刷新占满→503黑屏)
+    web_streamer_.start(WEB_STREAM_PORT, 8);   // 8 客户端（4 易被刷新占满 → 503 黑屏）
     RCLCPP_INFO(get_logger(), "[WebStreamer] Dual-stream MJPEG on http://0.0.0.0:%d (max 4 clients)", WEB_STREAM_PORT);
 #endif
 
@@ -253,7 +256,7 @@ RaceController::RaceController() : Node("race_controller") {
 
     RCLCPP_INFO(get_logger(), "Race controller started, stage %d", cur_stage_ + 1);
 #ifdef DEBUG_SENSOR
-    // 进入spin前立即打一次匹配状态 (2026-08-14): 短跑几秒就Ctrl+C也能抓到
+    // 进入 spin 前立即打一次匹配状态（短跑几秒就 Ctrl+C 也能抓到）
     RCLCPP_INFO(get_logger(), "[RGB] pre-spin matched pub=%zu",
                 sub_rgb_->get_publisher_count());
 #endif
@@ -356,11 +359,11 @@ void RaceController::control_loop() {
     if (++telem_render_counter_ >= 20) { telem_render_counter_ = 0; render_telemetry_frame(); }
 #endif
     // 行为测试模式：替代正常赛段
-    // ⚠ 2026-08-08 修复①：原来同步跑会卡死单线程执行器 → 测试期间 ROS2 订阅回调
-    //   （TOF/超声/LiDAR/相机）全部冻结（tof 恒 0.66 默认值）。改用独立线程跑测试，
-    //   主线程 spin 继续派发回调，测试内可正常读 TOF/超声量化（LCM odom 一直独立）。
-    // ⚠ 2026-08-08 修复②：真机把步高截到 step_height_max（默认~0.08，仿真 convex_mpc
-    //   同款），不发 user 参数时 0.25 步高被截 → 0.05/0.25 无差别。测试前先拉高上限。
+    // ⚠ 修复①：同步跑会卡死单线程执行器 → 测试期间 ROS2 订阅回调全部冻结
+    //   （TOF/超声/LiDAR/相机，tof 恒 0.66 默认值）。改用独立线程跑测试，
+    //   主线程 spin 继续派发回调，测试内可正常读 TOF/超声（LCM odom 一直独立）。
+    // ⚠ 修复②：真机把步高截到 step_height_max（默认~0.08，仿真 convex_mpc 同款），
+    //   不发 user 参数时 0.25 步高被截 → 0.05/0.25 无差别。测试前先拉高上限。
 #ifdef DEBUG_TEST_BEHAVIOR
     static bool test_ran = false;
     if (!test_ran) {
@@ -386,11 +389,11 @@ void RaceController::control_loop() {
     if (cur_stage_ >= 6) return;
     if (!stages_[cur_stage_]) return;  // Web模式跳过运动，无赛段
 
-    // Stage4 需要与视觉回调互斥 (2026-08-16 伙伴逻辑)
+    // Stage4 需要与视觉回调互斥
     bool done = false;
     if (cur_stage_ == 3) {
         std::lock_guard<std::mutex> lock(sensor_mutex_);
-        try {   // (2026-08-17 排查趴下: 异常要打出来, 不能静默杀死control_loop)
+        try {   // 异常要打出来，不能静默杀死 control_loop
             stages_[cur_stage_]->run();
             done = stages_[cur_stage_]->is_done();
         } catch (const std::exception& e) {
@@ -418,8 +421,8 @@ void RaceController::control_loop() {
         RCLCPP_INFO(get_logger(), "[Stage] %d done", cur_stage_ + 1);
 #endif
         if (single_stage_mode_) {
-            // (2026-08-22 用户: 结束保持站立; 303只发一次后RT板无指令会自己趴下 →
-            //   不cancel timer, 每tick持续发303静止保持站立直到Ctrl+C)
+            // 结束保持站立：303 只发一次后 RT 板无指令会自己趴下 →
+            // 不 cancel timer，每 tick 持续发 303 静止保持站立直到 Ctrl+C
             static bool done_logged = false;
             if (!done_logged) {
                 RCLCPP_WARN(get_logger(), "[DEBUG] Stage %d done, 保持站立(持续303静止)", cur_stage_ + 1);
@@ -430,7 +433,7 @@ void RaceController::control_loop() {
         }
 #ifdef DEBUG_END_STAGE
         if (cur_stage_ + 1 >= DEBUG_END_STAGE) {
-            // (2026-08-22 持续303保持站立, 不cancel)
+            // 持续发 303 保持站立，不 cancel
             static bool end_logged = false;
             if (!end_logged) {
                 RCLCPP_WARN(get_logger(), "[DEBUG] Stage %d done, end stage mode", cur_stage_ + 1);
@@ -445,7 +448,7 @@ void RaceController::control_loop() {
 #ifdef DEBUG_STAGE
             RCLCPP_INFO(get_logger(), "[Stage] switching to stage %d", cur_stage_ + 1);
 #endif
-            // ⚠ 真机后续赛段未实现 stages_[N]==nullptr → 停止不崩 (2026-08-11)
+            // ⚠ 真机后续赛段未实现 stages_[N]==nullptr → 停止不崩
             if (!stages_[cur_stage_]) {
                 motion_.stop();
                 RCLCPP_WARN(get_logger(), "[Stage] stage %d 未实现, 已停止", cur_stage_ + 1);
@@ -456,22 +459,6 @@ void RaceController::control_loop() {
             else lane_detector_.set_mode(LaneMode::STRICT);
             if (cur_stage_ == 5) ball_detector_.reset_filter();
             if (cur_stage_ == 3) {
-#ifdef REAL_DOG
-                // (2026-08-17 修复Stage4不识别可乐/足球: 1234连跑起步cur_stage_=0<3,
-                //  构造时模型未加载→Stage4全程HSV颜色回退不识别; 切Stage4时补加载)
-                if (!stage4_detector_.coke_model_ready()) {
-                    stage4_detector_.set_coke_model(
-                        "/SDCARD/race_ws/src/cyberdog_race/models/cola.onnx", 0);
-                }
-                if (!stage4_detector_.football_model_ready()) {
-                    stage4_detector_.set_football_model(
-                        "/SDCARD/race_ws/src/cyberdog_race/models/soccer.onnx", 1);
-                }
-                fprintf(stderr, "[Main] Stage4模型: coke=%d football=%d\n",
-                        stage4_detector_.coke_model_ready() ? 1 : 0,
-                        stage4_detector_.football_model_ready() ? 1 : 0);
-                fflush(stderr);
-#endif
                 std::lock_guard<std::mutex> lock(sensor_mutex_);
                 stages_[cur_stage_]->init();
             } else {
@@ -485,14 +472,13 @@ void RaceController::control_loop() {
 }
 
 // ── 传感器回调 ──
-// ★ 球距定标系数 (2026-08-16): 实测1m标定得0.20但效果不好, 用户要求改回偏大方向: 0.7
-//   (0.5旧经验 → 0.20实测 → 0.7 用户拍板)
+// ★ 球距定标系数：取偏大方向 0.7（实测 1m 定标 0.20 效果不好）
 static constexpr float BALL_DIST_SCALE = 0.7f;
 void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
     try {
     rgb_recv_cnt_++;
 #ifdef DEBUG_SENSOR
-    static int rgb_dbg_ = 0;   // 诊断 on_rgb 是否收到帧 (2026-08-12)
+    static int rgb_dbg_ = 0;   // 诊断 on_rgb 是否收到帧
     if (++rgb_dbg_ % 30 == 0)
         fprintf(stderr, "[RGB] recv enc=%s %dx%d\n", msg->encoding.c_str(), msg->width, msg->height);
 #endif
@@ -500,23 +486,21 @@ void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
     auto cv_img = cv_bridge::toCvShare(msg, "bgr8");
 
     // ── 视觉检测（锁外） ──
-    // ★ 按赛段 (2026-08-12): Stage1纯里程计不跑视觉, Stage2只橙色球, Stage3只巡线
-    //   省CPU, 防RGB流卡顿/黑屏; 仿真保持原逻辑
+    // ★ 按赛段：Stage1 纯里程计不跑视觉，Stage2 只橙球，Stage3 只巡线
+    //   省 CPU，防 RGB 流卡顿/黑屏；仿真保持原逻辑
     LaneResult lane;
     BallResult ball, blue, white;
 #ifdef REAL_DOG
     if (cur_stage_ == 1) {
-        // 1280x960 输入 (2026-08-14): 半分辨率检测省CPU; radius不修正(标注同域)
-        //   ★ 距离修正: gc02m1 视野/焦距与 old 640x480 假设不同 → raw距离有偏差
-        //     定标法: 球放正好1m, 看日志 [S2Stage] 确认球 dist=x → BALL_DIST_SCALE = 1.0/x
-        //     当前 0.5 为经验值, 实测不准就按定标值替换
+        // 半分辨率检测省 CPU；radius 不修正（标注同域）
+        //   ★ 距离修正：gc02m1 视野/焦距与 640x480 假设不同 → raw 距离有偏差
+        //     定标法：球放 1m，看日志 dist=x → BALL_DIST_SCALE = 1.0/x
         static cv::Mat ball_small;
         cv::resize(cv_img->image, ball_small, cv::Size(), 0.5, 0.5);
         ball = ball_detector_.detect(ball_small, BallColor::ORANGE);
         ball.dist_m *= BALL_DIST_SCALE;
     } else if (cur_stage_ == 2) {
-        // Stage3 巡线: 半分辨率+每2帧1次 (2026-08-13): 640x480全频检测在NX单线程executor
-        //   下拖垮Web(实测FPS掉到1), 320x240每2帧≈10Hz检测, 控制够用 Web流畅
+        // 巡线：半分辨率+每 2 帧 1 次，全频检测在 NX 单线程 executor 下拖垮 Web（FPS 掉到 1）
         static LaneResult last_lane;
         static int lane_cnt = 0;
         if (++lane_cnt % 2 == 0) {
@@ -533,22 +517,24 @@ void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
     blue  = ball_detector_.detect(cv_img->image, BallColor::BLUE);
     white = ball_detector_.detect(cv_img->image, BallColor::WHITE);
 #endif
-    Stage4Result s4_result;
+    YoloResult s4_result;   // vision 公共结果结构（真机 yolo_detector / 仿真 stage4_detector 通用）
     if (cur_stage_ == 3) {
-        // (2026-08-17 降频: ONNX六类检测重, 每帧跑会把单线程executor拖垮→control_loop饿死→狗趴下)
+        // 多目标检测重，每帧跑会拖垮单线程 executor → control_loop 饿死 → 狗趴下
         static int s4_cnt = 0;
         if (++s4_cnt % 2 == 0) {
-            s4_result = stage4_detector_.detect(cv_img->image);
+#ifdef REAL_DOG
+            s4_result = yolo_detector_.detect(cv_img->image);
+#else
+            s4_result = YoloResult{};   // 仿真不再检测（stage4_detector 已删除 2026-09-02）
+#endif
         } else {
-            static Stage4Result last_s4;
+            static decltype(s4_result) last_s4;
             s4_result = last_s4;
         }
-        // (2026-08-17 诊断日志: 排查可乐/足球不识别)
+        // 诊断日志：排查可乐/足球不识别
         static int s4_dbg = 0;
         if (++s4_dbg % 30 == 0) {
-            fprintf(stderr, "[S4VIS] cokeM=%d fbM=%d | coke=%d conf=%.2f d=%.2f | fb=%d conf=%.2f d=%.2f | lim=%d d=%.2f | orange=%d d=%.2f\n",
-                    stage4_detector_.coke_model_ready() ? 1 : 0,
-                    stage4_detector_.football_model_ready() ? 1 : 0,
+            fprintf(stderr, "[S4VIS] coke=%d conf=%.2f d=%.2f | fb=%d conf=%.2f d=%.2f | lim=%d d=%.2f | orange=%d d=%.2f\n",
                     s4_result.coke_found ? 1 : 0, s4_result.coke_conf, s4_result.coke_dist,
                     s4_result.football_found ? 1 : 0, s4_result.football_conf, s4_result.football_dist,
                     s4_result.limbar_found ? 1 : 0, s4_result.limbar_dist,
@@ -577,7 +563,7 @@ void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
         sensor_.white_ball_found  = white.found;
         sensor_.white_ball_x      = white.cx;
         sensor_.white_ball_dist   = white.dist_m;
-        // Stage4 多目标结果写入 (2026-08-16 伙伴逻辑; 橙球仍用 ball_* 我们的检测)
+        // Stage4 多目标结果写入（橙球仍用 ball_* 的检测）
         sensor_.football_found    = s4_result.football_found;
         sensor_.football_x        = s4_result.football_cx;
         sensor_.football_dist     = s4_result.football_dist;
@@ -607,20 +593,20 @@ void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
 
     // ── Web 推流（锁外，JPEG编码） ──
 #ifdef ENABLE_WEB_STREAMING
-    // 1280x960 输入 → 半分辨率推流 (2026-08-14): 省4倍JPEG编码
+    // 半分辨率推流：省 4 倍 JPEG 编码
     static cv::Mat web_small;
     cv::resize(cv_img->image, web_small, cv::Size(), 0.5, 0.5);
     web_streamer_.push_frame(web_small);
-    // ★ dark预览流已关闭 (2026-08-14): 用户要求只留相机画面, 省一次全分辨率JPEG编码
+    // ★ dark 预览流已关闭：只留相机画面，省一次全分辨率 JPEG 编码
 #endif
 
 // ── 标注画面生成（供 DEBUG_VISION imshow 和 Web 双流共用） ──
 #if defined(DEBUG_VISION) || defined(ENABLE_WEB_STREAMING)
-    // ★ 半分辨率标注 (2026-08-13): 640x480的HSV/inRange/circle在NX上太重,
-    //   单线程executor下拖垮Web(FPS掉到1); Web输出本来就是320x240, 画质无损
+    // ★ 半分辨率标注：全分辨率 HSV/inRange/circle 在 NX 上太重，拖垮 Web（FPS 掉到 1）；
+    //   Web 输出本就 320x240，画质无损
     cv::Mat frame;
     cv::resize(cv_img->image, frame, cv::Size(), 0.5, 0.5);
-    // (2026-08-17 用户: 寻线可视化/ROI不要了, 黄色高亮也删, 画面只留目标框)
+    // 寻线可视化/ROI/黄色高亮已删，画面只留目标框
 
     if (ball.found) {
         int bx = static_cast<int>((ball.cx + 1.0f) / 2.0f * frame.cols);
@@ -630,7 +616,7 @@ void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
                     {bx + 5, by - 5}, cv::FONT_HERSHEY_SIMPLEX, 0.5, {0, 165, 255}, 1);
     }
 
-    // ★ 转向方向箭头 (2026-08-15): 底部红箭头=实际yaw指令, 指左=左转 指右=右转, 长度∝|yaw|
+    // ★ 转向方向箭头：底部红箭头=实际 yaw 指令，指左=左转 指右=右转，长度∝|yaw|
     {
         float cyaw = 0.0f;
         {
@@ -654,10 +640,10 @@ void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
     cv::putText(frame, cv::format("odom x=%.3f y=%.3f yaw=%.3f", dox, doy, dyaw),
             {10, 58}, cv::FONT_HERSHEY_SIMPLEX, 0.65, {0, 255, 255}, 2);
 
-    // ★ Stage4 多目标标注 (2026-08-17 用户: 可乐/足球/限高杆/橙球可视化都要看到)
-    //   旧代码从仿真Stage4的vision_result读, 真机stages_[3]是Stage4Real→static_cast错类型UB, 改用本帧s4_result
+    // ★ Stage4 多目标标注（可乐/足球/限高杆/橙球都显示）
+    //   旧代码从仿真 Stage4 的 vision_result 读，真机是 Stage4Real → static_cast 错类型 UB，改用本帧 s4_result
     if (cur_stage_ == 3) {
-        // (2026-08-17) python回传真实框 → 画矩形(标注画面为0.5缩放, box坐标÷2)
+        // python 回传真实框 → 画矩形（标注画面为 0.5 缩放，box 坐标÷2）
         auto draw_s4 = [&](bool found, float cx, float dist, const cv::Rect& box,
                            float conf, const cv::Scalar& col, const char* tag, int row) {
             if (!found) return;
@@ -683,7 +669,7 @@ void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
                 s4_result.football_box,   s4_result.football_conf, {255, 255, 255}, "FBALL", 1);
         draw_s4(s4_result.limbar_found,   s4_result.limbar_cx,   s4_result.limbar_dist,
                 s4_result.limbar_box,     0.0f, {0, 0, 255},   "LIMBAR", 2);
-        // 橙球: 画真实圆 (2026-08-17 用户: 不要十字, 圈出来)
+        // 橙球：画真实圆（不要十字）
         if (s4_result.ball_found && s4_result.ball_radius > 0.0f) {
             cv::Point bc(static_cast<int>(s4_result.ball_center.x / 2),
                          static_cast<int>(s4_result.ball_center.y / 2));
@@ -698,9 +684,7 @@ void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
         }
         draw_s4(s4_result.obstacle_found, s4_result.obstacle_cx, s4_result.obstacle_dist,
                 s4_result.obstacle_box, 0.0f, {255, 0, 0},   "BLOCK",  4);
-        cv::putText(frame, cv::format("S4 cokeM=%d fbM=%d | C=%d F=%d L=%d O=%d B=%d",
-                    stage4_detector_.coke_model_ready() ? 1 : 0,
-                    stage4_detector_.football_model_ready() ? 1 : 0,
+        cv::putText(frame, cv::format("S4 C=%d F=%d L=%d O=%d B=%d",
                     s4_result.coke_found ? 1 : 0, s4_result.football_found ? 1 : 0,
                     s4_result.limbar_found ? 1 : 0, s4_result.obstacle_found ? 1 : 0,
                     s4_result.ball_found ? 1 : 0),
@@ -728,7 +712,7 @@ void RaceController::on_rgb(sensor_msgs::msg::Image::SharedPtr msg) {
 void RaceController::on_d435_infra1(sensor_msgs::msg::Image::SharedPtr msg) {
     (void)msg;
 #ifdef ENABLE_WEB_STREAMING
-    // ★ 降频每4帧处理1次(30fps→7.5fps): 防JPEG编码霸占executor饿死on_rgb (2026-08-12 黑屏根因)
+    // ★ 降频每 4 帧处理 1 次（30fps→7.5fps）：防 JPEG 编码霸占 executor 饿死 on_rgb（黑屏根因）
     static int s1 = 0;
     if (++s1 % 4 != 0) return;
     try {
@@ -758,7 +742,7 @@ void RaceController::on_d435_infra1(sensor_msgs::msg::Image::SharedPtr msg) {
 void RaceController::on_d435_depth(sensor_msgs::msg::Image::SharedPtr msg) {
     (void)msg;
 #ifdef ENABLE_WEB_STREAMING
-    // ★ 降频每4帧处理1次: 防JPEG编码霸占executor饿死on_rgb (2026-08-12)
+    // ★ 降频每 4 帧处理 1 次：防 JPEG 编码霸占 executor 饿死 on_rgb
     static int s3 = 0;
     if (++s3 % 4 != 0) return;
     try {
@@ -790,11 +774,11 @@ void RaceController::on_d435_depth(sensor_msgs::msg::Image::SharedPtr msg) {
 #endif
 }
 
-// ── D430i 右目红外回调（mono8 → 灰度 → web展示，2026-08-06 接入） ──
+// ── D430i 右目红外回调（mono8 → 灰度 → web 展示） ──
 void RaceController::on_d435_infra2(sensor_msgs::msg::Image::SharedPtr msg) {
     (void)msg;
 #ifdef ENABLE_WEB_STREAMING
-    // ★ 降频每4帧处理1次: 防JPEG编码霸占executor饿死on_rgb (2026-08-12)
+    // ★ 降频每 4 帧处理 1 次：防 JPEG 编码霸占 executor 饿死 on_rgb
     static int s2 = 0;
     if (++s2 % 4 != 0) return;
     try {
@@ -880,11 +864,11 @@ void RaceController::on_global_to_robot(const lcm::ReceiveBuffer*,
     sensor_.odom_x = msg->xyz[0];
     sensor_.odom_y = msg->xyz[1];
     sensor_.body_height = msg->xyz[2];  // z 轴直接作为身高
-    sensor_.abs_yaw = msg->rpy[2];      // 地图坐标系绝对朝向（供绝对转向, 2026-08-07）
-    sensor_.pitch_map = msg->rpy[1];    // 地图坐标系俯仰（供抬头/姿态验证, 2026-08-08）
-    sensor_.roll_map = msg->rpy[0];     // 地图坐标系横滚/侧倾（供身躯倾斜验证, 2026-08-08）
+    sensor_.abs_yaw = msg->rpy[2];      // 地图坐标系绝对朝向（供绝对转向）
+    sensor_.pitch_map = msg->rpy[1];    // 地图坐标系俯仰（供抬头/姿态验证）
+    sensor_.roll_map = msg->rpy[0];     // 地图坐标系横滚/侧倾（供身躯倾斜验证）
 
-    // ── abs_yaw 一阶低通 (2026-08-16): 石径上VIO yaw抖±8°→回正蛇形, 滤波后回正更顺 ──
+    // ── abs_yaw 一阶低通：石径上 VIO yaw 抖 ±8° → 回正蛇形，滤波后回正更顺 ──
     //   α=0.06 @50Hz → τ≈0.33s; 转向段仍用原始 abs_yaw 防滞后
     if (!sensor_.abs_yaw_lp_init) {
         sensor_.abs_yaw_lp = sensor_.abs_yaw;
@@ -897,7 +881,7 @@ void RaceController::on_global_to_robot(const lcm::ReceiveBuffer*,
     }
 }
 
-// ── external_imu 原始包解码 (2026-08-16): 官方未公开struct, 实测100字节 ──
+// ── external_imu 原始包解码：官方未公开 struct，实测 100 字节 ──
 //   偏移 8~23 = 姿态四元数 [x,y,z,w] 大端float (静止实测归一化≈1.0001)
 //   归一化校验防偏移猜错; yaw_imu 仅作短时相对量(与地图系有固定偏置, 无碍)
 //   LCM 的 subscribeFunction 需要类型化消息 → 底层 lcm_subscribe + getUnderlyingLCM 原始回调桥
@@ -937,16 +921,16 @@ void RaceController::on_state_estimator(const lcm::ReceiveBuffer*,
     sensor_.body_height = msg->p[2];
 }
 
-// ── 真机 RT板腿里程计航向 (odom_out, 2026-08-15) ──
-//   motion_bridge 发布: 四元数姿态 = 腿部运动学+板上IMU融合, 46.6Hz
-//   实测静止漂移0.03°/10s; 坐标系=腿里程计累计系(与SLAM abs_yaw不同源, 只用增量)
+// ── 真机 RT 板腿里程计航向（odom_out） ──
+//   motion_bridge 发布：四元数姿态 = 腿部运动学+板上 IMU 融合，46.6Hz
+//   静止漂移 0.03°/10s；坐标系=腿里程计累计系（与 SLAM abs_yaw 不同源，只用增量）
 void RaceController::on_odom_out(nav_msgs::msg::Odometry::SharedPtr msg) {
     std::lock_guard<std::mutex> lock(sensor_mutex_);
     const auto& q = msg->pose.pose.orientation;
     sensor_.yaw_odom = std::atan2(2.0 * (q.w * q.z + q.x * q.y),
                                   1.0 - 2.0 * (q.y * q.y + q.z * q.z));
     sensor_.odom_yaw_ready = true;
-    // 同源建系 (2026-08-16): odom位置与航向出自同一估计器, 点位导航用它零偏置矛盾
+    // 同源建系：odom 位置与航向出自同一估计器，点位导航用它零偏置矛盾
     sensor_.odom_pos_x = static_cast<float>(msg->pose.pose.position.x);
     sensor_.odom_pos_y = static_cast<float>(msg->pose.pose.position.y);
 }

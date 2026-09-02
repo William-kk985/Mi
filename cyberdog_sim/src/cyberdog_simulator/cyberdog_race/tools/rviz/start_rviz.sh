@@ -37,7 +37,7 @@ fi
 echo "② 启动 VM 接收端..."
 pkill -f scan_receive_v2.py 2>/dev/null || true
 sleep 1
-nohup python3 /home/kaka/Mi/tools/scan_receive_v2.py > /tmp/scan_receive.log 2>&1 &
+nohup python3 /home/kaka/Mi/cyberdog_sim/src/cyberdog_simulator/cyberdog_race/tools/rviz/scan_receive_v2.py > /tmp/scan_receive.log 2>&1 &
 sleep 3
 if grep -q "监听" /tmp/scan_receive.log 2>/dev/null; then
     echo "   ✅ 接收端已启动 (8001/8002/8003)"
@@ -60,7 +60,7 @@ echo "   ✅ TF 已发布"
 echo "④ 启动 rviz2 (软件渲染)..."
 pkill -f "rviz2" 2>/dev/null || true
 sleep 1
-LIBGL_ALWAYS_SOFTWARE=1 nohup rviz2 -d /home/kaka/Mi/tools/rviz_cyberdog.rviz > /tmp/rviz2.log 2>&1 &
+LIBGL_ALWAYS_SOFTWARE=1 nohup rviz2 -d /home/kaka/Mi/cyberdog_sim/src/cyberdog_simulator/cyberdog_race/tools/rviz/rviz_cyberdog.rviz > /tmp/rviz2.log 2>&1 &
 sleep 3
 echo "   ✅ rviz2 已启动"
 

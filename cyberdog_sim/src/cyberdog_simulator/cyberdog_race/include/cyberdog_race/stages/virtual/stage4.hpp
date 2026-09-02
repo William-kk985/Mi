@@ -1,7 +1,7 @@
 #pragma once
 #include <rclcpp/rclcpp.hpp>
 #include "cyberdog_race/stages/stage_base.hpp"
-#include "cyberdog_race/vision/virtual/stage4_detector.hpp"
+#include "cyberdog_race/vision/vision_result.hpp"   // YoloResult（仿真 stage4_detector 已删，保留空结果走超时）
 
 // 第四赛段：深隧寻珍
 // 路径点导航 → 蹲下识别足球 → 蛇形路径 → 识别蓝球 → 蹲下穿越 → 退出
@@ -14,7 +14,7 @@ public:
     float get_desired_height() const override;
     float get_desired_step_height() const override;
 
-    Stage4Result vision_result;
+    YoloResult vision_result;   // 仿真检测结果（与真机共用 YoloResult）
     bool crouch_active{false};
     static constexpr float CROUCH_HEIGHT = 0.15f;  // 蹲下目标高度15cm
 

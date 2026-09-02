@@ -3,10 +3,10 @@
 //   若后包含则 REAL_DOG 未定义，声明/实现被跳过 → 链接错误 undefined reference
 #include "cyberdog_race/debug_config.hpp"
 #include "cyberdog_race/motion_ctrl.hpp"
-#include "cyberdog_race/control_parameter_request_lcmt.hpp"
-#include "cyberdog_race/control_parameter_respones_lcmt.hpp"
-#include "cyberdog_race/file_send_lcmt.hpp"
-#include "cyberdog_race/motion_control_request_lcmt.hpp"
+#include "cyberdog_race/lcm/control_parameter_request_lcmt.hpp"
+#include "cyberdog_race/lcm/control_parameter_respones_lcmt.hpp"
+#include "cyberdog_race/lcm/file_send_lcmt.hpp"
+#include "cyberdog_race/lcm/motion_control_request_lcmt.hpp"
 #include <cstring>
 #include <thread>
 
@@ -39,11 +39,10 @@ void MotionCtrl::set_pitch(float pitch) {
 
 // ── 真机姿态控制 ──
 // ⚠️ CyberDog2 正确接口：ROS2 motion_servo_cmd + FORCECONTROL_DEFINITIVELY(201)
-// ⚠ 真机 pitch 方向实测：【正值=低头、负值=抬头】（舵机方向与直觉相反，2026-08-08 上机确认）
-//    rpy_des=[roll,pitch,yaw]，pitch 正值=低头、负值=抬头(限 -0.25~+0.30)
+// ⚠ 真机 pitch 方向实测【正值=低头、负值=抬头】，限 -0.25~+0.30（舵机方向与直觉相反）
 //    pos_des=[0,0,0.235] 机身高度；cmd_source=-1 最高调试优先级
-//    需要 ~20Hz 持续发布（停发 4 帧 motion_manager 会判定 Servo data lost 并退出）
-//    ❌ 旧的 LCM mode=21 (POSE_CTRL) 是铁蛋一代接口，真机被错误映射成 WALK_USERTROT(303)
+//    需 ~20Hz 持续发布（停发 4 帧 motion_manager 判定 Servo data lost 退出）
+//    ❌ 旧 LCM mode=21(POSE_CTRL) 是铁蛋一代接口，真机被错误映射成 WALK_USERTROT(303)
 void MotionCtrl::set_body_pitch(float pitch) {
 #ifdef REAL_DOG
     if (!motion_servo_pub_) {
@@ -190,9 +189,9 @@ void MotionCtrl::set_body_params_yaml(float roll, float pitch, float height) {
 }
 
 // ── 下发身躯参数走 LCM interface_request 通道 ──
-// ⚠ 2026-08-08 研究确认：真机参数通道在【端口 7668】（不是 7671！）
-//   - 官方 MiRoboticsLab/cyberdog_ros2 cyberdog_app.cpp getLcmUrl(): "udpm://239.255.76.67:7668"
-//     → offset_request->publish("interface_request", &request_)（control_parameter_request_lcmt）
+// ⚠ 真机参数通道在【端口 7668】（不是 7671！）
+//   - 官方 cyberdog_ros2 cyberdog_app.cpp getLcmUrl(): "udpm://239.255.76.67:7668"
+//     → publish("interface_request", &request_)（control_parameter_request_lcmt）
 //   - RT 板运控 hardware_bridge.cpp:64 interface_lcm_r_(7668).subscribe("interface_request", ...)
 //     requestKind=3(kSET_USER_PARAM_BY_NAME) → user_control_parameters_->collection_.LookUp(name).Set()
 //   - des_roll_pitch_height 正是 user param → 改它 = 走路时 roll/pitch/身高 全部可调！
@@ -256,7 +255,7 @@ void MotionCtrl::send_result_cmd(int motion_id) {
 #endif
 
 // 等待 MotionResultCmd 服务就绪（带超时秒）——真机站/趴前调用
-// ⚠ 2026-08-11: 狗刚启动时服务端可能未就绪, send_result_cmd 会直接 return (服务未就绪)
+// ⚠ 狗刚启动时服务端可能未就绪，send_result_cmd 会直接 return
 bool MotionCtrl::wait_motion_result_ready(int timeout_s) {
 #ifdef REAL_DOG
     if (!motion_result_client_) {
@@ -276,7 +275,7 @@ bool MotionCtrl::wait_motion_result_ready(int timeout_s) {
 }
 
 // ── 真机官方跳跃（motion_servo_cmd 持续发布，档位固定） ──
-//   ⚠ 跳跃不走 MotionResultCmd（Command 133 not valid, 2026-08-07 上机确认）
+//   ⚠ 跳跃不走 MotionResultCmd（Command 133 not valid）
 //   与姿态201/行走303一样走 ServoCmd，持续发布 ~1.5s 触发跳跃轨迹
 //   motion_id: 133=前跳30cm, 132=前跳60cm（MotionID 预设轨迹，无法自定义距离）
 void MotionCtrl::jump_forward(float dist) {
@@ -328,7 +327,7 @@ void MotionCtrl::set_walk_velocity(float x, float y, float yaw) {
     cmd.vel_des     = {x, y, yaw};
     cmd.rpy_des     = {0.0f, 0.0f, 0.0f};
     cmd.pos_des     = {0.0f, 0.0f, 0.235f};
-    cmd.step_height = {0.15f, 0.15f};   // 步高(2026-08-07 调高测试: 0.05→0.10→0.15)
+    cmd.step_height = {0.15f, 0.15f};   // 步高 0.15m
     motion_servo_pub_->publish(cmd);
 #else
     set_velocity(x, y, yaw);   // 仿真复用旧 gamepad 接口
@@ -336,8 +335,7 @@ void MotionCtrl::set_walk_velocity(float x, float y, float yaw) {
 }
 
 // ── 真机带自定义身高行走（303 + pos_des[2]=height） ──
-// ⚠ 2026-08-08 test21 发现：des_roll_pitch_height[2] 参数真机不用（体高反馈不动），
-//   真机走路身高疑似走 303 命令 pos_des[2]（body_height 反馈≈pos_des[2]=0.235）
+// ⚠ 真机走路身高走 303 命令的 pos_des[2]（des_roll_pitch_height[2] 参数真机不用）
 void MotionCtrl::set_walk_velocity_height(float x, float y, float yaw, float height) {
 #ifdef REAL_DOG
     if (!motion_servo_pub_) {
@@ -384,7 +382,7 @@ void MotionCtrl::set_body_pose_height(float height) {
 
 // ── 真机带自定义步高行走（303 + step_height） ──
 // ⚠ 真机步高正确接口是 motion_servo_cmd.step_height 字段（官方 303 preset 同款），
-//   旧 set_step_height 走 LCM robot_control_cmd(7671) 真机不吃（2026-08-08 确认）。
+//   旧 set_step_height 走 LCM robot_control_cmd(7671) 真机不吃。
 //   step_h 建议范围 0.05~0.25m（官方 clamp 0~0.35）；需 ~20Hz 持续发布
 void MotionCtrl::set_walk_velocity_step(float x, float y, float yaw, float step_h) {
 #ifdef REAL_DOG
@@ -433,7 +431,7 @@ void MotionCtrl::set_walk_velocity_step_raw(float x, float y, float yaw, float s
 }
 
 // ── 真机带俯仰姿态行走（303 + rpy_des[1]=pitch） ──
-// ✅ 2026-08-08 上机验证：test17 低头保持 ~-5° 走满 0.3m
+// ✅ 上机验证：低头保持 ~-5° 走满 0.3m
 //   （步态控制器 convex_mpc_loco_gaits.cpp:2305 走路时 rpy_cmd_[1]=ctrl_cmd_->rpy_des[1]）
 void MotionCtrl::set_walk_velocity_pitch(float x, float y, float yaw, float pitch) {
 #ifdef REAL_DOG
@@ -480,8 +478,7 @@ void MotionCtrl::set_walk_velocity_rpy(float x, float y, float yaw, float roll, 
 }
 
 // ── 真机姿态控制同时带速度（201 + vel_des） ──
-// ⚠ 官方 pose_teleop 只设 rpy_des(vel_des=0)；此处尝试姿态模式直接带速度行走
-//   需 ~20Hz 持续发布。能否生效上机验证（2026-08-08）
+// ⚠ 官方 pose_teleop 只设 rpy_des（vel_des=0）；姿态模式能否带速度待上机验证
 void MotionCtrl::set_body_pitch_velocity(float pitch, float x, float y, float yaw) {
 #ifdef REAL_DOG
     if (!motion_servo_pub_) {
@@ -504,9 +501,8 @@ void MotionCtrl::set_body_pitch_velocity(float pitch, float x, float y, float ya
 }
 
 // ── 真机姿态控制带速度+自定义身高（201 FORCECONTROL + vel_des + pos_des[2]=height） ──
-// ★ 2026-08-09 路线11：命令级低姿方案！201 模式身高读 pos_des[2]（2026-08-08 实测精确控身高）
-//   + vel_des 带速度 → 若能走路 = 命令级身高（不写参数内存！绝对安全！且实时可变！）
-//   201 是 FORCECONTROL 姿态模式，理论上可带速度位移；需 ~20Hz 持续发布
+// ★ 命令级低姿方案：201 模式身高读 pos_des[2]（实测精确控身高）+ vel_des 带速度
+//   → 若能走路 = 命令级身高（不写参数内存，绝对安全，实时可变）；需 ~20Hz 持续发布
 void MotionCtrl::set_body_velocity_height(float x, float y, float yaw, float height) {
 #ifdef REAL_DOG
     if (!motion_servo_pub_) {
@@ -551,7 +547,7 @@ void MotionCtrl::set_body_rpy_velocity(float roll, float pitch, float x, float y
 #endif
 }
 
-// ⚠ 真机站/趴必须走 MotionResultCmd 服务（gamepad 是铁蛋一代接口，真机无效——2026-08-07 踩坑）
+// ⚠ 真机站/趴必须走 MotionResultCmd 服务（gamepad 是铁蛋一代接口，真机无效）
 void MotionCtrl::stand() {
 #ifdef REAL_DOG
     send_result_cmd(111);   // RECOVERYSTAND
@@ -627,10 +623,10 @@ void MotionCtrl::send_lcm_mode(int mode, int gait_id) {
     pub_lcm_cmd();
 }
 
-// ⚠ 2026-08-08 修复：真机步高经 LCM robot_control_cmd(7671) 生效，但控制器解码是打包毫米：
+// ⚠ 真机步高经 LCM robot_control_cmd(7671) 生效，但控制器解码是打包毫米：
 //    step_height_cmd = (int)%1000*1e-3（低3位=脚A）+ /1000*1e-3（高3位=脚B）
 //    所以 0.15m → 150mm → 打包 150*1000+150 = 150150（同一元素内两只脚同高）
-//    直接发米(0.15) 会被 (int) 截成 0（之前一直这样，真机没反应——2026-08-08 上机确认）
+//    直接发米(0.15) 会被 (int) 截成 0（真机没反应）
 void MotionCtrl::set_step_height(float left, float right) {
     int lmm = (int)(left  * 1000.0f);  lmm = lmm < 0 ? 0 : (lmm > 300 ? 300 : lmm);
     int rmm = (int)(right * 1000.0f);  rmm = rmm < 0 ? 0 : (rmm > 300 ? 300 : rmm);
@@ -655,14 +651,12 @@ void MotionCtrl::set_step_height_raw(float left, float right) {
 }
 
 // ── 真机节能低姿走路（7671 robot_control_cmd: mode=11 + gait_id=3 + value&0x02） ──
-// ★ 2026-08-09 路线3（走路身高破解）：
-//   真机 303 → LocoGaits → 身高锁 des_roll_pitch_height[2] 参数(0.25)，命令 pos_des[2] 不读，
-//   且运行中改该参数[2] 会把 RT 板写崩（test20 实锤）→ 死路。
-//   kUserGait(80) 走 MotionGaits 生效（身高基准 0.225 实测✓）但 pos_des[2] 偏移没生效 + 芭蕾步走不动。
-//   官方留的走路低姿开关 = fsm_state_locomotion.cpp:374 LocoGaits 分支：
-//     cmd_source==kCyberdog2LcmCmd(10)（7671 robot_control_cmd 自动设置）时 value&0x02
-//     → use_energy_saving_mode=0 → LocoGaits 身高: use_energy_saving_mode<0.9 → pos_des_(2)=pos_cmd_min_(2)=0.13
-//   → 正常 trot 前进 + 身高强制 0.13！只发命令不写参数内存 → 安全
+// 真机 303 → LocoGaits 身高锁 des_roll_pitch_height[2] 参数，命令 pos_des[2] 不读，
+// 且运行中改该参数会把 RT 板写崩 → 此路不通。改用官方低姿开关：
+//   fsm_state_locomotion.cpp:374 LocoGaits 分支：cmd_source==kCyberdog2LcmCmd(10)
+//   （7671 robot_control_cmd 自动设置）时 value&0x02 → use_energy_saving_mode=0
+//   → 身高 pos_des_(2)=pos_cmd_min_(2)=0.13：正常 trot 前进 + 身高强制 0.13！
+//   只发命令不写参数内存 → 安全
 // ⚠ 需 ~20Hz 持续发布（life_count++ 已做）
 void MotionCtrl::set_walk_energy_save(float x, float y, float yaw, bool energy) {
 #ifdef REAL_DOG
@@ -683,9 +677,9 @@ void MotionCtrl::set_walk_energy_save(float x, float y, float yaw, bool energy) 
 }
 
 // ── 真机 kWalkWave 走路（7671 robot_control_cmd: mode=11 + gait_id=60） ──
-// ★ 2026-08-09 路线4：kWalkWave 是 MotionGaits 里能正常前进的步态（官方 walk_wave.toml 用它走路）
+// kWalkWave 是 MotionGaits 里能正常前进的步态（官方 walk_wave.toml 用它走路）
 //   身高 = des_roll_pitch_height_motion[2](0.225) + walk_wave_height[0](0.02) ≈ 0.245
-//   配合 set_body_params_motion_lcm 运行时改 des_roll_pitch_height_motion[2] → 走路中动态变身高！
+//   配合 set_body_params_motion_lcm 运行时改参数 → 走路中动态变身高！
 //   （kUserGait00 是芭蕾走不动，改用 kWalkWave）
 // ⚠ 需 ~20Hz 持续发布（life_count++ 已做）
 void MotionCtrl::set_walk_wave(float x, float y, float yaw) {
@@ -706,14 +700,12 @@ void MotionCtrl::set_walk_wave(float x, float y, float yaw) {
 }
 
 // ── 真机 kTrotInOut 走路（7671 robot_control_cmd: mode=11 + gait_id=56） ──
-// ★ 2026-08-09 路线7：kTrotInOut = MotionGaits 里的【对角 trot 本体】！
-//   control_flags_release.hpp: kTrotInOut=56；convex_mpc_motion_gaits.cpp:
-//   - SetGaitParams(56) → SetTrotInOutParams: gait_type_=&trot_in_out_，offset=(0,9,9,0) 对角同相位
-//     （FL+RR 同步、FR+RL 同步 = 普通 trot！），且【不清零 vel_cmd_】→ 响应速度前进
-//   - SetDefaultParams: pos_cmd_[2] = des_roll_pitch_height_motion[2] → 身高走 MotionGaits 参数
-//   - SetCmd: pos_des(2) 低通滤波过渡 → 走路中 7668 改 motion 参数 = 平滑动态降身高（不崩！）
-//   - 前进速度上限 vel_xy_yaw_max_motion_default=[1.5,0.3,1.0]（比普通 trot 的 1.2 还快）
-//   - 唯一花哨点 trot_in_out_landing_offset[0.05,0.06] 内外八（可改 RT 板 yaml 为0消除）
+// kTrotInOut = MotionGaits 里的【对角 trot 本体】！control_flags_release.hpp: 56
+//   - SetTrotInOutParams: offset=(0,9,9,0) 对角同相位（FL+RR、FR+RL 同步 = 普通 trot），不清零 vel_cmd_ → 响应快
+//   - SetDefaultParams: pos_cmd_[2]=des_roll_pitch_height_motion[2] → 身高走 MotionGaits 参数
+//   - SetCmd: pos_des(2) 低通滤波过渡 → 走路中 7668 改 motion 参数 = 平滑动态降身高（不崩）
+//   - 速度上限 vel_xy_yaw_max_motion_default=[1.5,0.3,1.0]（比普通 trot 的 1.2 还快）
+//   - 花哨点 trot_in_out_landing_offset[0.05,0.06] 内外八（可改 RT 板 yaml 为 0 消除）
 // ⚠ 需 ~20Hz 持续发布（life_count++ 已做）
 void MotionCtrl::set_walk_trot_in_out(float x, float y, float yaw) {
 #ifdef REAL_DOG
@@ -733,10 +725,9 @@ void MotionCtrl::set_walk_trot_in_out(float x, float y, float yaw) {
 }
 
 // ── 真机 robot_control_cmd 普通trot + pos_des[2]（命令级身高） ──
-// ★ 2026-08-09 路线15：能走的通道(robot_control_cmd gait=3) + pos_des[2]=height
-//   纯命令【不发参数内存】→ 绝对安全不崩！
-//   若真机固件 LocoGaits 读 ctrl_cmd_->pos_des[2] → 走路中改 = 运行时可变身高！
-//   （cyberdog_sim 源码 LocoGaits 读 des_roll_pitch_height 参数，但真机固件 2025-08-01 可能不同）
+// 能走的通道（robot_control_cmd gait=3）+ pos_des[2]=height，纯命令不发参数内存 → 安全
+// 若真机固件 LocoGaits 读 ctrl_cmd_->pos_des[2] → 走路中改 = 运行时可变身高！
+// （cyberdog_sim 源码读 des_roll_pitch_height 参数，真机固件可能不同）
 void MotionCtrl::set_walk_trot_height(float x, float y, float yaw, float height) {
 #ifdef REAL_DOG
     memset(&lcm_cmd_, 0, sizeof(lcm_cmd_));
@@ -756,12 +747,11 @@ void MotionCtrl::set_walk_trot_height(float x, float y, float yaw, float height)
 }
 
 // ── 真机 exec_request 走路 + body_height（CyberdogLcm2Cmd 官方通道） ──
-// ★ 2026-08-09 路线14：exec_request(motion_control_request_lcmt) pattern=7 → kTrotMedium(普通trot)
+// exec_request(motion_control_request_lcmt) pattern=7 → kTrotMedium（普通 trot）
 //   command_interface.cpp CyberdogLcm2Cmd: pattern→gait, body_height→cmd_cur_.pos_des[2]
-//   【命令级身高】！不写参数内存 → 绝对安全！若真机固件 LocoGaits 读 pos_des[2]
-//   → 走路中改 body_height = 运行时可变身高（官方通道）！
-//   ⚠ cyberdog_sim 源码注释"body_height: donot used in locomotion"，但真机固件 2025-08-01 可能不同
-//   ⚠ exec_request 是官方 NX motion_manager→RT 板的运控通道，需 ~20Hz 持续发
+//   【命令级身高】不写参数内存 → 绝对安全！若真机固件 LocoGaits 读 pos_des[2] → 运行时可变身高
+//   ⚠ cyberdog_sim 源码注释"body_height: donot used in locomotion"，真机固件可能不同
+//   ⚠ 官方 NX motion_manager→RT 板运控通道，需 ~20Hz 持续发
 void MotionCtrl::set_walk_exec_request_height(float x, float y, float yaw, float height) {
 #ifdef REAL_DOG
     motion_control_request_lcmt req;
@@ -780,18 +770,18 @@ void MotionCtrl::set_walk_exec_request_height(float x, float y, float yaw, float
 }
 
 // ── 运行时改 MotionGaits 身高参数 des_roll_pitch_height_motion（LCM 7668） ──
-// ★ 2026-08-09 路线4：与崩 RT 板的 des_roll_pitch_height（LocoGaits 用）是【不同参数】！
-//   kUserGait A 段实测真机读取 motion 参数（身高0.228≈0.225 生效）
-//   → 走路中改它 = 动态变身高（kWalkWave 身高 = motion[2] + 0.02，要0.16 → motion[2]=0.14）
+// 与崩 RT 板的 des_roll_pitch_height（LocoGaits 用）是【不同参数】！
+// 实测真机读取 motion 参数（0.225 生效）→ 走路中改它 = 动态变身高
+// （kWalkWave 身高 = motion[2] + 0.02，要 0.16 → motion[2]=0.14）
 void MotionCtrl::set_body_params_motion_lcm(float roll, float pitch, float height) {
     double v[3] = { (double)roll, (double)pitch, (double)height };
     set_user_param_lcm("des_roll_pitch_height_motion", 3, v, 3);   // kVEC_X_DOUBLE
 }
 
 // ── 真机上传自定义步态（7671 user_gait_file 通道） ──
-// ★ 2026-08-09 路线6（自定义步态）: 官方 ProcessUserGaitFile 接收 "# Gait Def" 开头的时序
-//   格式（参考 user_gait_00.toml）: 每 [[section]] 的 contact=[FL,FR,RL,RR](1着地0抬起) + duration=MPC步数
-//   最后一段会被强制全着地（安全）。上传后 user_gait_file_ 缓存，发 gait_id=110 时生效。
+// 官方 ProcessUserGaitFile 接收 "# Gait Def" 开头的时序
+//   格式（参考 user_gait_00.toml）：每 [[section]] 的 contact=[FL,FR,RL,RR](1着地0抬起) + duration=MPC步数
+//   最后一段强制全着地（安全）。上传后缓存，发 gait_id=110 时生效。
 // ⚠ 需在发 kUserGait(110) 之前调用
 void MotionCtrl::upload_user_gait(const std::string& gait_content) {
 #ifdef REAL_DOG
@@ -814,11 +804,11 @@ void MotionCtrl::upload_user_gait(const std::string& gait_content) {
 }
 
 // ── 真机 kUserGait(110) 走路（7671 robot_control_cmd） ──
-// ★ 2026-08-09 路线6：配合 upload_user_gait 先上传自定义步态，再发 gait_id=110
+// 配合 upload_user_gait 先上传自定义步态，再发 gait_id=110
 //   fsm_state_locomotion.cpp:462 gait_id 变 kUserGait → InitUserGaits(true) 用上传步态
-//   → MotionGaits SetUserGait: 身高 = des_roll_pitch_height_motion[2] + ctrl_cmd_->pos_des[2]
-//   height_offset = 目标身高 - 0.225（要0.16 → -0.065）；clamp [0.16, 0.295]
-// ⚠ 若没先 upload_user_gait，user_gait_file_ 为空 → InitGait 空字符串可能失败/崩（必须先上传）
+//   → MotionGaits SetUserGait: 身高 = des_roll_pitch_height_motion[2] + pos_des[2]
+//   height_offset = 目标身高 - 0.225（要 0.16 → -0.065）；clamp [0.16, 0.295]
+// ⚠ 必须先 upload_user_gait，否则 user_gait_file_ 为空 → InitGait 空字符串可能失败/崩
 void MotionCtrl::set_walk_user_gait_v2(float x, float y, float yaw, float height_offset) {
 #ifdef REAL_DOG
     memset(&lcm_cmd_, 0, sizeof(lcm_cmd_));

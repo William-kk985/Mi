@@ -85,6 +85,12 @@ rsync -avz -e "ssh $SSH_OPTS" \
   "$LOCAL/" "$REMOTE/"
 
 echo ""
+echo "=== 5. 同步部署 sh (tools/scripts/ → NX cyberdog_race/scripts/) ==="
+# (2026-09-02 整理: 部署 sh 统一放 VM 仓库 tools/scripts/, NX 上仍落 cyberdog_race/scripts/ 保持路径不变)
+rsync -avz -e "ssh $SSH_OPTS" \
+  "/home/kaka/Mi/cyberdog_sim/src/cyberdog_simulator/cyberdog_race/tools/scripts/" "$REMOTE/scripts/"
+
+echo ""
 echo "=== ✅ 同步完成 ==="
 echo "  · 未删除 NX 上任何文件"
 echo "  · 伙伴改过的文件被跳过（见第 2 步清单），改动保留"

@@ -1,6 +1,6 @@
 #pragma once
 #include "cyberdog_race/motion_ctrl.hpp"
-#include "cyberdog_race/sensor_data.hpp"
+#include "cyberdog_race/utils/sensor_data.hpp"
 #include <cstdio>
 
 // ── 赛段运动行为测试（DEBUG_TEST_BEHAVIOR 触发） ──

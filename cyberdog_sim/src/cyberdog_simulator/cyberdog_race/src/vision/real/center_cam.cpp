@@ -1,7 +1,7 @@
-// center_cam.cpp — center 模组相机桥接节点 (2026-08-14)
-// 走官方 camera_api (OpenCamera+StartStream), 发布 <ns>/image_center
+// center_cam.cpp — center 模组相机桥接节点
+// 走官方 camera_api (OpenCamera+StartStream)，发布 <ns>/image_center
 //   设备树 4 相机: 0=bottomleft RGB / 1=bottomright mono / 2=centerleft / 3=centerright
-// 参数: cam_id(默认2) width height sync(默认true, 实测sync=true曾成功出帧)
+// 参数: cam_id(默认2) width height sync(默认true, 实测 sync=true 曾成功出帧)
 // 用法(NX):
 //   ros2 run cyberdog_race center_cam --ros-args -r __ns:=/mi_desktop_48_b0_2d_7b_02_c7 \
 //       -p cam_id:=2 -p width:=1280 -p height:=800
@@ -24,7 +24,7 @@ public:
             RCLCPP_ERROR(get_logger(), "OpenCamera(%d) FAILED status=%d", cam_id_, status);
             return;
         }
-        // BEST_EFFORT (2026-08-14): 与controller订阅一致, 避免RELIABLE跨实现行为差异
+        // BEST_EFFORT：与 controller 订阅一致，避免 RELIABLE 跨实现行为差异
         pub_ = create_publisher<sensor_msgs::msg::Image>(
             "image_center", rclcpp::QoS(10).best_effort());
         int r = cyberdog::camera::StartStream(handle_, cyberdog::camera::kImageFormatBGR,

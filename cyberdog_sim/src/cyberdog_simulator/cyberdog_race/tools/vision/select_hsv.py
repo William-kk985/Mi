@@ -2,7 +2,7 @@
 # 框选 HSV 取色工具 (2026-08-20 用户: 自己圈目标大概方位, 输出 HSV 范围用于定阈值)
 #
 # 用法:
-#   python3 /home/kaka/Mi/tools/select_hsv.py -i 图片.jpg
+#   python3 /home/kaka/Mi/cyberdog_sim/src/cyberdog_simulator/cyberdog_race/tools/vision/select_hsv.py -i 图片.jpg
 #
 # 操作:
 #   鼠标左键拖拽框选目标 → 按 Enter 输出框内 HSV 分布并保存 crop 图

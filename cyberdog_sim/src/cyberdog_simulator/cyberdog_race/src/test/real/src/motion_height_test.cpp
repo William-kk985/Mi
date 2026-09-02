@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════
-// motion_height_test.cpp — 头顶60cm动作测试 (2026-08-16 仅记录, 未接入CMake)
+// motion_height_test.cpp — 头顶60cm动作测试 (仅记录, 未接入CMake)
 // ═══════════════════════════════════════════════════════════
 // 背景: 任务可能需要狗"头顶到达60cm高度"。
 // 官方动作全集 (protocol/msg/motion_id.hpp, NX: /opt/ros2/cyberdog/include):
@@ -57,7 +57,7 @@ void test_height(MotionCtrl& motion) {
 }
 #endif
 
-// 结论记录 (2026-08-16):
+// 结论记录:
 //   - 机身离地60cm: 不可能 (固件 pos_cmd_max_[2]=站高+0.07=0.32m 硬上限)
 //   - 头顶60cm: 首选 123 TWO_LEG_STAND(稳态); 备选 136 JUMP3D_UP30CM(瞬态)
 //   - 跳跃类注意: 官方 jump 注释 "jump 20cm box" 为越障设计, 垂直跳136专用

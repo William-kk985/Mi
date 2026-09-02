@@ -1,4 +1,4 @@
-#include "cyberdog_race/llm_helper.hpp"
+#include "cyberdog_race/utils/llm_helper.hpp"
 
 #if defined(LLM_MODE_PROXY) || defined(LLM_MODE_API)
 
@@ -35,7 +35,7 @@ std::string LLMHelper::ask(const std::string& prompt, int timeout_sec) {
 
 #endif  // LLM_MODE_PROXY
 
-// ═══ API: libcurl（不变） ═══
+// ═══ API: libcurl ═══
 #if defined(LLM_MODE_API)
 
 bool LLMHelper::init(rclcpp::Node* node) {

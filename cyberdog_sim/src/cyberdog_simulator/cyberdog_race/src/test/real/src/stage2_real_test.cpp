@@ -5,11 +5,11 @@
 #include <vector>
 
 // ═══════════════════════════════════════════════════════════
-// Stage2RealTest 真机版 — 第2赛段 (2026-08-16 点位全局闭环版)
-// 动作序列与折线版一致(参考 2026-08-16 实测良好数据), 但执行改为:
+// Stage2RealTest 真机版 — 第2赛段 (点位全局闭环版)
+// 动作序列与折线版一致(参考实测良好数据), 但执行改为:
 //   · 目标点从起点+理论航向递推, 每步导航到全局目标点(≤0.05m到位)
 //   · 漂移不跨步累积; 撞击中断→原路退回→继续导航同一步
-// 折线动作序列版已迁至 stage2_real_test (2026-08-16)
+// 折线动作序列版已迁至 stage2_real_test
 // ═══════════════════════════════════════════════════════════
 
 namespace {
@@ -22,7 +22,7 @@ constexpr float BACK_V      = 0.20f;    // 退回速度
 constexpr float PITCH_S2    = 0.06f;    // 轻微低头 ~3.4°
 constexpr float TURN_V      = 0.5f;     // 原地转向速度 rad/s
 constexpr int   TURN_SETTLE_FRAMES = 30;  // 转向到位停稳 0.3s
-constexpr float ARRIVE_DIST = 0.05f;    // 到达目标点判定 ≤5cm (2026-08-16)
+constexpr float ARRIVE_DIST = 0.05f;    // 到达目标点判定 ≤5cm
 constexpr int   STEP_TIMEOUT = 3000;    // 单步超时30s强制下一步 (防odom卡住)
 
 // ═══ 找球/撞击 ═══
@@ -35,7 +35,7 @@ constexpr float TOUCH_DIST       = 0.08f;   // 球距≤0.08m连续3帧=触球
 constexpr int   MAX_HITS         = 4;       // 全场最多4球
 constexpr float HIT_SPOT_GUARD   = 0.5f;    // 撞过的球位置防重半径
 
-// ═══ 动作序列 (2026-08-16 实测良好版, 与折线版一致) ═══
+// ═══ 动作序列 (实测良好版, 与折线版一致) ═══
 const std::vector<S2TestStep> STEPS = {
     {S2TestKind::FWD,      0.92f},  // 0 开场衔接前进
     {S2TestKind::SLIDE_L,  0.30f},  // 1 左移0.3
@@ -140,16 +140,16 @@ void Stage2RealTest::enter_impact(float ball_dist) {
 void Stage2RealTest::run() {
     if (done_) return;
 
-    // ── 等定位就绪 (2026-08-16): 首帧锁理论航向+目标点原点 ──
+    // ── 等定位就绪: 首帧锁理论航向+目标点原点 ──
     // ⚠ 必须同时等 odom_yaw_ready: 转向/航向锁用yaw_odom, 未就绪锁0会满幅乱转
     if (!loc_ready_) {
         if ((sensor_.abs_yaw != 0.0f || sensor_.odom_x != 0.0f) && sensor_.odom_yaw_ready) {
             loc_ready_ = true;
-            // (2026-08-16 终版): 纯odom同源建系 — 位置与航向同一估计器, 零偏置
+            // 纯odom同源建系 — 位置与航向同一估计器, 零偏置
             yaw_slam_  = sensor_.yaw_odom;
             yaw_odom_  = sensor_.yaw_odom;
             target_x_  = sensor_.odom_pos_x;
-            target_y_  = sensor_.odom_pos_y;   // (2026-08-16 odom同源)
+            target_y_  = sensor_.odom_pos_y;   // odom同源
             last_x_ = sensor_.odom_x; last_y_ = sensor_.odom_y;
 #ifdef DEBUG_STAGE
             fprintf(stderr, "[S2Stage] 定位就绪: 起点odom=(%.2f,%.2f) slamYaw=%.2f odomYaw=%.2f\n",
@@ -343,10 +343,10 @@ void Stage2RealTest::run() {
         ball_confirm_ = 0;
     }
 
-    // ── 到位判定 (2026-08-16 双保险): odom距目标≤5cm 且 指令积分≥90% ──
+    // ── 到位判定(双保险): odom距目标≤5cm 且 指令积分≥90% ──
     //   ① odom虚大(实测侧向+17%)→ 指令积分没满, 继续走够实际距离
     //   ② odom漏记 → 指令满但位置没到, 继续以位置为准
-    //   (2026-08-16 终版: 位置用odom_pos, 与航向同源)
+    //   位置用odom_pos，与航向同源
     const float ddx = target_x_ - sensor_.odom_pos_x;
     const float ddy = target_y_ - sensor_.odom_pos_y;
     const float dist_go = std::hypot(ddx, ddy);
